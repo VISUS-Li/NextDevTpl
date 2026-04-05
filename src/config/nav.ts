@@ -8,6 +8,7 @@ import {
   Headset,
   LayoutDashboard,
   type LucideIcon,
+  Network,
   Settings,
   Shield,
   Ticket,
@@ -184,6 +185,11 @@ export const dashboardNav: NavGroup[] = [
         icon: Coins,
       },
       {
+        title: "Distribution",
+        href: "/dashboard/distribution",
+        icon: Network,
+      },
+      {
         title: "Settings",
         href: "/dashboard/settings",
         icon: Settings,
@@ -222,6 +228,11 @@ export const adminNav: NavGroup[] = [
         title: "工单管理",
         href: "/admin/tickets",
         icon: Ticket,
+      },
+      {
+        title: "分销管理",
+        href: "/admin/distribution",
+        icon: Network,
       },
     ],
   },
