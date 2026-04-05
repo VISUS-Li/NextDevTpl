@@ -1627,6 +1627,20 @@ SQL 里真正承担分销业务的核心表如下。
 2. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
 3. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
 
+Review 补充：
+
+- 这轮回看 `guns-distribution` 的分润链路后，确认当前 tripsass 里有一个真实缺口：
+  - 售后事件已经会回写订单
+  - 但原本不会回冲已冻结佣金
+  - 这会导致“订单退款了，但代理冻结佣金还挂着”的错账
+- 当前已补上这一点：
+  1. `sales_after_sales_event` 入账后，会按退款比例回冲对应佣金
+  2. 部分退款按比例扣减冻结佣金
+  3. 全额退款会把佣金记录标记为 `reversed`
+  4. 同时写入 `commission_ledger.commission_reverse`
+- 这一步仍然只覆盖当前已落地的冻结佣金模型
+- `available` 佣金、已提现佣金、负债场景仍然属于后续阶段
+
 ### 阶段 4：冻结、解冻、退款冲正
 
 目标：
@@ -1804,5 +1818,6 @@ src/features/distribution/
 5. 当前已经补上 `PaymentOrderPayload` 和订单显式归因字段，后续分润不需要再从 metadata 反查
 6. 当前已经补上 `sales_after_sales_event` 和订单退款回写，退货和拒付也有统一入口
 7. 当前已经补上佣金事件、佣金记录、冻结余额和佣金账本，积分包分佣可以闭环
-8. 当前还没有进入佣金解冻、佣金冲正和提现阶段
-9. 下一步应继续推进佣金冲正和解冻，而不是直接跳到提现
+8. 当前已经补上退款驱动的冻结佣金冲正，至少不会出现“退款后冻结佣金不回退”的错账
+9. 当前还没有进入佣金解冻、可用佣金冲正和提现阶段
+10. 下一步应继续推进佣金解冻和可用余额冲正，而不是直接跳到提现

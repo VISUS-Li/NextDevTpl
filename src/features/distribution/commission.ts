@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   commissionBalance,
@@ -252,4 +252,140 @@ export async function settleCommissionForSalesOrder(
   });
 
   return eventId;
+}
+
+/**
+ * 回冲订单项对应的冻结或可用佣金
+ */
+export async function reverseCommissionForSalesOrderItem(params: {
+  orderItemId: string;
+  afterSalesEventId: string;
+  reason: string;
+}) {
+  const [orderItem] = await db
+    .select()
+    .from(salesOrderItem)
+    .where(eq(salesOrderItem.id, params.orderItemId))
+    .limit(1);
+
+  if (!orderItem || orderItem.grossAmount <= 0 || orderItem.refundedAmount <= 0) {
+    return [];
+  }
+
+  const events = await db
+    .select()
+    .from(commissionEvent)
+    .where(eq(commissionEvent.orderItemId, params.orderItemId));
+
+  if (events.length === 0) {
+    return [];
+  }
+
+  const eventIds = events.map((event) => event.id);
+  const records = await db
+    .select()
+    .from(commissionRecord)
+    .where(
+      eventIds.length === 1
+        ? eq(commissionRecord.eventId, eventIds[0]!)
+        : inArray(commissionRecord.eventId, eventIds)
+    );
+
+  if (records.length === 0) {
+    return [];
+  }
+
+  const recordIds = records.map((record) => record.id);
+  const reverseLedgers = await db
+    .select()
+    .from(commissionLedger)
+    .where(
+      recordIds.length === 1
+        ? eq(commissionLedger.recordId, recordIds[0]!)
+        : inArray(commissionLedger.recordId, recordIds)
+    );
+
+  const relevantReverseLedgers =
+    recordIds.length <= 1
+      ? reverseLedgers.filter((entry) => entry.entryType === "commission_reverse")
+      : reverseLedgers.filter(
+          (entry) =>
+            entry.recordId && recordIds.includes(entry.recordId) &&
+            entry.entryType === "commission_reverse"
+        );
+
+  const reversedEventIds: string[] = [];
+
+  for (const record of records) {
+    const alreadyReversed = relevantReverseLedgers
+      .filter((entry) => entry.recordId === record.id)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    const targetReversedAmount = Math.min(
+      record.amount,
+      Math.round((record.amount * orderItem.refundedAmount) / orderItem.grossAmount)
+    );
+    const reverseAmount = targetReversedAmount - alreadyReversed;
+
+    if (reverseAmount <= 0) {
+      continue;
+    }
+
+    const [balance] = await db
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, record.beneficiaryUserId))
+      .limit(1);
+
+    if (!balance) {
+      continue;
+    }
+
+    const affectsAvailable = record.status === "available";
+    const beforeBalance = affectsAvailable
+      ? balance.availableAmount
+      : balance.frozenAmount;
+    const afterBalance = Math.max(0, beforeBalance - reverseAmount);
+
+    await db
+      .update(commissionBalance)
+      .set({
+        availableAmount: affectsAvailable
+          ? afterBalance
+          : balance.availableAmount,
+        frozenAmount: affectsAvailable ? balance.frozenAmount : afterBalance,
+        reversedAmount: balance.reversedAmount + reverseAmount,
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionBalance.id, balance.id));
+
+    const fullyReversed = targetReversedAmount >= record.amount;
+    await db
+      .update(commissionRecord)
+      .set({
+        status: fullyReversed ? "reversed" : record.status,
+        reversedAt: fullyReversed ? new Date() : record.reversedAt,
+        reversalReason: params.reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionRecord.id, record.id));
+
+    const reverseLedgerId = crypto.randomUUID();
+    await db.insert(commissionLedger).values({
+      id: reverseLedgerId,
+      userId: record.beneficiaryUserId,
+      recordId: record.id,
+      entryType: "commission_reverse",
+      direction: "debit",
+      amount: reverseAmount,
+      beforeBalance,
+      afterBalance,
+      referenceType: "sales_after_sales_event",
+      referenceId: params.afterSalesEventId,
+      memo: params.reason,
+    });
+
+    reversedEventIds.push(reverseLedgerId);
+  }
+
+  return reversedEventIds;
 }

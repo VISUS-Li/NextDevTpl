@@ -10,6 +10,7 @@ import type {
   CreemCheckoutCompletedData,
   CreemSubscription,
 } from "@/features/payment/creem";
+import { reverseCommissionForSalesOrderItem } from "@/features/distribution/commission";
 
 /**
  * 统一订单中的归因快照
@@ -502,6 +503,12 @@ export async function applySalesAfterSalesEvent(
       updatedAt: new Date(),
     })
     .where(eq(salesOrder.id, params.orderId));
+
+  await reverseCommissionForSalesOrderItem({
+    orderItemId: targetItem.id,
+    afterSalesEventId: eventId,
+    reason: params.reason ?? params.eventType,
+  });
 
   return eventId;
 }

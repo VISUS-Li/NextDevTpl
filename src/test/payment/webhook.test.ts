@@ -1248,6 +1248,141 @@ describe("Creem Webhook: commission", () => {
 		expect(commissionRecords).toHaveLength(1);
 		expect(commissionBalanceRow!.frozenAmount).toBe(15);
 	});
+
+	it("部分退款后应该回冲对应比例的冻结佣金", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		const ruleId = `rule_reverse_partial_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 7,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		await handleCheckoutCompleted({
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 200,
+				paymentId: `cs_reverse_partial_${Date.now()}`,
+				packageId: "standard",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "200",
+				packageId: "standard",
+				referralCode: "reverse-partial",
+				attributedAgentUserId: agentUser.id,
+			},
+		});
+
+		const [orderRecord] = await getUserSalesOrders(buyerUser.id);
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "partial_refund",
+			eventIdempotencyKey: `commission_partial_refund_${Date.now()}`,
+			amount: 50,
+			currency: "USD",
+			reason: "partial_refund_review",
+		});
+
+		const [balance] = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id))
+			.limit(1);
+		const [record] = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id))
+			.limit(1);
+		const reverseLedgers = await testDb
+			.select()
+			.from(commissionLedger)
+			.where(eq(commissionLedger.userId, agentUser.id));
+
+		expect(balance!.frozenAmount).toBe(15);
+		expect(balance!.reversedAmount).toBe(5);
+		expect(record!.status).toBe("frozen");
+		expect(
+			reverseLedgers.filter((entry) => entry.entryType === "commission_reverse")
+		).toHaveLength(1);
+	});
+
+	it("全额退款后应该把冻结佣金全部冲回", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		const ruleId = `rule_reverse_full_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 7,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		await handleCheckoutCompleted({
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 200,
+				paymentId: `cs_reverse_full_${Date.now()}`,
+				packageId: "standard",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "200",
+				packageId: "standard",
+				referralCode: "reverse-full",
+				attributedAgentUserId: agentUser.id,
+			},
+		});
+
+		const [orderRecord] = await getUserSalesOrders(buyerUser.id);
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "refunded",
+			eventIdempotencyKey: `commission_full_refund_${Date.now()}`,
+			amount: 200,
+			currency: "USD",
+			reason: "full_refund_review",
+		});
+
+		const [balance] = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id))
+			.limit(1);
+		const [record] = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id))
+			.limit(1);
+
+		expect(balance!.frozenAmount).toBe(0);
+		expect(balance!.reversedAmount).toBe(20);
+		expect(record!.status).toBe("reversed");
+	});
 });
 
 // ============================================
