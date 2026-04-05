@@ -182,6 +182,116 @@ export const subscription = pgTable("subscription", {
 });
 
 // ============================================
+// 统一订单中心枚举
+// ============================================
+
+/**
+ * 订单支付提供商枚举
+ */
+export const salesOrderProviderEnum = pgEnum("sales_order_provider", [
+  "creem",
+  "wechat_pay",
+  "alipay",
+]);
+
+/**
+ * 订单类型枚举
+ */
+export const salesOrderTypeEnum = pgEnum("sales_order_type", [
+  "subscription",
+  "credit_purchase",
+]);
+
+/**
+ * 订单状态枚举
+ */
+export const salesOrderStatusEnum = pgEnum("sales_order_status", [
+  "pending",
+  "paid",
+  "confirmed",
+  "closed",
+]);
+
+/**
+ * 订单售后状态枚举
+ */
+export const salesAfterSalesStatusEnum = pgEnum("sales_after_sales_status", [
+  "none",
+  "partial_refund",
+  "refunded",
+  "returned",
+  "chargeback",
+]);
+
+/**
+ * 订单项商品类型枚举
+ */
+export const salesOrderItemProductTypeEnum = pgEnum(
+  "sales_order_item_product_type",
+  ["subscription", "credit_package"]
+);
+
+// ============================================
+// 统一订单表 (Sales Orders)
+// ============================================
+/**
+ * 统一订单表 - 记录支付成功后的统一订单事件
+ *
+ * 这一层先服务于 webhook 落单与后续分销接入
+ */
+export const salesOrder = pgTable("sales_order", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  provider: salesOrderProviderEnum("provider").notNull(),
+  providerOrderId: text("provider_order_id"),
+  providerCheckoutId: text("provider_checkout_id"),
+  providerSubscriptionId: text("provider_subscription_id"),
+  providerPaymentId: text("provider_payment_id"),
+  orderType: salesOrderTypeEnum("order_type").notNull(),
+  status: salesOrderStatusEnum("status").notNull().default("paid"),
+  afterSalesStatus: salesAfterSalesStatusEnum("after_sales_status")
+    .notNull()
+    .default("none"),
+  currency: text("currency").notNull(),
+  grossAmount: integer("gross_amount").notNull().default(0),
+  paidAt: timestamp("paid_at"),
+  eventTime: timestamp("event_time").notNull(),
+  eventType: text("event_type").notNull(),
+  eventIdempotencyKey: text("event_idempotency_key").notNull().unique(),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 统一订单项表 (Sales Order Items)
+// ============================================
+/**
+ * 统一订单项表 - 记录订单中的具体商品明细
+ */
+export const salesOrderItem = pgTable("sales_order_item", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id")
+    .notNull()
+    .references(() => salesOrder.id, { onDelete: "cascade" }),
+  productType: salesOrderItemProductTypeEnum("product_type").notNull(),
+  productId: text("product_id"),
+  priceId: text("price_id"),
+  planId: text("plan_id"),
+  quantity: integer("quantity").notNull().default(1),
+  grossAmount: integer("gross_amount").notNull().default(0),
+  netAmount: integer("net_amount").notNull().default(0),
+  commissionBaseAmount: integer("commission_base_amount").notNull().default(0),
+  refundedAmount: integer("refunded_amount").notNull().default(0),
+  refundableAmount: integer("refundable_amount").notNull().default(0),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // 类型导出
 // ============================================
 /**
@@ -202,6 +312,25 @@ export type NewVerification = typeof verification.$inferInsert;
 
 export type Subscription = typeof subscription.$inferSelect;
 export type NewSubscription = typeof subscription.$inferInsert;
+
+export type SalesOrder = typeof salesOrder.$inferSelect;
+export type NewSalesOrder = typeof salesOrder.$inferInsert;
+
+export type SalesOrderItem = typeof salesOrderItem.$inferSelect;
+export type NewSalesOrderItem = typeof salesOrderItem.$inferInsert;
+
+export type SalesOrderProvider =
+  (typeof salesOrderProviderEnum.enumValues)[number];
+
+export type SalesOrderType = (typeof salesOrderTypeEnum.enumValues)[number];
+
+export type SalesOrderStatus = (typeof salesOrderStatusEnum.enumValues)[number];
+
+export type SalesAfterSalesStatus =
+  (typeof salesAfterSalesStatusEnum.enumValues)[number];
+
+export type SalesOrderItemProductType =
+  (typeof salesOrderItemProductTypeEnum.enumValues)[number];
 
 // ============================================
 // 积分系统枚举

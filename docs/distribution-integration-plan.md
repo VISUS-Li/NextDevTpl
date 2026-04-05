@@ -36,7 +36,7 @@
 
 这些缺口如果不先承认，后面的分销方案一定会做歪。
 
-1. 还没有统一订单表，Webhook 现在只是在不同分支里直接改订阅、发积分
+1. 还没有完整统一订单中心，当前只补了 `sales_order` / `sales_order_item` 最小骨架
 2. 还没有分销归因模型，Checkout metadata 里也没有 referral 相关字段
 3. 还没有佣金账本，积分账本不能直接拿来记现金佣金
 4. 还没有提现申请、审核、打款、拒绝、冲正流程
@@ -59,6 +59,15 @@
 
 - 当前项目的“积分包支付完成”与“统一订单驱动分润”之间，实际还缺关键一段
 - 文档必须先把这一段补进主链路，后续开发才能闭环
+
+当前进度更新：
+
+- 这一段已经补上第一步
+- `src/app/api/webhooks/creem/route.ts` 已经开始真实处理 `credit_purchase`
+- 当前效果是“积分包 Checkout -> 支付成功 -> Creem webhook -> 发放积分”已经闭环
+- 同一笔积分购买已经补了幂等保护，重复 webhook 不会重复发积分
+- 当前还额外补上了 `sales_order` / `sales_order_item` 最小落单
+- 但这一步还不是完整订单中心，目前仍然缺少统一订单服务层、归因快照和售后事件流
 
 
 ## 3. guns-distribution 的完整业务逻辑
@@ -1514,6 +1523,29 @@ SQL 里真正承担分销业务的核心表如下。
 - 订阅和积分包都能进入统一订单表
 - 换支付提供商时，只需要新增适配层，不需要改分销核心逻辑
 
+当前进度更新：
+
+- 本阶段已经开始落地，不再只是前置准备
+- 已完成内容：
+  1. `credit_purchase` 在 `checkout.completed` 中真实发放积分
+  2. 同一笔积分购买补了幂等校验
+  3. 已新增 `sales_order` / `sales_order_item` 最小表结构
+  4. `checkout.completed` 已开始落统一订单，覆盖订阅和积分包
+  5. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
+  6. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
+- 当前还未完成内容：
+  1. `PaymentOrderPayload`
+  2. 统一订单服务层
+  3. 订阅续费事件统一落单
+  4. 归因快照与订单关联
+  5. 售后事件表与订单状态流
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts` 通过
+3. `pnpm exec vitest run src/test/credits/purchase.test.ts` 通过
+
 ### 阶段 3：佣金引擎
 
 目标：
@@ -1708,3 +1740,11 @@ src/features/distribution/
 - 微信支付/支付宝接入
 
 都能沿着同一条主线做下去，而且每个阶段都能独立验证。
+
+当前代码进度补充：
+
+1. 方案文档里点名的 `credit_purchase` 断点已经补齐第一步
+2. 当前已经具备“积分包支付完成后真实发积分”和“重复 webhook 不重复发积分”
+3. 当前已经具备统一订单最小骨架，`checkout.completed` 会为订阅和积分包写入 `sales_order` / `sales_order_item`
+4. 当前还没有进入分销归因、佣金账本、售后事件阶段
+5. 下一步应继续推进统一订单服务层和归因模型，而不是直接跳到佣金计算

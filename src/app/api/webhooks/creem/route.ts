@@ -5,7 +5,13 @@ import { NextResponse } from "next/server";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
 import { grantCredits } from "@/features/credits/core";
 import { db } from "@/db";
-import { creditsBatch, subscription, user } from "@/db/schema";
+import {
+  creditsBatch,
+  salesOrder,
+  salesOrderItem,
+  subscription,
+  user,
+} from "@/db/schema";
 import {
   constructCreemEvent,
   type CreemCheckoutCompletedData,
@@ -19,6 +25,28 @@ import { withApiLogging } from "@/lib/api-logger";
 /** 从 CreemSubscription 中安全提取产品 ID */
 function getProductId(sub: CreemSubscription): string {
   return typeof sub.product === "string" ? sub.product : sub.product?.id ?? "";
+}
+
+/** 从 Checkout 事件中安全提取产品 ID */
+export function getCheckoutProductId(data: CreemCheckoutCompletedData): string {
+  return data.product?.id ?? data.order?.product ?? "";
+}
+
+/** 获取一次性支付的幂等引用 */
+export function getCheckoutPaymentReference(data: CreemCheckoutCompletedData): string {
+  return data.order?.transaction ?? data.order?.id ?? data.id;
+}
+
+/** 获取 checkout.completed 的事件幂等键 */
+export function getCheckoutEventIdempotencyKey(
+  data: CreemCheckoutCompletedData
+): string {
+  return `creem:checkout.completed:${data.id}`;
+}
+
+/** 将 Creem 金额统一转成订单域使用的整数 */
+function normalizeOrderAmount(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.round(value ?? 0) : 0;
 }
 
 /**
@@ -116,10 +144,10 @@ export const POST = withApiLogging(async (req: Request) => {
  *
  * 当用户完成支付后，创建或更新订阅记录
  */
-async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
+export async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   const userId = data.metadata?.userId;
   const customerId = data.customer.id;
-  const productId = data.product?.id || data.order?.product;
+  const productId = getCheckoutProductId(data);
 
   if (!userId) {
     console.error("Missing userId in checkout metadata");
@@ -131,6 +159,13 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
     .update(user)
     .set({ customerId })
     .where(eq(user.id, userId));
+
+  await upsertSalesOrderFromCheckoutCompleted(userId, data);
+
+  // 积分购买走一次性支付分支，不创建订阅
+  if (data.metadata?.type === "credit_purchase") {
+    await handleCreditPurchaseCompleted(userId, data);
+  }
 
   // 如果有订阅信息，创建订阅记录
   if (data.subscription) {
@@ -144,6 +179,179 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
     subscriptionId: data.subscription?.id,
     billingType: data.product?.billing_type,
     checkoutType: data.metadata?.type ?? "subscription",
+  });
+}
+
+/**
+ * 从 checkout.completed 落统一订单
+ *
+ * 这里只处理最小订单骨架，后续再扩展归因、售后和统一事件层
+ */
+async function upsertSalesOrderFromCheckoutCompleted(
+  userId: string,
+  data: CreemCheckoutCompletedData
+) {
+  const eventIdempotencyKey = getCheckoutEventIdempotencyKey(data);
+  const orderType =
+    data.metadata?.type === "credit_purchase" ? "credit_purchase" : "subscription";
+  const productType =
+    orderType === "credit_purchase" ? "credit_package" : "subscription";
+  const productId = getCheckoutProductId(data);
+  const paymentId = getCheckoutPaymentReference(data);
+  const orderAmount = normalizeOrderAmount(
+    data.order?.amount ?? data.product?.price
+  );
+  const currency = data.order?.currency ?? data.product?.currency ?? "USD";
+  const paidAt = new Date();
+
+  const [existingOrder] = await db
+    .select({ id: salesOrder.id })
+    .from(salesOrder)
+    .where(eq(salesOrder.eventIdempotencyKey, eventIdempotencyKey))
+    .limit(1);
+
+  if (existingOrder) {
+    await db
+      .update(salesOrder)
+      .set({
+        userId,
+        provider: "creem",
+        providerOrderId: data.order?.id ?? null,
+        providerCheckoutId: data.id,
+        providerSubscriptionId: data.subscription?.id ?? null,
+        providerPaymentId: paymentId,
+        orderType,
+        status: "paid",
+        afterSalesStatus: "none",
+        currency,
+        grossAmount: orderAmount,
+        paidAt,
+        eventTime: paidAt,
+        eventType: "checkout.completed",
+        metadata: {
+          checkoutStatus: data.status,
+          checkoutMode: data.mode,
+          packageId: data.metadata?.packageId,
+          planId: data.metadata?.planId,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(salesOrder.id, existingOrder.id));
+    return existingOrder.id;
+  }
+
+  const orderId = crypto.randomUUID();
+  await db.insert(salesOrder).values({
+    id: orderId,
+    userId,
+    provider: "creem",
+    providerOrderId: data.order?.id ?? null,
+    providerCheckoutId: data.id,
+    providerSubscriptionId: data.subscription?.id ?? null,
+    providerPaymentId: paymentId,
+    orderType,
+    status: "paid",
+    afterSalesStatus: "none",
+    currency,
+    grossAmount: orderAmount,
+    paidAt,
+    eventTime: paidAt,
+    eventType: "checkout.completed",
+    eventIdempotencyKey,
+    metadata: {
+      checkoutStatus: data.status,
+      checkoutMode: data.mode,
+      packageId: data.metadata?.packageId,
+      planId: data.metadata?.planId,
+    },
+  });
+
+  await db.insert(salesOrderItem).values({
+    id: crypto.randomUUID(),
+    orderId,
+    productType,
+    productId,
+    priceId: productId || null,
+    planId: data.metadata?.planId ?? null,
+    quantity: 1,
+    grossAmount: orderAmount,
+    netAmount: orderAmount,
+    commissionBaseAmount: orderAmount,
+    refundedAmount: 0,
+    refundableAmount: orderAmount,
+    metadata: {
+      packageId: data.metadata?.packageId,
+      credits: data.metadata?.credits,
+      subscriptionId: data.subscription?.id,
+    },
+  });
+
+  return orderId;
+}
+
+/**
+ * 处理积分购买完成事件
+ *
+ * 幂等键优先使用支付交易号，其次退化到订单号或 checkout id
+ */
+export async function handleCreditPurchaseCompleted(
+  userId: string,
+  data: CreemCheckoutCompletedData
+) {
+  const credits = Number(data.metadata?.credits ?? 0);
+  const packageId = data.metadata?.packageId;
+  const paymentId = getCheckoutPaymentReference(data);
+
+  if (!Number.isFinite(credits) || credits <= 0) {
+    console.error("Invalid credits amount in checkout metadata:", data.metadata);
+    return;
+  }
+
+  // 使用 purchase + sourceRef 保证同一笔支付不会重复发积分
+  const [existingBatch] = await db
+    .select({ id: creditsBatch.id })
+    .from(creditsBatch)
+    .where(
+      and(
+        eq(creditsBatch.sourceType, "purchase"),
+        eq(creditsBatch.sourceRef, paymentId)
+      )
+    )
+    .limit(1);
+
+  if (existingBatch) {
+    console.log(`Credits already granted for payment: ${paymentId}, skipping`);
+    return;
+  }
+
+  const expiresAt = CREDITS_EXPIRY_DAYS
+    ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    : null;
+
+  await grantCredits({
+    userId,
+    amount: credits,
+    sourceType: "purchase",
+    debitAccount: `PAYMENT:${paymentId}`,
+    transactionType: "purchase",
+    expiresAt,
+    sourceRef: paymentId,
+    description: `购买 ${credits} 积分 (${packageId ?? "custom"})`,
+    metadata: {
+      checkoutId: data.id,
+      orderId: data.order?.id,
+      transactionId: data.order?.transaction,
+      packageId,
+      productId: getCheckoutProductId(data),
+    },
+  });
+
+  logEvent("credits.purchased", {
+    userId,
+    amount: credits,
+    paymentId,
+    packageId,
+    source: "creem",
   });
 }
 

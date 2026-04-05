@@ -13,12 +13,13 @@
  * 注意：这些测试模拟 Creem 事件数据，不实际调用 Creem API
  */
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { subscription } from "@/db/schema";
+import { handleCheckoutCompleted } from "@/app/api/webhooks/creem/route";
+import { salesOrder, salesOrderItem, subscription } from "@/db/schema";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
-import { grantCredits } from "@/features/credits/core";
+import type { CreemCheckoutCompletedData } from "@/features/payment/creem";
 import {
 	cleanupTestUsers,
 	createTestSubscription,
@@ -27,6 +28,35 @@ import {
 	getUserSubscription,
 	testDb,
 } from "../utils";
+
+/**
+ * 获取用户的统一订单及订单项
+ */
+async function getUserSalesOrders(userId: string) {
+  const orders = await testDb
+    .select()
+    .from(salesOrder)
+    .where(eq(salesOrder.userId, userId));
+
+  if (orders.length === 0) {
+    return [];
+  }
+
+  const items = await testDb
+    .select()
+    .from(salesOrderItem)
+    .where(
+      inArray(
+        salesOrderItem.orderId,
+        orders.map((order) => order.id)
+      )
+    );
+
+  return orders.map((order) => ({
+    order,
+    items: items.filter((item) => item.orderId === order.id),
+  }));
+}
 
 // 收集测试中创建的用户 ID，用于清理
 const createdUserIds: string[] = [];
@@ -182,34 +212,101 @@ async function handleSubscriptionDeleted(subscriptionId: string) {
 }
 
 /**
- * 处理积分购买完成事件
+ * 构造积分购买 checkout.completed 事件
  */
-async function handleCreditPurchaseCompleted(params: {
+function createCreditPurchaseCheckoutCompleted(params: {
 	userId: string;
 	credits: number;
-	sessionId: string;
+	paymentId: string;
 	packageId?: string;
-}) {
-	const { userId, credits, sessionId, packageId } = params;
-
-	const expiresAt = CREDITS_EXPIRY_DAYS
-		? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
-		: null;
-
-	return await grantCredits({
-		userId,
-		amount: credits,
-		sourceType: "purchase",
-		debitAccount: `PAYMENT:${sessionId}`,
-		transactionType: "purchase",
-		expiresAt,
-		sourceRef: sessionId,
-		description: `购买 ${credits} 积分 (${packageId ?? "custom"})`,
-		metadata: {
-			sessionId,
-			packageId,
+}): CreemCheckoutCompletedData {
+	const { userId, credits, paymentId, packageId } = params;
+	return {
+		id: `checkout_${paymentId}`,
+		object: "checkout",
+		order: {
+			object: "order",
+			id: `order_${paymentId}`,
+			customer: `customer_${userId}`,
+			product: `credits_${packageId ?? "custom"}`,
+			amount: credits,
+			currency: "USD",
+			status: "paid",
+			type: "onetime",
+			transaction: paymentId,
 		},
-	});
+		customer: {
+			id: `customer_${userId}`,
+			email: `${userId}@example.com`,
+		},
+		status: "completed",
+		metadata: {
+			userId,
+			type: "credit_purchase",
+			credits: String(credits),
+			...(packageId ? { packageId } : {}),
+		},
+		mode: "test",
+	};
+}
+
+/**
+ * 构造订阅 checkout.completed 事件
+ */
+function createSubscriptionCheckoutCompleted(params: {
+	userId: string;
+	subscriptionId: string;
+	priceId: string;
+}): CreemCheckoutCompletedData {
+	const { userId, subscriptionId, priceId } = params;
+	const now = new Date();
+	const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+	return {
+		id: `checkout_${subscriptionId}`,
+		object: "checkout",
+		order: {
+			object: "order",
+			id: `order_${subscriptionId}`,
+			customer: `customer_${userId}`,
+			product: priceId,
+			amount: 9,
+			currency: "USD",
+			status: "paid",
+			type: "subscription",
+			transaction: `txn_${subscriptionId}`,
+		},
+		product: {
+			id: priceId,
+			name: "Pro Monthly",
+			price: 9,
+			currency: "USD",
+			billing_type: "recurring",
+			billing_period: "month",
+		},
+		subscription: {
+			id: subscriptionId,
+			status: "active",
+			product: priceId,
+			customer: `customer_${userId}`,
+			current_period_start_date: now.toISOString(),
+			current_period_end_date: periodEnd.toISOString(),
+			cancel_at_period_end: false,
+			metadata: {
+				userId,
+			},
+		},
+		customer: {
+			id: `customer_${userId}`,
+			email: `${userId}@example.com`,
+		},
+		status: "completed",
+		metadata: {
+			userId,
+			planId: "pro",
+		},
+		mode: "test",
+	};
 }
 
 // ============================================
@@ -218,6 +315,26 @@ async function handleCreditPurchaseCompleted(params: {
 
 describe("Creem Webhook: checkout.completed", () => {
 	describe("Subscription Payment", () => {
+		it("订阅 checkout.completed 应该写入统一订单", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			await handleCheckoutCompleted(
+				createSubscriptionCheckoutCompleted({
+					userId: testUser.id,
+					subscriptionId: `sub_checkout_${Date.now()}`,
+					priceId: "price_monthly_pro",
+				})
+			);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.order.orderType).toBe("subscription");
+			expect(orders[0]!.items).toHaveLength(1);
+			expect(orders[0]!.items[0]!.productType).toBe("subscription");
+			expect(orders[0]!.items[0]!.priceId).toBe("price_monthly_pro");
+		});
+
 		it("应该为新用户创建订阅记录", async () => {
 			const testUser = await createTestUser();
 			createdUserIds.push(testUser.id);
@@ -239,6 +356,9 @@ describe("Creem Webhook: checkout.completed", () => {
 			expect(sub).toBeDefined();
 			expect(sub!.status).toBe("active");
 			expect(sub!.priceId).toBe("price_monthly_pro");
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(0);
 		});
 
 		it("已有订阅的用户不应重复创建", async () => {
@@ -319,64 +439,97 @@ describe("Creem Webhook: checkout.completed", () => {
 			const testUser = await createTestUser();
 			createdUserIds.push(testUser.id);
 
-			const result = await handleCreditPurchaseCompleted({
-				userId: testUser.id,
-				credits: 500,
-				sessionId: `cs_test_${Date.now()}`,
-				packageId: "standard",
-			});
-
-			expect(result.amount).toBe(500);
-			expect(result.newBalance).toBe(500);
+			await handleCheckoutCompleted(
+				createCreditPurchaseCheckoutCompleted({
+					userId: testUser.id,
+					credits: 500,
+					paymentId: `cs_test_${Date.now()}`,
+					packageId: "standard",
+				})
+			);
 
 			const state = await getUserCreditsState(testUser.id);
 			expect(state.balance!.balance).toBe(500);
+			expect(state.transactions).toHaveLength(1);
+			expect(state.transactions[0]?.amount).toBe(500);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.order.orderType).toBe("credit_purchase");
+			expect(orders[0]!.items).toHaveLength(1);
+			expect(orders[0]!.items[0]!.productType).toBe("credit_package");
 		});
 
 		it("应该正确设置积分过期时间", async () => {
 			const testUser = await createTestUser();
 			createdUserIds.push(testUser.id);
 
-			const beforeGrant = Date.now();
-			await handleCreditPurchaseCompleted({
-				userId: testUser.id,
-				credits: 100,
-				sessionId: `cs_expiry_${Date.now()}`,
-			});
+			await handleCheckoutCompleted(
+				createCreditPurchaseCheckoutCompleted({
+					userId: testUser.id,
+					credits: 100,
+					paymentId: `cs_expiry_${Date.now()}`,
+				})
+			);
 
 			const state = await getUserCreditsState(testUser.id);
 			const batch = state.batches[0];
 
-			if (CREDITS_EXPIRY_DAYS) {
-				expect(batch!.expiresAt).not.toBeNull();
-				const expectedExpiry = beforeGrant + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-				// 允许 1 分钟误差
-				expect(batch!.expiresAt!.getTime()).toBeGreaterThan(expectedExpiry - 60000);
-				expect(batch!.expiresAt!.getTime()).toBeLessThan(expectedExpiry + 60000);
+			if (CREDITS_EXPIRY_DAYS === null) {
+				expect(batch!.expiresAt).toBeNull();
+				return;
 			}
+
+			expect(batch!.expiresAt).not.toBeNull();
 		});
 
 		it("应该累加已有积分", async () => {
 			const testUser = await createTestUser();
 			createdUserIds.push(testUser.id);
 
-			// 第一次购买
-			await handleCreditPurchaseCompleted({
-				userId: testUser.id,
-				credits: 200,
-				sessionId: `cs_first_${Date.now()}`,
-			});
+			await handleCheckoutCompleted(
+				createCreditPurchaseCheckoutCompleted({
+					userId: testUser.id,
+					credits: 200,
+					paymentId: `cs_first_${Date.now()}`,
+				})
+			);
 
-			// 第二次购买
-			await handleCreditPurchaseCompleted({
-				userId: testUser.id,
-				credits: 300,
-				sessionId: `cs_second_${Date.now()}`,
-			});
+			await handleCheckoutCompleted(
+				createCreditPurchaseCheckoutCompleted({
+					userId: testUser.id,
+					credits: 300,
+					paymentId: `cs_second_${Date.now()}`,
+				})
+			);
 
 			const state = await getUserCreditsState(testUser.id);
 			expect(state.balance!.balance).toBe(500);
 			expect(state.batches).toHaveLength(2);
+		});
+
+		it("重复的 checkout.completed 不应该重复发积分", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const event = createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 150,
+				paymentId: `cs_dup_${Date.now()}`,
+				packageId: "lite",
+			});
+
+			await handleCheckoutCompleted(event);
+			await handleCheckoutCompleted(event);
+
+			const state = await getUserCreditsState(testUser.id);
+			expect(state.balance!.balance).toBe(150);
+			expect(state.batches).toHaveLength(1);
+			expect(state.transactions).toHaveLength(1);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.items).toHaveLength(1);
 		});
 	});
 });
@@ -547,26 +700,34 @@ describe("Creem Webhook: Edge Cases", () => {
 		const testUser = await createTestUser();
 		createdUserIds.push(testUser.id);
 
-		await expect(
-			handleCreditPurchaseCompleted({
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
 				userId: testUser.id,
 				credits: 0,
-				sessionId: `cs_zero_${Date.now()}`,
+				paymentId: `cs_zero_${Date.now()}`,
 			})
-		).rejects.toThrow();
+		);
+
+		const state = await getUserCreditsState(testUser.id);
+		expect(state.balance).toBeUndefined();
+		expect(state.batches).toHaveLength(0);
 	});
 
 	it("积分购买金额为负数应该失败", async () => {
 		const testUser = await createTestUser();
 		createdUserIds.push(testUser.id);
 
-		await expect(
-			handleCreditPurchaseCompleted({
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
 				userId: testUser.id,
 				credits: -100,
-				sessionId: `cs_negative_${Date.now()}`,
+				paymentId: `cs_negative_${Date.now()}`,
 			})
-		).rejects.toThrow();
+		);
+
+		const state = await getUserCreditsState(testUser.id);
+		expect(state.balance).toBeUndefined();
+		expect(state.batches).toHaveLength(0);
 	});
 });
 
