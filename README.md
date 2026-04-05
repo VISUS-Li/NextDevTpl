@@ -2,6 +2,22 @@
 
 这个 README 只服务一件事：让后续开发时，先看文档就能知道项目能做什么、入口在哪、改哪里、改完以后 README 也要同步到什么程度。
 
+## 0. 当前改造进度
+
+- 首页 web 端已按 `Trip 旅行者 AI` 方向完成第一版改造
+- 当前已落地区域：顶部导航、Hero、工具矩阵、订阅入口、页脚、首页 metadata
+- 改造原则：保留现有登录、订阅、文档、语言切换、dashboard 跳转等真实功能，不做纯静态替换
+- 当前首页主入口文件：
+  - `src/app/[locale]/(marketing)/page.tsx`
+  - `src/features/marketing/components/header.tsx`
+  - `src/features/marketing/components/hero-section.tsx`
+  - `src/features/marketing/components/feature-grid.tsx`
+  - `src/features/marketing/components/pricing-section.tsx`
+  - `src/features/marketing/components/cta-section.tsx`
+  - `src/features/marketing/components/footer.tsx`
+- mobile 端改造暂未开始，后续按新的手机端参考稿继续做
+- 如果后续继续改首页，先以现有项目能力为准，不要把登录、定价、订阅或文档入口改成静态占位
+
 ## 1. 当前项目定位
 
 这是一个基于 Next.js App Router 的工具销售官网项目，当前代码已经包含这些主能力：

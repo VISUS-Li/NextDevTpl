@@ -1,40 +1,16 @@
 "use client";
 
-import { ChevronDown, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
-import { useTranslations } from "next-intl";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { mainNav, productsNav } from "@/config/nav";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { LanguageSwitcher, ModeToggle } from "@/features/shared";
 import { Link } from "@/i18n/routing";
 import { useSession } from "@/lib/auth/client";
-import { LanguageSwitcher, ModeToggle } from "@/features/shared";
-
-import { NavMenu } from "./nav-menu";
-
-/**
- * Products 下拉菜单翻译映射 key (移动端复用)
- */
-const productsTitleMap: Record<string, string> = {
-  Core: "productsMenu.core.title",
-  "DX Platform": "productsMenu.dx.title",
-  Infrastructure: "productsMenu.infra.title",
-  Authentication: "productsMenu.core.auth",
-  Payments: "productsMenu.core.payments",
-  Credits: "productsMenu.core.credits",
-  "Background Jobs": "productsMenu.dx.jobs",
-  Internationalization: "productsMenu.dx.i18n",
-  "AI Integration": "productsMenu.dx.ai",
-  "Admin Panel": "productsMenu.infra.admin",
-  "File Storage": "productsMenu.infra.storage",
-  Monitoring: "productsMenu.infra.monitoring",
-};
 
 /**
  * Marketing 页面顶部导航栏
@@ -46,9 +22,58 @@ export function Header() {
   const { data: session, isPending } = useSession();
   const user = session?.user;
   const t = useTranslations("Header");
-  const tNav = useTranslations("Navigation");
+  const locale = useLocale();
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [productsExpanded, setProductsExpanded] = useState(false);
+
+  // 首页导航项
+  const navItems = [
+    {
+      key: "products",
+      href: "/#features",
+      label: locale === "zh" ? "产品工具" : "Tools",
+    },
+    {
+      key: "pricing",
+      href: "/#pricing",
+      label: locale === "zh" ? "订阅方案" : "Plans",
+    },
+    {
+      key: "docs",
+      href: "/docs",
+      label: locale === "zh" ? "开发文档" : "Docs",
+    },
+  ];
+
+  /**
+   * 处理首页锚点跳转
+   */
+  const handleNavClick = (href: string) => {
+    if (!href.startsWith("/#")) return;
+    const anchor = href.slice(2);
+    const isHomePage = /^\/[a-z]{2}$/.test(pathname);
+    if (!isHomePage) return;
+    const section = document.getElementById(anchor);
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  /**
+   * 判断导航项是否处于当前页面
+   */
+  const isNavItemActive = (href: string) => {
+    if (href === "/docs") {
+      return pathname.startsWith(`/${locale}/docs`);
+    }
+    if (href.startsWith("/#")) {
+      return /^\/[a-z]{2}$/.test(pathname);
+    }
+    return (
+      pathname === `/${locale}${href}` ||
+      pathname.startsWith(`/${locale}${href}/`)
+    );
+  };
 
   /**
    * 获取用户名首字母作为头像回退
@@ -62,60 +87,46 @@ export function Header() {
       .slice(0, 2);
   };
 
-  /**
-   * 导航项标题翻译映射
-   */
-  const navTitleMap: Record<string, string> = {
-    Products: tNav("products"),
-    Docs: tNav("docs"),
-    Pricing: tNav("pricing"),
-    Blog: tNav("blog"),
-  };
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#10131a]/70 shadow-[0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+      <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* 左侧 - Logo + 导航菜单 */}
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-6 lg:gap-12">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <svg
-              className="h-6 w-6 text-primary"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <rect x="2" y="2" width="9" height="9" rx="2" />
-              <rect
-                x="13"
-                y="2"
-                width="9"
-                height="9"
-                rx="2"
-                opacity="0.5"
-              />
-              <rect
-                x="2"
-                y="13"
-                width="9"
-                height="9"
-                rx="2"
-                opacity="0.5"
-              />
-              <rect x="13" y="13" width="9" height="9" rx="2" />
-            </svg>
-            <span className="text-xl font-bold tracking-tight">
-              Trip<span className="text-primary">.</span>
+          <Link
+            href="/"
+            className="bg-gradient-to-br from-[#0A84FF] to-[#5AC8FA] bg-clip-text font-['Manrope'] text-xl font-extrabold tracking-[-0.04em] text-transparent"
+          >
+            <span className="hidden sm:inline">
+              {locale === "zh" ? "Trip 旅行者 AI" : "Trip Traveler AI"}
             </span>
+            <span className="sm:hidden">Trip AI</span>
           </Link>
 
-          {/* 导航菜单 (桌面端) */}
-          <div className="hidden md:flex">
-            <NavMenu />
-          </div>
+          {/* 桌面端导航 */}
+          <nav className="hidden items-center gap-8 font-['Manrope'] text-sm font-bold tracking-tight md:flex">
+            {navItems.map((item) => {
+              const isActive = isNavItemActive(item.href);
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  onClick={() => handleNavClick(item.href)}
+                  className={
+                    isActive
+                      ? "border-b-2 border-[#0A84FF] pb-1 text-[#0A84FF]"
+                      : "text-[#e1e2eb]/70 transition-colors hover:text-[#e1e2eb]"
+                  }
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         {/* 右侧 - 操作区域 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* 语言切换 */}
           <LanguageSwitcher />
 
@@ -131,17 +142,14 @@ export function Header() {
               <Button
                 asChild
                 variant="ghost"
-                className="hidden text-muted-foreground md:inline-flex"
+                className="hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex"
               >
                 <Link href="/dashboard">{t("dashboard")}</Link>
               </Button>
               <Link href="/dashboard" className="hidden md:block">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={user.image || undefined}
-                    alt={user.name}
-                  />
-                  <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+                <Avatar className="h-9 w-9 ring-1 ring-white/10">
+                  <AvatarImage src={user.image || undefined} alt={user.name} />
+                  <AvatarFallback className="bg-[#0A84FF] text-xs text-white">
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -153,11 +161,14 @@ export function Header() {
               <Button
                 asChild
                 variant="ghost"
-                className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
+                className="hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex"
               >
                 <Link href="/sign-in">{t("login")}</Link>
               </Button>
-              <Button asChild className="hidden md:inline-flex">
+              <Button
+                asChild
+                className="hidden h-11 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-6 text-sm font-bold text-[#003064] shadow-lg shadow-blue-500/20 transition-transform hover:scale-105 hover:shadow-blue-500/30 md:inline-flex"
+              >
                 <Link href="/sign-up">{t("getStarted")}</Link>
               </Button>
             </>
@@ -167,7 +178,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#e1e2eb]/80 transition-colors hover:bg-white/5 hover:text-[#e1e2eb] md:hidden"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -178,114 +189,97 @@ export function Header() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="right"
-          className="w-[min(88vw,22rem)] p-0 md:hidden"
+          className="w-[min(88vw,22rem)] border-white/10 bg-[#10131a] p-0 text-[#e1e2eb] md:hidden"
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full flex-col">
-            <div className="border-b border-border px-4 py-4">
+            <div className="border-b border-white/10 px-4 py-4">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A84FF]/15 text-[#74d1ff]">
                   <Menu className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">Trip</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("dashboard")}
+                  <p className="font-['Manrope'] text-sm font-semibold">
+                    {locale === "zh" ? "Trip 旅行者 AI" : "Trip Traveler AI"}
+                  </p>
+                  <p className="text-xs text-[#e1e2eb]/55">
+                    {locale === "zh" ? "创作工具入口" : "Creator toolkit"}
                   </p>
                 </div>
               </div>
             </div>
             {/* 导航链接 */}
             <nav className="flex-1 overflow-y-auto px-4 py-4">
-              {/* Products 可折叠区域 */}
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => setProductsExpanded(!productsExpanded)}
-                  className="flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
-                >
-                  {navTitleMap.Products}
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform duration-200 ${productsExpanded ? "rotate-180" : ""}`}
-                  />
-                </button>
-                {productsExpanded && (
-                  <div className="ml-3 space-y-1 border-l border-border pl-3">
-                    {productsNav.map((group) => (
-                      <div key={group.title} className="py-1">
-                        <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {tNav(
-                            productsTitleMap[group.title] || group.title,
-                          )}
-                        </div>
-                        {group.items.map((item) => {
-                          const Icon = item.icon;
-                          return (
-                            <Link
-                              key={item.title}
-                              href={item.href}
-                              onClick={() => setMobileOpen(false)}
-                              className="flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
-                            >
-                              <Icon className="h-3.5 w-3.5 text-primary" />
-                              {tNav(
-                                productsTitleMap[item.title] || item.title,
-                              )}
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 主导航链接 */}
-              <div className="space-y-1">
-                {mainNav.map((item) => (
+              <div className="space-y-2">
+                {navItems.map((item) => (
                   <Link
-                    key={item.href}
+                    key={item.key}
                     href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="flex min-h-11 items-center rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setMobileOpen(false);
+                      handleNavClick(item.href);
+                    }}
+                    className="flex min-h-11 items-center rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 font-['Manrope'] text-sm font-semibold text-[#e1e2eb]/78 transition-colors hover:bg-white/[0.08] hover:text-[#e1e2eb]"
                   >
-                    {navTitleMap[item.title] || item.title}
+                    {item.label}
                   </Link>
                 ))}
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="mb-2 text-xs uppercase tracking-[0.18em] text-[#74d1ff]">
+                  {locale === "zh" ? "定位" : "Positioning"}
+                </p>
+                <p className="text-sm leading-6 text-[#e1e2eb]/70">
+                  {locale === "zh"
+                    ? "专业级 AI 创作工具集，覆盖文案、视频与 3D 生产流程。"
+                    : "Professional AI creation tools for copy, video, and 3D production."}
+                </p>
               </div>
             </nav>
 
             {/* 底部操作按钮 */}
-            <div className="space-y-2 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="space-y-2 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               {user ? (
-                <Button asChild className="h-11 w-full text-base">
-                  <Link
-                    href="/dashboard"
-                    onClick={() => setMobileOpen(false)}
-                  >
+                <Button
+                  asChild
+                  className="h-11 w-full rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-[#003064]"
+                >
+                  <Link href="/dashboard" onClick={() => setMobileOpen(false)}>
                     {t("dashboard")}
                   </Link>
                 </Button>
               ) : (
                 <>
-                  <Button asChild variant="outline" className="h-11 w-full text-base">
-                    <Link
-                      href="/sign-in"
-                      onClick={() => setMobileOpen(false)}
-                    >
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="h-11 w-full rounded-full border border-white/10 text-[#e1e2eb] hover:bg-white/[0.06] hover:text-[#e1e2eb]"
+                  >
+                    <Link href="/sign-in" onClick={() => setMobileOpen(false)}>
                       {t("login")}
                     </Link>
                   </Button>
-                  <Button asChild className="h-11 w-full text-base">
-                    <Link
-                      href="/sign-up"
-                      onClick={() => setMobileOpen(false)}
-                    >
+                  <Button
+                    asChild
+                    className="h-11 w-full rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-[#003064]"
+                  >
+                    <Link href="/sign-up" onClick={() => setMobileOpen(false)}>
                       {t("getStarted")}
                     </Link>
                   </Button>
                 </>
               )}
+
+              <Button
+                asChild
+                variant="outline"
+                className="h-11 w-full rounded-full border-white/10 bg-transparent text-[#e1e2eb] hover:bg-white/[0.06] hover:text-[#e1e2eb]"
+              >
+                <Link href="/docs" onClick={() => setMobileOpen(false)}>
+                  {locale === "zh" ? "查看文档" : "Read Docs"}
+                </Link>
+              </Button>
             </div>
           </div>
         </SheetContent>

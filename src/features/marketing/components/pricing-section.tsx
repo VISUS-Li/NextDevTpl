@@ -1,20 +1,21 @@
 "use client";
 
 import { BookOpen, Check, Coins, Layers, Loader2 } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/routing";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { paymentConfig, getPlanPrice } from "@/config/payment";
+import { getPlanPrice, paymentConfig } from "@/config/payment";
+import {
+  createCheckoutSession,
+  getUserSubscription,
+} from "@/features/payment/actions";
+import { PlanInterval } from "@/features/payment/types";
+import { useRouter } from "@/i18n/routing";
 import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
-import { createCheckoutSession, getUserSubscription } from "@/features/payment/actions";
-import { PlanInterval } from "@/features/payment/types";
 
 import { AnimatedPrice } from "./animated-price";
 
@@ -27,10 +28,46 @@ const PLAN_IDS = ["free", "starter", "pro", "ultra"] as const;
  * 计划功能 keys（按顺序显示，credits 单独突出显示）
  */
 const PLAN_FEATURE_KEYS: Record<string, string[]> = {
-  free: ["creditsNeverExpire", "input", "characters", "fileSize", "export", "history"],
-  starter: ["creditsNeverExpire", "input", "characters", "fileSize", "export", "history", "support"],
-  pro: ["creditsNeverExpire", "input", "characters", "fileSize", "queue", "export", "history", "customCards", "support"],
-  ultra: ["creditsNeverExpire", "input", "characters", "fileSize", "queue", "export", "history", "customCards", "aiAssist", "support"],
+  free: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "export",
+    "history",
+  ],
+  starter: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "export",
+    "history",
+    "support",
+  ],
+  pro: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "queue",
+    "export",
+    "history",
+    "customCards",
+    "support",
+  ],
+  ultra: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "queue",
+    "export",
+    "history",
+    "customCards",
+    "aiAssist",
+    "support",
+  ],
 };
 
 /**
@@ -46,6 +83,7 @@ interface PricingSectionProps {
  */
 export function PricingSection({ currentPriceId }: PricingSectionProps) {
   const t = useTranslations("Pricing");
+  const locale = useLocale();
   const [isYearly, setIsYearly] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -53,12 +91,17 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
   const { data: session } = useSession();
 
   // 获取用户当前订阅状态
-  const [activePriceId, setActivePriceId] = useState<string | null>(currentPriceId ?? null);
+  const [activePriceId, setActivePriceId] = useState<string | null>(
+    currentPriceId ?? null
+  );
 
   useEffect(() => {
     if (!session?.user || currentPriceId) return;
     getUserSubscription().then((result) => {
-      if (result?.data?.subscription?.isActive && result.data.subscription.priceId) {
+      if (
+        result?.data?.subscription?.isActive &&
+        result.data.subscription.priceId
+      ) {
         setActivePriceId(result.data.subscription.priceId);
       }
     });
@@ -80,7 +123,10 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
     const config = getPlanConfig(planId);
     if (!config || !("prices" in config) || !config.prices) return null;
     const interval = isYearly ? PlanInterval.YEAR : PlanInterval.MONTH;
-    return getPlanPrice({ ...config, name: "", description: "", features: [], cta: "" }, interval);
+    return getPlanPrice(
+      { ...config, name: "", description: "", features: [], cta: "" },
+      interval
+    );
   };
 
   /**
@@ -97,6 +143,9 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
    */
   const getPriceSuffix = (planId: string): string => {
     if (planId === "free") return "";
+    if (locale === "zh") {
+      return isYearly ? "/年" : "/月";
+    }
     return isYearly ? "/year" : "/month";
   };
 
@@ -167,30 +216,37 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
   };
 
   return (
-    <section id="pricing" className="container py-24">
-      <div className="mx-auto max-w-6xl">
-        {/* Header */}
-        <div className="mb-12 text-center">
-          <h2 className="mb-4 text-balance text-3xl font-bold tracking-tight md:text-4xl">
+    <section
+      id="pricing"
+      className="relative overflow-hidden bg-[#10131a] px-4 py-24 text-[#e1e2eb] sm:px-6 lg:px-8 lg:py-32"
+    >
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute left-[8%] top-[18%] h-72 w-72 rounded-full bg-[#0A84FF]/10 blur-[120px]" />
+        <div className="absolute bottom-[8%] right-[10%] h-80 w-80 rounded-full bg-[#5AC8FA]/10 blur-[140px]" />
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-7xl">
+        <div className="mb-14 text-center">
+          <h2 className="mb-4 font-['Manrope'] text-4xl font-bold tracking-[-0.05em] md:text-5xl">
             {t("title")}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <p className="mx-auto max-w-2xl text-base leading-7 text-[#c0c6d6] md:text-lg">
             {t.rich("subtitle", {
               strong: (chunks) => (
-                <strong className="font-semibold text-primary">{chunks}</strong>
+                <strong className="font-semibold text-[#74d1ff]">
+                  {chunks}
+                </strong>
               ),
             })}
           </p>
         </div>
 
-        {/* Toggle */}
         <div className="mb-12 flex items-center justify-center gap-4">
           <Label
             htmlFor="billing-toggle"
             className={cn(
-              "text-sm font-medium",
-              !isYearly && "text-foreground",
-              isYearly && "text-muted-foreground"
+              "text-sm font-medium transition-colors",
+              !isYearly ? "text-[#e1e2eb]" : "text-[#8b91a0]"
             )}
           >
             {t("monthly")}
@@ -199,23 +255,22 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
             id="billing-toggle"
             checked={isYearly}
             onCheckedChange={setIsYearly}
+            className="data-[state=checked]:bg-[#0A84FF]"
           />
           <Label
             htmlFor="billing-toggle"
             className={cn(
-              "text-sm font-medium",
-              isYearly && "text-foreground",
-              !isYearly && "text-muted-foreground"
+              "text-sm font-medium transition-colors",
+              isYearly ? "text-[#e1e2eb]" : "text-[#8b91a0]"
             )}
           >
             {t("yearly")}
-            <Badge variant="secondary" className="ml-2 text-xs">
+            <Badge className="ml-2 border-0 bg-[#0A84FF]/15 text-xs text-[#74d1ff] shadow-none">
               {t("save")} {yearlyDiscount}%
             </Badge>
           </Label>
         </div>
 
-        {/* Cards */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {PLAN_IDS.map((planId) => {
             const price = getDisplayPrice(planId);
@@ -225,88 +280,100 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
             const featureKeys = PLAN_FEATURE_KEYS[planId] || [];
 
             return (
-              <Card
+              <article
                 key={planId}
                 className={cn(
-                  "relative flex flex-col rounded-xl",
-                  popular && "border-primary shadow-lg shadow-primary/10",
-                  isCurrent && "ring-2 ring-green-500"
+                  "relative flex h-full flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(29,32,38,0.72)] p-6 backdrop-blur-[20px]",
+                  popular &&
+                    "border-[#149ccb]/40 bg-[linear-gradient(180deg,rgba(20,156,203,0.18),rgba(29,32,38,0.84))] shadow-[0_24px_80px_rgba(10,132,255,0.14)]",
+                  isCurrent && "ring-2 ring-[#5AC8FA]/70"
                 )}
               >
                 {popular && !isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary">
+                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-4 py-1 text-[#003064]">
                     {t("mostPopular")}
                   </Badge>
                 )}
                 {isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600">
+                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-emerald-500 px-4 py-1 text-white">
                     {t("currentPlan")}
                   </Badge>
                 )}
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold">
+
+                <div className="mb-6">
+                  <p className="mb-2 text-sm uppercase tracking-[0.18em] text-[#74d1ff]">
                     {t(`plans.${planId}.name`)}
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
+                  </p>
+                  <h3 className="mb-2 font-['Manrope'] text-3xl font-bold tracking-[-0.04em]">
+                    ${<AnimatedPrice value={price} />}
+                    {planId !== "free" ? (
+                      <span className="ml-2 text-base font-medium text-[#8b91a0]">
+                        {getPriceSuffix(planId)}
+                      </span>
+                    ) : null}
+                  </h3>
+                  <p className="text-sm leading-6 text-[#c0c6d6]">
                     {t(`plans.${planId}.description`)}
                   </p>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col">
-                  <div className="mb-4">
-                    <span className="text-4xl font-bold">
-                      $<AnimatedPrice value={price} />
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {getPriceSuffix(planId)}
-                    </span>
-                  </div>
+                </div>
 
-                  {/* Credits highlight */}
-                  <div className="mb-5 rounded-lg border bg-muted/30 px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Coins className="size-4 text-amber-500" />
-                      <span className="text-lg font-bold">
+                <div className="mb-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A84FF]/15 text-[#74d1ff]">
+                      <Coins className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold">
                         {planId === "free" ? (
                           t(`plans.${planId}.creditsAmount`)
                         ) : (
                           <AnimatedPrice
                             value={
-                              parseInt(t(`plans.${planId}.creditsAmount`).replace(/,/g, ""), 10) *
-                              (isYearly ? 12 : 1)
+                              parseInt(
+                                t(`plans.${planId}.creditsAmount`).replace(
+                                  /,/g,
+                                  ""
+                                ),
+                                10
+                              ) * (isYearly ? 12 : 1)
                             }
-                            formatOptions={{ useGrouping: true, maximumFractionDigits: 0 }}
+                            formatOptions={{
+                              useGrouping: true,
+                              maximumFractionDigits: 0,
+                            }}
                           />
                         )}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
+                      </p>
+                      <p className="text-xs text-[#8b91a0]">
                         {planId === "free"
                           ? t(`plans.${planId}.creditsLabel`)
                           : isYearly
                             ? t("creditsPerYear")
                             : t(`plans.${planId}.creditsLabel`)}
-                      </span>
-                      {planId !== "free" && isYearly && (
-                        <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
-                          {t("creditsUpfront")}
-                        </Badge>
-                      )}
+                      </p>
                     </div>
-                    {t.has(`plans.${planId}.booksCount`) && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <BookOpen className="size-3" />
+                    {planId !== "free" && isYearly ? (
+                      <Badge className="ml-auto border-0 bg-[#149ccb]/15 text-[10px] text-[#74d1ff] shadow-none">
+                        {t("creditsUpfront")}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  {t.has(`plans.${planId}.booksCount`) ? (
+                    <div className="mt-4 space-y-2 border-t border-white/10 pt-4 text-xs text-[#8b91a0]">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-3.5 w-3.5 text-[#74d1ff]" />
                         <span>
                           {t("booksNote", {
                             count: String(
                               parseInt(t(`plans.${planId}.booksCount`), 10) *
-                              (isYearly ? 12 : 1)
+                                (isYearly ? 12 : 1)
                             ),
                           })}
                         </span>
                       </div>
-                    )}
-                    {t.has(`plans.${planId}.booksCount`) && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <Layers className="size-3" />
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-3.5 w-3.5 text-[#74d1ff]" />
                         <span>
                           {t("cardsNote", {
                             count: (
@@ -317,60 +384,68 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                           })}
                         </span>
                       </div>
-                    )}
-                    {t.has(`plans.${planId}.creditsNote`) && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {t(`plans.${planId}.creditsNote`)}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
 
-                  <ul className="mb-6 flex-1 space-y-3">
-                    {featureKeys.map((featureKey) => (
-                      <li key={featureKey} className="flex items-center gap-2">
-                        <Check className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="text-sm text-muted-foreground">
-                          {t(`plans.${planId}.features.${featureKey}`)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  {t.has(`plans.${planId}.creditsNote`) ? (
+                    <div className="mt-3 text-xs text-[#8b91a0]">
+                      {t(`plans.${planId}.creditsNote`)}
+                    </div>
+                  ) : null}
+                </div>
 
-                  {isCurrent ? (
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      onClick={handleManageSubscription}
-                      disabled={isPending}
-                    >
-                      {isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      {t("manageSubscription")}
-                    </Button>
-                  ) : hasSubscription && planId !== "free" ? (
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      disabled
-                    >
-                      {t("alreadySubscribed")}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      variant={popular ? "default" : "outline"}
-                      onClick={() => handleSubscribe(planId)}
-                      disabled={isLoading || isPending}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      {t(`plans.${planId}.cta`)}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
+                <ul className="mb-6 flex-1 space-y-3">
+                  {featureKeys.map((featureKey) => (
+                    <li key={featureKey} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0A84FF]/12 text-[#74d1ff]">
+                        <Check className="h-3 w-3" />
+                      </span>
+                      <span className="text-sm leading-6 text-[#c0c6d6]">
+                        {t(`plans.${planId}.features.${featureKey}`)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                {isCurrent ? (
+                  <Button
+                    className="h-12 w-full rounded-full border-white/10 bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08]"
+                    variant="outline"
+                    onClick={handleManageSubscription}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    {t("manageSubscription")}
+                  </Button>
+                ) : hasSubscription && planId !== "free" ? (
+                  <Button
+                    className="h-12 w-full rounded-full border-white/10 bg-transparent text-[#8b91a0]"
+                    variant="outline"
+                    disabled
+                  >
+                    {t("alreadySubscribed")}
+                  </Button>
+                ) : (
+                  <Button
+                    className={cn(
+                      "h-12 w-full rounded-full border-0 text-sm font-bold",
+                      popular
+                        ? "bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-[#003064] shadow-lg shadow-blue-500/20 hover:opacity-95"
+                        : "bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08]"
+                    )}
+                    variant={popular ? "default" : "outline"}
+                    onClick={() => handleSubscribe(planId)}
+                    disabled={isLoading || isPending}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    {t(`plans.${planId}.cta`)}
+                  </Button>
+                )}
+              </article>
             );
           })}
         </div>

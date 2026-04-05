@@ -4,13 +4,9 @@ import { siteConfig } from "@/config";
 import { SiteJsonLd, SoftwareAppJsonLd } from "@/components/seo/json-ld";
 import {
   CTASection,
-  FAQSection,
   FeatureGrid,
   HeroSection,
-  HowItWorks,
   PricingSection,
-  Testimonials,
-  UseCasesSection,
 } from "@/features/marketing/components";
 
 /**
@@ -25,12 +21,12 @@ export async function generateMetadata({
   const isZh = locale === "zh";
 
   const title = isZh
-    ? "Trip - 工具销售官网"
-    : "Trip - Tool Storefront";
+    ? "Trip 旅行者 AI - 让创意触手可及"
+    : "Trip Traveler AI - Make Ideas Reachable";
 
   const description = isZh
-    ? "Trip 是一个面向个人与团队的工具销售网站，用于展示、订阅和管理效率工具、AI 工具与数字产品。"
-    : "Trip is a storefront for browsing, buying, and subscribing to practical productivity tools, AI tools, and digital products.";
+    ? "Trip 旅行者 AI 提供面向创作者与团队的专业级 AI 工具集，覆盖文案、视频与 3D 创作流程。"
+    : "Trip Traveler AI offers professional AI creation tools for copy, video, and 3D production workflows.";
 
   return {
     title,
@@ -83,11 +79,7 @@ export default async function HomePage({
       {/* Page Sections */}
       <HeroSection />
       <FeatureGrid />
-      <HowItWorks />
-      <UseCasesSection />
-      <Testimonials />
       <PricingSection />
-      <FAQSection />
       <CTASection />
     </>
   );

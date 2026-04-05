@@ -1,7 +1,10 @@
-import { Github, Twitter } from "lucide-react";
-import Link from "next/link";
+"use client";
+
+import { Github } from "lucide-react";
+import { useLocale } from "next-intl";
 
 import { footerNav, siteConfig } from "@/config";
+import { Link } from "@/i18n/routing";
 
 /**
  * Marketing 页面底部
@@ -13,90 +16,47 @@ import { footerNav, siteConfig } from "@/config";
  * - 版权信息
  */
 export function Footer() {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+
   return (
-    <footer className="border-t bg-background">
-      <div className="container py-16">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1fr]">
-          {/* 品牌区 */}
-          <div>
-            <Link href="/" className="mb-4 inline-block text-xl font-bold">
-              {siteConfig.name}
-            </Link>
-            <p className="text-sm text-muted-foreground">
-              Discover and manage practical tools for creators, operators, and
-              teams from one clean storefront.
-            </p>
-          </div>
-
-          {/* 链接区 */}
-          <div className="grid grid-cols-2 gap-8">
-            {/* 产品 */}
-            <div>
-              <h3 className="mb-4 text-sm font-semibold">Product</h3>
-              <ul className="space-y-3">
-                {footerNav.product.map((link) => (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      {...(link.external
-                        ? { target: "_blank", rel: "noopener noreferrer" }
-                        : {})}
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {link.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* 法律 */}
-            <div>
-              <h3 className="mb-4 text-sm font-semibold">Legal</h3>
-              <ul className="space-y-3">
-                {footerNav.legal.map((link) => (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {link.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+    <footer className="border-t border-white/5 bg-[#0b0e14] px-4 py-12 text-sm text-[#e1e2eb] sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row">
+        <div className="flex flex-col items-center gap-4 md:items-start">
+          <Link href="/" className="font-['Manrope'] text-xl font-bold">
+            {isZh ? "Trip 旅行者 AI" : "Trip Traveler AI"}
+          </Link>
+          <p className="text-center text-[#e1e2eb]/50 md:text-left">
+            © {new Date().getFullYear()}{" "}
+            {isZh ? "Trip 旅行者 AI. 旅行，从 AI 开始。" : "Trip Traveler AI. Start the journey with AI."}
+          </p>
         </div>
 
-        {/* 底部栏 */}
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t pt-8 sm:flex-row">
-          <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} {siteConfig.name}. All rights
-            reserved.
-          </p>
-
-          {/* 社交链接 */}
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-6 md:justify-end md:gap-8">
+          {footerNav.legal.slice(0, 2).map((link) => (
             <Link
-              href={siteConfig.links.twitter}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              key={link.href}
+              href={link.href}
+              className="text-[#e1e2eb]/50 transition-colors hover:text-[#0A84FF]"
             >
-              <Twitter className="h-5 w-5" />
-              <span className="sr-only">Twitter</span>
+              {link.href.includes("privacy")
+                ? isZh
+                  ? "隐私政策"
+                  : "Privacy"
+                : isZh
+                  ? "服务条款"
+                  : "Terms"}
             </Link>
-            <Link
-              href={siteConfig.links.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Github className="h-5 w-5" />
-              <span className="sr-only">GitHub</span>
-            </Link>
-          </div>
+          ))}
+          <Link
+            href={siteConfig.links.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-[#e1e2eb]/50 transition-colors hover:text-[#0A84FF]"
+          >
+            <Github className="h-5 w-5" />
+            GitHub
+          </Link>
         </div>
       </div>
     </footer>

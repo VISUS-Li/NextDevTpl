@@ -5,11 +5,11 @@
  */
 export const siteConfig = {
   /** 站点名称 */
-  name: "Trip",
+  name: "Trip 旅行者 AI",
 
   /** 站点描述 */
   description:
-    "Trip is a tool storefront for discovering, selling, and subscribing to practical digital tools.",
+    "Trip Traveler AI offers professional AI creation tools for copy, video, and 3D production workflows.",
 
   /** 站点 URL (生产环境) */
   url: process.env.NEXT_PUBLIC_APP_URL || "https://example.com",
@@ -19,7 +19,7 @@ export const siteConfig = {
 
   /** 作者信息 */
   author: {
-    name: "Trip Team",
+    name: "Trip Traveler AI Team",
     url: "https://example.com",
     email: "support@trip.local",
   },
@@ -33,13 +33,13 @@ export const siteConfig = {
 
   /** 关键词 (SEO) */
   keywords: [
-    "Trip",
-    "Tools Store",
-    "Digital Tools",
-    "AI Tools",
-    "Productivity Tools",
-    "Subscriptions",
-    "Payments",
+    "Trip Traveler AI",
+    "AI creation tools",
+    "copy generation",
+    "video generation",
+    "3D rendering",
+    "creative workflow",
+    "AI tools",
   ],
 } as const;
 
