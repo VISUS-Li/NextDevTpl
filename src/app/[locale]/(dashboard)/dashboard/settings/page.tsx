@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
-
-import { getServerSession } from "@/lib/auth/server";
 import { SettingsProfileView } from "@/features/settings/components";
+import { getServerSession } from "@/lib/auth/server";
+
+const settingsTabs = ["account", "security", "billing", "usage"] as const;
+
+type SettingsTab = (typeof settingsTabs)[number];
 
 /**
  * 设置页面元数据
@@ -17,17 +20,28 @@ export const metadata = {
  * Server Component - 在服务端获取用户数据
  * 将数据传递给客户端 SettingsProfileView 组件
  */
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
   // 获取当前用户会话
   const session = await getServerSession();
 
   // 如果用户未登录，重定向到登录页
   if (!session || !session.user) {
-    redirect("/sign-in");
+    redirect("/sign-in?reason=session-expired");
   }
+
+  // 读取当前标签页，非法值回退到 account
+  const { tab } = (await searchParams) ?? {};
+  const initialTab = settingsTabs.includes(tab as SettingsTab)
+    ? (tab as SettingsTab)
+    : "account";
 
   return (
     <SettingsProfileView
+      initialTab={initialTab}
       user={{
         id: session.user.id,
         name: session.user.name || "",

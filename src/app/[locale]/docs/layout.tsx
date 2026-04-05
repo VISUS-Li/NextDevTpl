@@ -2,6 +2,7 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import type { ReactNode } from "react";
 
 import { Header } from "@/features/marketing/components";
+import { getServerSession } from "@/lib/auth/server";
 import { docsSource } from "@/lib/source";
 
 /**
@@ -11,18 +12,17 @@ import { docsSource } from "@/lib/source";
  * 提供侧边栏导航和文档结构
  * 同时保留网站顶部导航栏
  */
-export default async function Layout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default async function Layout({ children }: { children: ReactNode }) {
+  const session = await getServerSession();
+  const user = session?.user ?? null;
+
   // 获取页面树（不需要 locale，因为 i18n 由 Next.js 路由处理）
   const tree = docsSource.pageTree;
 
   return (
     <>
       {/* 网站顶部导航栏 - 放在 DocsLayout 外部确保显示 */}
-      <Header />
+      <Header user={user} />
 
       {/* Fumadocs 文档布局 */}
       <DocsLayout

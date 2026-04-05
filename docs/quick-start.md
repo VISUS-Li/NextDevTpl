@@ -4,10 +4,10 @@
 
 ## 前置要求
 
-| 工具 | 版本 | 安装方式 |
-|------|------|----------|
-| Node.js | 18+ | [nodejs.org](https://nodejs.org) |
-| pnpm | 8+ | `npm install -g pnpm` |
+| 工具　　　 | 版本 | 安装方式　　　　　　　　　　　　　　　　　　 |
+| ------------| ------| ----------------------------------------------|
+| Node.js　　| 18+　| [nodejs.org](https://nodejs.org)　　　　　　 |
+| pnpm　　　 | 8+　 | `npm install -g pnpm`　　　　　　　　　　　　|
 | PostgreSQL | 任意 | 本地安装 / [Neon](https://neon.tech)（推荐） |
 
 ## 第一步：安装项目

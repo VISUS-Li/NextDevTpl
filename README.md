@@ -5,7 +5,8 @@
 ## 0. 当前改造进度
 
 - 首页 web 端已按 `Trip 旅行者 AI` 方向完成第一版改造
-- 当前已落地区域：顶部导航、Hero、工具矩阵、订阅入口、页脚、首页 metadata
+- 首页 mobile 端已按参考稿完成第一版改造
+- 当前已落地区域：顶部导航、Hero、工具矩阵、订阅入口、页脚、首页 metadata、移动端底部导航
 - 改造原则：保留现有登录、订阅、文档、语言切换、dashboard 跳转等真实功能，不做纯静态替换
 - 当前首页主入口文件：
   - `src/app/[locale]/(marketing)/page.tsx`
@@ -15,7 +16,7 @@
   - `src/features/marketing/components/pricing-section.tsx`
   - `src/features/marketing/components/cta-section.tsx`
   - `src/features/marketing/components/footer.tsx`
-- mobile 端改造暂未开始，后续按新的手机端参考稿继续做
+- 当前 mobile 端继续复用现有首页、文档、登录、dashboard、订阅流程，没有额外新建静态页面
 - 如果后续继续改首页，先以现有项目能力为准，不要把登录、定价、订阅或文档入口改成静态占位
 
 ## 1. 当前项目定位

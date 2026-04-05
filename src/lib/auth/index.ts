@@ -7,6 +7,26 @@ import { sendEmail } from "@/features/mail/utils";
 import { VerifyEmailEmail, ResetPasswordEmail } from "@/features/mail/templates/primary-action-email";
 
 /**
+ * 返回认证可接受的来源列表
+ */
+async function getTrustedOrigins(request?: Request) {
+  // 支持本地、局域网和 Cloudflare Quick Tunnel 的随机域名
+  const origins = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.BETTER_AUTH_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://*.trycloudflare.com",
+  ];
+
+  if (request) {
+    origins.push(new URL(request.url).origin);
+  }
+
+  return [...new Set(origins.filter(Boolean))];
+}
+
+/**
  * Better Auth 服务端配置
  *
  * 此文件配置 Better Auth 的核心功能:
@@ -18,15 +38,15 @@ import { VerifyEmailEmail, ResetPasswordEmail } from "@/features/mail/templates/
 export const auth = betterAuth({
   /**
    * 基础 URL 配置
-   * 用于 OAuth 回调和邮件链接
+   * 未显式配置时按请求动态识别当前访问域名
    */
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  ...(process.env.BETTER_AUTH_URL ? { baseURL: process.env.BETTER_AUTH_URL } : {}),
 
   /**
    * 信任的来源
    * 允许从这些来源发起认证请求
    */
-  trustedOrigins: [process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"],
+  trustedOrigins: getTrustedOrigins,
 
   /**
    * 数据库配置

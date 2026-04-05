@@ -2,6 +2,7 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,8 +35,20 @@ interface ModeToggleProps {
   className?: string;
 }
 
-export function ModeToggle({ variant = "dropdown", className }: ModeToggleProps) {
+export function ModeToggle({
+  variant = "dropdown",
+  className,
+}: ModeToggleProps) {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <span className={cn("block h-9 w-9 rounded-md", className)} />;
+  }
 
   // 内联按钮模式
   if (variant === "inline") {

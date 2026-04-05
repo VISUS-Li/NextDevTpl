@@ -1,26 +1,20 @@
 import { eq } from "drizzle-orm";
 import { Coins, Headset, Settings } from "lucide-react";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import { creditsBalance } from "@/db/schema";
 import { Link } from "@/i18n/routing";
-import { auth } from "@/lib/auth";
+import { getServerSession } from "@/lib/auth/server";
 
 export default async function DashboardPage() {
   const t = await getTranslations("DashboardPages.dashboard");
 
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getServerSession();
   if (!session?.user) {
-    redirect("/sign-in");
+    redirect("/sign-in?reason=session-expired");
   }
 
   const userId = session.user.id;

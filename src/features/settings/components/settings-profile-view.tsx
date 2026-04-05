@@ -2,9 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Camera, Loader2 } from "lucide-react";
-import { useAction } from "next-safe-action/hooks";
-import { useLocale, useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { useAction } from "next-safe-action/hooks";
 import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -32,19 +32,18 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditUsageSection } from "@/features/credits/components";
-import { usePathname, useRouter } from "@/i18n/routing";
-
-import { BillingSection } from "./billing-section";
-import { SecuritySection } from "./security-section";
 import { updateProfileAction } from "@/features/settings/actions";
 import { updateProfileSchema } from "@/features/settings/schemas";
 import {
   ALLOWED_IMAGE_TYPES,
-  MAX_FILE_SIZE,
   generateAvatarKey,
   getAvatarUrl,
   getSignedUploadUrlAction,
+  MAX_FILE_SIZE,
 } from "@/features/storage";
+import { usePathname, useRouter } from "@/i18n/routing";
+import { BillingSection } from "./billing-section";
+import { SecuritySection } from "./security-section";
 
 /**
  * SettingsProfileView Props 类型
@@ -57,6 +56,8 @@ interface SettingsProfileViewProps {
     email: string;
     image?: string | null | undefined;
   };
+  /** 初始标签页 */
+  initialTab: "account" | "security" | "billing" | "usage";
 }
 
 /**
@@ -74,7 +75,10 @@ type FormValues = z.infer<typeof updateProfileSchema>;
  * - Language 设置
  * - Delete Account 危险区域
  */
-export function SettingsProfileView({ user }: SettingsProfileViewProps) {
+export function SettingsProfileView({
+  user,
+  initialTab,
+}: SettingsProfileViewProps) {
   // 文件上传 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -140,22 +144,25 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   /**
    * Server Action 绑定 - 更新资料
    */
-  const { execute: executeUpdateProfile, isPending } = useAction(updateProfileAction, {
-    onSuccess: ({ data }) => {
-      if (data?.message) {
-        toast.success(data.message);
-      }
-    },
-    onError: ({ error }) => {
-      if (error.serverError) {
-        toast.error(error.serverError);
-      }
-      if (error.validationErrors) {
-        const errors = Object.values(error.validationErrors).flat();
-        toast.error(errors.join(", ") || t("errors.validationFailed"));
-      }
-    },
-  });
+  const { execute: executeUpdateProfile, isPending } = useAction(
+    updateProfileAction,
+    {
+      onSuccess: ({ data }) => {
+        if (data?.message) {
+          toast.success(data.message);
+        }
+      },
+      onError: ({ error }) => {
+        if (error.serverError) {
+          toast.error(error.serverError);
+        }
+        if (error.validationErrors) {
+          const errors = Object.values(error.validationErrors).flat();
+          toast.error(errors.join(", ") || t("errors.validationFailed"));
+        }
+      },
+    }
+  );
 
   /**
    * 表单提交
@@ -181,14 +188,24 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
     if (!file) return;
 
     // 验证文件类型
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) {
-      toast.error(t("errors.unsupportedFileType", { types: ALLOWED_IMAGE_TYPES.join(", ") }));
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        file.type as (typeof ALLOWED_IMAGE_TYPES)[number]
+      )
+    ) {
+      toast.error(
+        t("errors.unsupportedFileType", {
+          types: ALLOWED_IMAGE_TYPES.join(", "),
+        })
+      );
       return;
     }
 
     // 验证文件大小
     if (file.size > MAX_FILE_SIZE) {
-      toast.error(t("errors.fileTooLarge", { size: MAX_FILE_SIZE / 1024 / 1024 }));
+      toast.error(
+        t("errors.fileTooLarge", { size: MAX_FILE_SIZE / 1024 / 1024 })
+      );
       return;
     }
 
@@ -205,7 +222,11 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
       // 3. 获取签名上传 URL
       const uploadUrlResult = await getSignedUploadUrlAction({
         key,
-        contentType: file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+        contentType: file.type as
+          | "image/jpeg"
+          | "image/png"
+          | "image/gif"
+          | "image/webp",
       });
 
       if (!uploadUrlResult?.data?.uploadUrl) {
@@ -230,7 +251,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
       toast.success(t("success.avatarUpdated"));
     } catch (error) {
       console.error("头像上传错误:", error);
-      toast.error(error instanceof Error ? error.message : t("errors.avatarUploadError"));
+      toast.error(
+        error instanceof Error ? error.message : t("errors.avatarUploadError")
+      );
       // 清除预览
       setAvatarPreview(null);
     } finally {
@@ -253,7 +276,7 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   return (
     <div className="max-w-4xl space-y-8">
       {/* Tabs 导航 */}
-      <Tabs defaultValue="account" className="w-full">
+      <Tabs defaultValue={initialTab} className="w-full">
         <div className="border-b border-border pb-2">
           <TabsList className="h-auto gap-1 bg-transparent p-0">
             <TabsTrigger
@@ -338,10 +361,14 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
 
                 {/* Email Field (Read-only) */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">
+                  <label
+                    className="text-sm font-medium leading-none"
+                    htmlFor="settings-email"
+                  >
                     {t("general.email")}
                   </label>
                   <Input
+                    id="settings-email"
                     type="email"
                     value={user.email}
                     disabled
@@ -403,7 +430,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
               <p className="text-sm text-muted-foreground">
                 {isUploadingAvatar
                   ? t("avatar.uploading")
-                  : t("avatar.supportedFormats", { size: MAX_FILE_SIZE / 1024 / 1024 })}
+                  : t("avatar.supportedFormats", {
+                      size: MAX_FILE_SIZE / 1024 / 1024,
+                    })}
               </p>
             </div>
           </section>
@@ -442,7 +471,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-destructive">{t("deleteAccount.title")}</h2>
+                <h2 className="text-xl font-semibold text-destructive">
+                  {t("deleteAccount.title")}
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   {t("deleteAccount.description")}
                 </p>

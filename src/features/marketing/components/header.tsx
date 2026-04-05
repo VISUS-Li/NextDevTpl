@@ -1,6 +1,13 @@
 "use client";
 
-import { BookOpen, Grid2x2, House, UserRound } from "lucide-react";
+import {
+  BookOpen,
+  Grid2x2,
+  House,
+  LifeBuoy,
+  NotebookPen,
+  UserRound,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -49,6 +56,25 @@ export function Header({ user }: HeaderProps) {
       href: "/docs",
       label: locale === "zh" ? "开发文档" : "Docs",
     },
+    {
+      key: "blog",
+      href: "/blog",
+      label: "Blog",
+    },
+    {
+      key: "pseo",
+      href: "/pseo",
+      label: "PSEO",
+    },
+    ...(user
+      ? [
+          {
+            key: "support",
+            href: "/dashboard/support",
+            label: locale === "zh" ? "我的工单" : "Support",
+          },
+        ]
+      : []),
   ];
 
   // 移动端底部导航项
@@ -77,6 +103,50 @@ export function Header({ user }: HeaderProps) {
       label: locale === "zh" ? "我的" : "My",
       icon: UserRound,
     },
+  ];
+
+  // 移动端补充快捷入口，补齐首页能到达的真实页面
+  const mobileQuickLinks = [
+    {
+      key: "tools",
+      href: "/#features",
+      label: locale === "zh" ? "工具" : "Tools",
+      icon: Grid2x2,
+    },
+    {
+      key: "pricing",
+      href: "/#pricing",
+      label: locale === "zh" ? "方案" : "Plans",
+      icon: NotebookPen,
+    },
+    {
+      key: "docs",
+      href: "/docs",
+      label: locale === "zh" ? "文档" : "Docs",
+      icon: BookOpen,
+    },
+    {
+      key: "blog",
+      href: "/blog",
+      label: "Blog",
+      icon: NotebookPen,
+    },
+    {
+      key: "pseo",
+      href: "/pseo",
+      label: "PSEO",
+      icon: Grid2x2,
+    },
+    ...(user
+      ? [
+          {
+            key: "support",
+            href: "/dashboard/support",
+            label: locale === "zh" ? "工单" : "Support",
+            icon: LifeBuoy,
+          },
+        ]
+      : []),
   ];
 
   /**
@@ -276,6 +346,29 @@ export function Header({ user }: HeaderProps) {
               </>
             )}
           </div>
+        </div>
+
+        <div className="mx-auto flex h-12 w-full max-w-7xl items-center gap-2 overflow-x-auto border-t border-white/5 px-4 pb-2 md:hidden">
+          {mobileQuickLinks.map((item) => {
+            const Icon = item.icon;
+            const isActive = isNavItemActive(item.href);
+            return (
+              <Link
+                key={item.key}
+                href={item.href}
+                onClick={() => handleNavClick(item.href)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors",
+                  isActive
+                    ? "border-[#0A84FF]/30 bg-[#0A84FF]/15 text-[#74d1ff]"
+                    : "border-white/8 bg-white/[0.04] text-[#e1e2eb]/62"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
       </header>
 

@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:lan": "next dev --turbopack -H 0.0.0.0 -p 3000",
+    "cf:tunnel": "cloudflared tunnel --url http://127.0.0.1:3000",
+    "dev:cf": "node -e \"const { spawn } = require('node:child_process'); const shell = process.platform === 'win32'; const pnpmCmd = shell ? 'pnpm.cmd' : 'pnpm'; const cloudflaredCmd = shell ? 'cloudflared.exe' : 'cloudflared'; const procs = [spawn(pnpmCmd, ['dev:lan'], { stdio: 'inherit', shell: false }), spawn(cloudflaredCmd, ['tunnel', '--url', 'http://127.0.0.1:3000'], { stdio: 'inherit', shell: false })]; const stop = () => { for (const proc of procs) { if (!proc.killed) proc.kill('SIGTERM'); } }; process.on('SIGINT', () => { stop(); process.exit(130); }); process.on('SIGTERM', () => { stop(); process.exit(143); }); for (const proc of procs) { proc.on('exit', (code) => { if (code && !process.exitCode) process.exitCode = code; }); }\"",
     "build": "next build",
     "start": "next start",
     "lint": "biome lint .",

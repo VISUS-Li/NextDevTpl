@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Clapperboard,
-  Edit3,
-  Sparkles,
-  WandSparkles,
-} from "lucide-react";
+import { Clapperboard, Edit3, Sparkles, WandSparkles } from "lucide-react";
 import { useLocale } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -79,7 +74,8 @@ const showcaseCards = {
     {
       title: "AutoCut",
       subtitle: "Video Tool",
-      description: "AI slicing and transitions that compress editing time for fast delivery.",
+      description:
+        "AI slicing and transitions that compress editing time for fast delivery.",
       icon: Clapperboard,
       badge: "VIDEO TOOL",
       image:
@@ -91,7 +87,8 @@ const showcaseCards = {
     {
       title: "VideoGen",
       subtitle: "Generative AI",
-      description: "Turn a single prompt into cinematic visual content with production-ready motion.",
+      description:
+        "Turn a single prompt into cinematic visual content with production-ready motion.",
       icon: WandSparkles,
       badge: "GENERATIVE AI",
       image:
@@ -103,7 +100,8 @@ const showcaseCards = {
     {
       title: "GameEngine",
       subtitle: "3D Rendering",
-      description: "Generate procedural assets and render vast interactive worlds in real time.",
+      description:
+        "Generate procedural assets and render vast interactive worlds in real time.",
       icon: Sparkles,
       badge: "3D RENDERING",
       image:
@@ -121,20 +119,55 @@ export function FeatureGrid() {
   const cards = showcaseCards[isZh ? "zh" : "en"];
 
   return (
-    <section id="features" className="bg-[#10131a] px-4 py-24 text-[#e1e2eb] sm:px-6 lg:px-8 lg:py-32">
+    <section
+      id="features"
+      className="bg-[#10131a] px-6 py-16 text-[#e1e2eb] sm:px-6 lg:px-8 lg:py-32"
+    >
       <div className="mx-auto max-w-7xl">
-        <div className="mb-16 text-center md:mb-20 md:text-left">
+        <div className="mb-10 text-left md:mb-20">
           <h2 className="mb-4 font-['Manrope'] text-4xl font-bold tracking-[-0.05em] md:text-5xl">
             {isZh ? "全能工具矩阵" : "A Full Creative Tool Matrix"}
           </h2>
-          <p className="max-w-xl text-lg text-[#c0c6d6]">
+          <p className="max-w-xl text-base leading-7 text-[#c0c6d6] md:text-lg">
             {isZh
               ? "基于最先进的自研模型，为专业创作者量身定制。"
               : "Built on advanced in-house models for teams that ship creative work at speed."}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
+        <div className="space-y-6 md:hidden">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <article
+                key={`${card.title}-mobile`}
+                className="group relative overflow-hidden rounded-[1.75rem] bg-[linear-gradient(180deg,rgba(50,53,60,0.4)_0%,rgba(16,19,26,0.8)_100%)] p-px"
+              >
+                <div className="flex min-h-[15rem] flex-col justify-between rounded-[1.65rem] bg-[#191c22] p-8 transition-transform duration-300 active:scale-[0.985]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-[1.25rem] bg-[#32353c] text-[#0A84FF]">
+                      <Icon className="h-8 w-8" />
+                    </div>
+                    <span className="pt-1 text-xs font-bold uppercase tracking-[0.22em] text-[#74d1ff]/70">
+                      {card.badge}
+                    </span>
+                  </div>
+
+                  <div className="mt-8">
+                    <h3 className="mb-2 font-['Manrope'] text-3xl font-black text-[#e1e2eb]">
+                      {card.title}
+                    </h3>
+                    <p className="text-sm font-medium leading-6 text-[#c0c6d6]">
+                      {card.subtitle} {isZh ? "—" : "—"} {card.description}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden grid-cols-1 gap-8 md:grid md:grid-cols-12">
           {cards.map((card) => {
             const Icon = card.icon;
             return (
@@ -142,7 +175,7 @@ export function FeatureGrid() {
                 key={card.title}
                 className={cn(
                   "group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(50,53,60,0.4)] backdrop-blur-[20px] transition-transform duration-300 hover:scale-[1.01]",
-                  card.span,
+                  card.span
                 )}
               >
                 <div className="absolute inset-0">
@@ -161,7 +194,7 @@ export function FeatureGrid() {
                   <h3
                     className={cn(
                       "mb-3 font-['Manrope'] font-bold tracking-[-0.05em]",
-                      card.titleClassName,
+                      card.titleClassName
                     )}
                   >
                     {card.title}
