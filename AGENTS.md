@@ -17,6 +17,8 @@
 - 验证成功后再执行 `git add` 和 `git commit`
 - 提交完成后再执行 `git push`
 - 未经验证的修改不得推送到远端
+- 当前机器的 GitHub 凭证文件在 `~/gh-token.txt`
+- 如果 HTTPS 推送失败，优先使用该 token 完成 `origin` 推送，不要重复假设本机没有凭证
 
 ## 执行原则
 
