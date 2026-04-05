@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { useLocale } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
-import { Link } from "@/i18n/routing";
 import {
-  COOKIE_CONSENT_KEY,
   COOKIE_CONSENT_CHANGE_EVENT,
+  COOKIE_CONSENT_KEY,
   COOKIE_PREFERENCES_KEY,
   type CookieConsentType,
   type CookiePreferences,
 } from "@/features/marketing/constants";
+import { Link } from "@/i18n/routing";
+import { cn } from "@/lib/utils";
 
 /**
  * 多语言文本
@@ -52,8 +52,7 @@ const translations = {
     preferencesTitle: "Cookie 偏好设置",
     back: "返回",
     essentialCookies: "必要 Cookie",
-    essentialDescription:
-      "这些 Cookie 是网站正常运行所必需的，无法关闭。",
+    essentialDescription: "这些 Cookie 是网站正常运行所必需的，无法关闭。",
     alwaysEnabled: "始终启用",
     analyticsCookies: "分析 Cookie",
     analyticsDescription:
@@ -183,7 +182,7 @@ export function CookieConsent() {
   return (
     <div
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 p-4",
+        "fixed inset-x-0 bottom-28 z-[80] p-4 md:bottom-0",
         "animate-in slide-in-from-bottom-5 duration-300"
       )}
     >

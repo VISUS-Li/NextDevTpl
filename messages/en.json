@@ -81,7 +81,11 @@
         "title": "AI Products",
         "subtitle": "AI-Powered Applications",
         "description": "Build AI wrappers, content generators, or intelligent assistants. The credits system and async processing handle LLM calls and usage metering out of the box.",
-        "examples": ["AI content tools", "Chatbot platforms", "Image generators"]
+        "examples": [
+          "AI content tools",
+          "Chatbot platforms",
+          "Image generators"
+        ]
       },
       "professionals": {
         "title": "Productivity Tools",
@@ -196,7 +200,9 @@
         "github": "GitHub sign-in failed. Please try again.",
         "missingFields": "Please enter email and password.",
         "invalidCredentials": "Invalid email or password.",
-        "emailNotVerified": "This account is not verified yet."
+        "emailNotVerified": "This account is not verified yet.",
+        "sessionExpired": "Your session has expired. Please sign in again.",
+        "serverUnavailable": "Auth service is unavailable. Check the database connection settings."
       }
     },
     "signUp": {
@@ -221,7 +227,8 @@
         "missingFields": "Please fill in all fields.",
         "passwordTooShort": "Password must be at least 8 characters.",
         "passwordMismatch": "Passwords do not match.",
-        "emailInUse": "Sign-up failed. This email may already be in use."
+        "emailInUse": "Sign-up failed. This email may already be in use.",
+        "serverUnavailable": "Auth service is unavailable. Check the database connection settings."
       },
       "verifyEmail": {
         "title": "Account created",

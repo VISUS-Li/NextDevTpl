@@ -196,7 +196,9 @@
         "github": "GitHub 登录失败，请重试",
         "missingFields": "请填写邮箱和密码",
         "invalidCredentials": "邮箱或密码错误",
-        "emailNotVerified": "当前账号还未完成验证。"
+        "emailNotVerified": "当前账号还未完成验证。",
+        "sessionExpired": "登录状态已失效，请重新登录。",
+        "serverUnavailable": "认证服务暂时不可用，请检查数据库连接配置。"
       }
     },
     "signUp": {
@@ -221,7 +223,8 @@
         "missingFields": "请填写所有字段",
         "passwordTooShort": "密码至少需要 8 个字符",
         "passwordMismatch": "两次输入的密码不一致",
-        "emailInUse": "注册失败，该邮箱可能已被使用"
+        "emailInUse": "注册失败，该邮箱可能已被使用",
+        "serverUnavailable": "认证服务暂时不可用，请检查数据库连接配置。"
       },
       "verifyEmail": {
         "title": "注册完成",

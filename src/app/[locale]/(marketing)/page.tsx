@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-
-import { siteConfig } from "@/config";
 import { SiteJsonLd, SoftwareAppJsonLd } from "@/components/seo/json-ld";
+import { siteConfig } from "@/config";
 import {
   CTASection,
   FeatureGrid,
   HeroSection,
   PricingSection,
 } from "@/features/marketing/components";
+import { getServerSession } from "@/lib/auth/server";
 
 /**
  * 生成首页 Metadata
@@ -69,6 +69,8 @@ export default async function HomePage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  const session = await getServerSession();
+  const user = session?.user ?? null;
 
   return (
     <>
@@ -79,8 +81,8 @@ export default async function HomePage({
       {/* Page Sections */}
       <HeroSection />
       <FeatureGrid />
-      <PricingSection />
-      <CTASection />
+      <PricingSection currentPriceId={null} user={user} />
+      <CTASection user={user} />
     </>
   );
 }

@@ -38,7 +38,7 @@ export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
  * @field role - 用户角色 (user/admin)
  * @field banned - 是否被封禁
  * @field bannedReason - 封禁原因
- * @field customerId - 支付提供商客户 ID (Creem)
+ * @field customerId - 支付提供商客户 ID
  * @field createdAt - 创建时间
  * @field updatedAt - 更新时间
  */
@@ -51,7 +51,8 @@ export const user = pgTable("user", {
   role: userRoleEnum("role").notNull().default("user"),
   banned: boolean("banned").notNull().default(false),
   bannedReason: text("banned_reason"),
-  customerId: text("customer_id").unique(),
+  // 兼容当前数据库中的历史列名
+  customerId: text("stripe_customer_id").unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -169,8 +170,9 @@ export const subscription = pgTable("subscription", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  subscriptionId: text("subscription_id").notNull().unique(),
-  priceId: text("price_id").notNull(),
+  // 兼容当前数据库中的历史列名
+  subscriptionId: text("stripe_subscription_id").notNull().unique(),
+  priceId: text("stripe_price_id").notNull(),
   status: text("status").notNull().default("incomplete"),
   currentPeriodStart: timestamp("current_period_start"),
   currentPeriodEnd: timestamp("current_period_end"),
@@ -515,4 +517,3 @@ export type TicketPriority = (typeof ticketPriorityEnum.enumValues)[number];
 
 /** 工单状态类型 */
 export type TicketStatus = (typeof ticketStatusEnum.enumValues)[number];
-

@@ -2,19 +2,15 @@
 
 import { BookOpen, Check, Coins, Layers, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { getPlanPrice, paymentConfig } from "@/config/payment";
-import {
-  createCheckoutSession,
-  getUserSubscription,
-} from "@/features/payment/actions";
+import { createCheckoutSession } from "@/features/payment/actions";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
-import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 import { AnimatedPrice } from "./animated-price";
@@ -76,38 +72,46 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
 interface PricingSectionProps {
   /** 用户当前订阅的价格 ID */
   currentPriceId?: string | null;
+  /** 当前用户 */
+  user?: {
+    id: string;
+  } | null;
 }
 
 /**
  * 价格计划展示组件
  */
-export function PricingSection({ currentPriceId }: PricingSectionProps) {
+export function PricingSection({
+  currentPriceId,
+  user = null,
+}: PricingSectionProps) {
   const t = useTranslations("Pricing");
   const locale = useLocale();
   const [isYearly, setIsYearly] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const router = useRouter();
-  const { data: session } = useSession();
 
   // 获取用户当前订阅状态
-  const [activePriceId, setActivePriceId] = useState<string | null>(
-    currentPriceId ?? null
-  );
-
-  useEffect(() => {
-    if (!session?.user || currentPriceId) return;
-    getUserSubscription().then((result) => {
-      if (
-        result?.data?.subscription?.isActive &&
-        result.data.subscription.priceId
-      ) {
-        setActivePriceId(result.data.subscription.priceId);
-      }
-    });
-  }, [session?.user, currentPriceId]);
+  const activePriceId = currentPriceId ?? null;
 
   const { yearlyDiscount } = paymentConfig;
+
+  /**
+   * 为不同计划提供轻量的按钮区分
+   */
+  const getPlanButtonClass = (planId: string, popular: boolean) => {
+    if (popular) {
+      return "bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-[#003064] shadow-lg shadow-blue-500/20 hover:opacity-95";
+    }
+    if (planId === "starter") {
+      return "bg-[#123b47] text-[#8ce7ff] shadow-lg shadow-cyan-950/20 hover:bg-[#184b59]";
+    }
+    if (planId === "ultra") {
+      return "bg-[#3f2d14] text-[#ffd48a] shadow-lg shadow-amber-950/20 hover:bg-[#513919]";
+    }
+    return "bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08]";
+  };
 
   /**
    * 获取计划配置
@@ -177,11 +181,11 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
    */
   const handleSubscribe = async (planId: string) => {
     if (planId === "free") {
-      router.push(session?.user ? "/dashboard" : "/sign-up");
+      router.push(user ? "/dashboard" : "/sign-up");
       return;
     }
 
-    if (!session?.user) {
+    if (!user) {
       router.push("/sign-in?redirect=/#pricing");
       return;
     }
@@ -276,26 +280,26 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
             const price = getDisplayPrice(planId);
             const isCurrent = isCurrentPlan(planId);
             const isLoading = loadingPlan === planId;
-            const popular = isPopular(planId);
+            const popular = isPopular(planId) ?? false;
             const featureKeys = PLAN_FEATURE_KEYS[planId] || [];
 
             return (
               <article
                 key={planId}
                 className={cn(
-                  "relative flex h-full flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(29,32,38,0.72)] p-6 backdrop-blur-[20px]",
+                  "relative flex h-full flex-col rounded-[2rem] border border-white/10 bg-[rgba(29,32,38,0.72)] p-6 pt-8 backdrop-blur-[20px]",
                   popular &&
                     "border-[#149ccb]/40 bg-[linear-gradient(180deg,rgba(20,156,203,0.18),rgba(29,32,38,0.84))] shadow-[0_24px_80px_rgba(10,132,255,0.14)]",
                   isCurrent && "ring-2 ring-[#5AC8FA]/70"
                 )}
               >
                 {popular && !isCurrent && (
-                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-4 py-1 text-[#003064]">
+                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 rounded-full border-0 bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-4 py-1 text-[#003064] shadow-lg shadow-blue-500/20">
                     {t("mostPopular")}
                   </Badge>
                 )}
                 {isCurrent && (
-                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-emerald-500 px-4 py-1 text-white">
+                  <Badge className="absolute left-1/2 top-0 -translate-x-1/2 rounded-full border-0 bg-emerald-500 px-4 py-1 text-white shadow-lg shadow-emerald-950/20">
                     {t("currentPlan")}
                   </Badge>
                 )}
@@ -431,11 +435,9 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                   <Button
                     className={cn(
                       "h-12 w-full rounded-full border-0 text-sm font-bold",
-                      popular
-                        ? "bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-[#003064] shadow-lg shadow-blue-500/20 hover:opacity-95"
-                        : "bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08]"
+                      getPlanButtonClass(planId, popular)
                     )}
-                    variant={popular ? "default" : "outline"}
+                    variant="default"
                     onClick={() => handleSubscribe(planId)}
                     disabled={isLoading || isPending}
                   >

@@ -2,20 +2,20 @@
 
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useRouter } from "@/i18n/routing";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { GoogleIcon } from "@/features/shared/icons";
+import { useRouter } from "@/i18n/routing";
 import {
+  resendVerificationEmail,
   signInWithEmail,
   signInWithGoogle,
-  resendVerificationEmail,
 } from "@/lib/auth/client";
 
 import { AuthErrorAlert } from "./auth-error-alert";
@@ -32,6 +32,7 @@ export function SignInForm() {
   const t = useTranslations("Auth.signIn");
   const tCommon = useTranslations("Auth.common");
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // 表单状态
   const [email, setEmail] = useState("");
@@ -41,6 +42,22 @@ export function SignInForm() {
   const [error, setError] = useState<string | null>(null);
   const [showResend, setShowResend] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  /**
+   * 判断是否为服务端异常，避免误报成密码错误
+   */
+  const isServerFailure = (error: unknown) => {
+    if (!error || typeof error !== "object") return false;
+    const status = "status" in error ? Number(error.status) : NaN;
+    const message = "message" in error ? String(error.message || "") : "";
+    return status >= 500 || message.toUpperCase().includes("SERVER_ERROR");
+  };
+
+  useEffect(() => {
+    if (searchParams.get("reason") === "session-expired") {
+      setError(t("errors.sessionExpired"));
+    }
+  }, [searchParams, t]);
 
   /**
    * 重新发送验证邮件
@@ -97,6 +114,12 @@ export function SignInForm() {
       const result = await signInWithEmail(email, password);
 
       if (result.error) {
+        if (isServerFailure(result.error)) {
+          setError(t("errors.serverUnavailable"));
+          setShowResend(false);
+          setIsLoading(false);
+          return;
+        }
         if (result.error.code === "EMAIL_NOT_VERIFIED") {
           setError(t("errors.emailNotVerified"));
           setShowResend(true);
@@ -111,8 +134,12 @@ export function SignInForm() {
       // 登录成功，提示并跳转
       toast.success(t("success"));
       router.push("/dashboard");
-    } catch {
-      setError(t("errors.invalidCredentials"));
+    } catch (error) {
+      setError(
+        isServerFailure(error)
+          ? t("errors.serverUnavailable")
+          : t("errors.invalidCredentials")
+      );
       setIsLoading(false);
     }
   };

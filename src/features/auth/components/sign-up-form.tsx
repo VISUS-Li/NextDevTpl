@@ -4,17 +4,14 @@ import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { useRouter } from "@/i18n/routing";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { GoogleIcon } from "@/features/shared/icons";
-import {
-  signInWithGoogle,
-  signUpWithEmail,
-} from "@/lib/auth/client";
+import { useRouter } from "@/i18n/routing";
+import { signInWithGoogle, signUpWithEmail } from "@/lib/auth/client";
 
 import { AuthErrorAlert } from "./auth-error-alert";
 import { AuthLogo } from "./auth-logo";
@@ -40,6 +37,16 @@ export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * 判断是否为服务端异常，避免误报成邮箱已存在
+   */
+  const isServerFailure = (error: unknown) => {
+    if (!error || typeof error !== "object") return false;
+    const status = "status" in error ? Number(error.status) : NaN;
+    const message = "message" in error ? String(error.message || "") : "";
+    return status >= 500 || message.toUpperCase().includes("SERVER_ERROR");
+  };
 
   /**
    * 处理 Google 注册
@@ -83,6 +90,11 @@ export function SignUpForm() {
       const result = await signUpWithEmail(email, password, name);
 
       if (result.error) {
+        if (isServerFailure(result.error)) {
+          setError(t("errors.serverUnavailable"));
+          setIsLoading(false);
+          return;
+        }
         setError(
           result.error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
             ? t("errors.emailInUse")
@@ -95,7 +107,13 @@ export function SignUpForm() {
       // 注册成功后直接进入用户后台，避免在官网场景下卡在邮箱验证
       router.push("/dashboard");
     } catch (error) {
-      setError(error instanceof Error ? error.message : t("errors.emailInUse"));
+      setError(
+        isServerFailure(error)
+          ? t("errors.serverUnavailable")
+          : error instanceof Error
+            ? error.message
+            : t("errors.emailInUse")
+      );
       setIsLoading(false);
     }
   };
