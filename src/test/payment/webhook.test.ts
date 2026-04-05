@@ -598,6 +598,46 @@ describe("Creem Webhook: checkout.completed", () => {
 			expect(orders[0]!.items).toHaveLength(1);
 		});
 
+		it("重复的 checkout.completed 不应该改写已落单金额快照", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const paymentId = `cs_snapshot_${Date.now()}`;
+			const firstEvent = createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 150,
+				paymentId,
+				packageId: "lite",
+			});
+			const secondEvent = {
+				...firstEvent,
+				order: {
+					...firstEvent.order!,
+					amount: 999,
+				},
+				product: {
+					id: "credits_changed",
+					name: "Changed",
+					price: 999,
+					currency: "USD",
+					billing_type: "onetime" as const,
+					billing_period: "custom",
+				},
+				metadata: {
+					...firstEvent.metadata!,
+					credits: "999",
+				},
+			};
+
+			await handleCheckoutCompleted(firstEvent);
+			await handleCheckoutCompleted(secondEvent);
+
+			const [orderRecord] = await getUserSalesOrders(testUser.id);
+			expect(orderRecord!.order.grossAmount).toBe(150);
+			expect(orderRecord!.items[0]!.grossAmount).toBe(150);
+			expect(orderRecord!.items[0]!.productId).toBe("credits_lite");
+		});
+
 		it("应该把归因字段显式写入统一订单", async () => {
 			const agentUser = await createTestUser();
 			const buyerUser = await createTestUser();
@@ -712,6 +752,38 @@ describe("Creem Webhook: subscription lifecycle", () => {
 			expect(ordersAfterActive[0]!.order.status).toBe("confirmed");
 			expect(ordersAfterActive[0]!.order.eventType).toBe("subscription.active");
 			expect(ordersAfterActive[0]!.items).toHaveLength(1);
+		});
+
+		it("重复的 subscription.active 不应该重复创建首购订单", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const subscriptionId = `sub_active_dup_${Date.now()}`;
+			const checkoutEvent = createSubscriptionCheckoutCompleted({
+				userId: testUser.id,
+				subscriptionId,
+				priceId: proMonthlyPriceId,
+			});
+			const activeStart = new Date();
+			const activeEnd = new Date(
+				activeStart.getTime() + 30 * 24 * 60 * 60 * 1000
+			);
+			const activeEvent = createSubscriptionEvent({
+				userId: testUser.id,
+				subscriptionId,
+				priceId: proMonthlyPriceId,
+				periodStart: activeStart,
+				periodEnd: activeEnd,
+			});
+
+			await handleCheckoutCompleted(checkoutEvent);
+			await handleSubscriptionActive(activeEvent);
+			await handleSubscriptionActive(activeEvent);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.order.eventType).toBe("subscription.active");
+			expect(orders[0]!.items[0]!.priceId).toBe(proMonthlyPriceId);
 		});
 
 		it("subscription.renewed 应该生成新的续费订单", async () => {
@@ -1012,6 +1084,42 @@ describe("Creem Webhook: after sales", () => {
 		expect(updatedOrder!.order.status).toBe("paid");
 		expect(updatedOrder!.items[0]!.refundedAmount).toBe(50);
 		expect(updatedOrder!.items[0]!.refundableAmount).toBe(150);
+	});
+
+	it("超出可退金额的售后事件应该拒绝写入", async () => {
+		const testUser = await createTestUser();
+		createdUserIds.push(testUser.id);
+
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 120,
+				paymentId: `cs_refund_guard_${Date.now()}`,
+				packageId: "starter",
+			})
+		);
+
+		const [orderRecord] = await getUserSalesOrders(testUser.id);
+		await expect(
+			applySalesAfterSalesEvent({
+				orderId: orderRecord!.order.id,
+				orderItemId: orderRecord!.items[0]!.id,
+				eventType: "refunded",
+				eventIdempotencyKey: `refund_guard_${Date.now()}`,
+				amount: 121,
+				currency: "USD",
+				reason: "over_refund",
+			})
+		).rejects.toThrow("After-sales amount exceeds refundable amount");
+
+		const events = await testDb
+			.select()
+			.from(salesAfterSalesEvent)
+			.where(eq(salesAfterSalesEvent.orderId, orderRecord!.order.id));
+		const [unchangedOrder] = await getUserSalesOrders(testUser.id);
+		expect(events).toHaveLength(0);
+		expect(unchangedOrder!.order.afterSalesStatus).toBe("none");
+		expect(unchangedOrder!.items[0]!.refundedAmount).toBe(0);
 	});
 
 	it("全额退款应该关闭订单", async () => {

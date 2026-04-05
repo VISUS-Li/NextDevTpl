@@ -16,20 +16,36 @@ export async function createWithdrawalRequest(params: {
   feeAmount?: number;
   payeeSnapshot?: Record<string, unknown>;
 }) {
+  // 提现申请只接受正数金额，且币种必须和账户一致。
+  if (params.amount <= 0) {
+    throw new Error("Withdrawal amount must be greater than 0");
+  }
+
   const [balance] = await db
     .select()
     .from(commissionBalance)
     .where(eq(commissionBalance.userId, params.userId))
     .limit(1);
 
-  if (!balance || balance.availableAmount < params.amount) {
+  const feeAmount = params.feeAmount ?? 0;
+  if (feeAmount < 0 || feeAmount > params.amount) {
+    throw new Error("Withdrawal fee amount is invalid");
+  }
+  if (!balance) {
+    throw new Error("Commission balance not found");
+  }
+  if (balance.currency !== params.currency) {
+    throw new Error("Withdrawal currency does not match commission balance");
+  }
+
+  const freezeAmount = params.amount + feeAmount;
+  if (balance.availableAmount < freezeAmount) {
     throw new Error("Insufficient available commission balance");
   }
 
-  const feeAmount = params.feeAmount ?? 0;
   const requestId = crypto.randomUUID();
-  const nextAvailableAmount = balance.availableAmount - params.amount;
-  const nextFrozenAmount = balance.frozenAmount + params.amount;
+  const nextAvailableAmount = balance.availableAmount - freezeAmount;
+  const nextFrozenAmount = balance.frozenAmount + freezeAmount;
 
   await db.insert(withdrawalRequest).values({
     id: requestId,
@@ -56,7 +72,7 @@ export async function createWithdrawalRequest(params: {
     userId: params.userId,
     entryType: "withdraw_freeze",
     direction: "debit",
-    amount: params.amount,
+    amount: freezeAmount,
     beforeBalance: balance.availableAmount,
     afterBalance: nextAvailableAmount,
     referenceType: "withdrawal_request",
@@ -95,8 +111,9 @@ export async function rejectWithdrawalRequest(params: {
     throw new Error("Commission balance not found");
   }
 
-  const nextAvailableAmount = balance.availableAmount + request.amount;
-  const nextFrozenAmount = Math.max(0, balance.frozenAmount - request.amount);
+  const freezeAmount = request.amount + request.feeAmount;
+  const nextAvailableAmount = balance.availableAmount + freezeAmount;
+  const nextFrozenAmount = Math.max(0, balance.frozenAmount - freezeAmount);
 
   await db
     .update(withdrawalRequest)
@@ -123,7 +140,7 @@ export async function rejectWithdrawalRequest(params: {
     userId: request.userId,
     entryType: "withdraw_release",
     direction: "credit",
-    amount: request.amount,
+    amount: freezeAmount,
     beforeBalance: balance.availableAmount,
     afterBalance: nextAvailableAmount,
     referenceType: "withdrawal_request",
@@ -162,8 +179,9 @@ export async function markWithdrawalRequestPaid(params: {
     throw new Error("Commission balance not found");
   }
 
-  const nextFrozenAmount = Math.max(0, balance.frozenAmount - request.amount);
-  const nextWithdrawnAmount = balance.withdrawnAmount + request.amount;
+  const freezeAmount = request.amount + request.feeAmount;
+  const nextFrozenAmount = Math.max(0, balance.frozenAmount - freezeAmount);
+  const nextWithdrawnAmount = balance.withdrawnAmount + freezeAmount;
 
   await db
     .update(withdrawalRequest)
@@ -191,7 +209,7 @@ export async function markWithdrawalRequestPaid(params: {
     userId: request.userId,
     entryType: "withdraw_paid",
     direction: "debit",
-    amount: request.amount,
+    amount: freezeAmount,
     beforeBalance: balance.frozenAmount,
     afterBalance: nextFrozenAmount,
     referenceType: "withdrawal_request",

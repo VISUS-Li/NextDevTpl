@@ -62,9 +62,11 @@ describe("Distribution Withdrawal", () => {
 
     expect(request!.status).toBe("pending");
     expect(request!.netAmount).toBe(45);
-    expect(balance!.availableAmount).toBe(30);
-    expect(balance!.frozenAmount).toBe(70);
-    expect(ledgers.some((entry) => entry.entryType === "withdraw_freeze")).toBe(true);
+    expect(balance!.availableAmount).toBe(25);
+    expect(balance!.frozenAmount).toBe(75);
+    expect(
+      ledgers.find((entry) => entry.entryType === "withdraw_freeze")?.amount
+    ).toBe(55);
   });
 
   it("拒绝提现后应该释放冻结余额", async () => {
@@ -159,5 +161,95 @@ describe("Distribution Withdrawal", () => {
     expect(balance!.frozenAmount).toBe(0);
     expect(balance!.withdrawnAmount).toBe(70);
     expect(ledgers.some((entry) => entry.entryType === "withdraw_paid")).toBe(true);
+  });
+
+  it("提现手续费应该一并冻结并在打款后计入已提现金额", async () => {
+    const user = await createTestUser();
+    const operator = await createTestUser({ role: "admin" });
+    createdUserIds.push(user.id, operator.id);
+
+    await testDb.insert(commissionBalance).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      currency: "USD",
+      totalEarned: 150,
+      availableAmount: 150,
+      frozenAmount: 0,
+      withdrawnAmount: 0,
+      reversedAmount: 0,
+    });
+
+    const requestId = await createWithdrawalRequest({
+      userId: user.id,
+      amount: 100,
+      feeAmount: 8,
+      currency: "USD",
+    });
+
+    await markWithdrawalRequestPaid({
+      requestId,
+      operatorUserId: operator.id,
+    });
+
+    const [balance] = await testDb
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, user.id))
+      .limit(1);
+    const ledgers = await testDb
+      .select()
+      .from(commissionLedger)
+      .where(eq(commissionLedger.userId, user.id));
+
+    expect(balance!.availableAmount).toBe(42);
+    expect(balance!.frozenAmount).toBe(0);
+    expect(balance!.withdrawnAmount).toBe(108);
+    expect(
+      ledgers.find((entry) => entry.entryType === "withdraw_freeze")?.amount
+    ).toBe(108);
+    expect(
+      ledgers.find((entry) => entry.entryType === "withdraw_paid")?.amount
+    ).toBe(108);
+  });
+
+  it("非法提现金额和币种不匹配应该拒绝", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+
+    await testDb.insert(commissionBalance).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      currency: "USD",
+      totalEarned: 80,
+      availableAmount: 80,
+      frozenAmount: 0,
+      withdrawnAmount: 0,
+      reversedAmount: 0,
+    });
+
+    await expect(
+      createWithdrawalRequest({
+        userId: user.id,
+        amount: 0,
+        currency: "USD",
+      })
+    ).rejects.toThrow("Withdrawal amount must be greater than 0");
+
+    await expect(
+      createWithdrawalRequest({
+        userId: user.id,
+        amount: 30,
+        feeAmount: 31,
+        currency: "USD",
+      })
+    ).rejects.toThrow("Withdrawal fee amount is invalid");
+
+    await expect(
+      createWithdrawalRequest({
+        userId: user.id,
+        amount: 30,
+        currency: "EUR",
+      })
+    ).rejects.toThrow("Withdrawal currency does not match commission balance");
   });
 });

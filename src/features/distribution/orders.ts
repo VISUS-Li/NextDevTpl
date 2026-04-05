@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   distributionAttribution,
@@ -47,20 +47,17 @@ interface ApplySalesAfterSalesEventParams {
 }
 
 /**
- * 生成订单更新时可复用的字段
- */
-function toSalesOrderUpdate(
-  payload: PaymentOrderPayload["order"]
-): Omit<PaymentOrderPayload["order"], "id"> {
-  const { id: _id, ...updateData } = payload;
-  return updateData;
-}
-
-/**
  * 从 Checkout 事件中安全提取产品 ID
  */
 export function getCheckoutProductId(data: CreemCheckoutCompletedData): string {
-  return data.product?.id ?? data.order?.product ?? "";
+  return (
+    data.product?.id ??
+    (typeof data.subscription?.product === "string"
+      ? data.subscription.product
+      : data.subscription?.product?.id) ??
+    data.order?.product ??
+    ""
+  );
 }
 
 /**
@@ -239,7 +236,7 @@ async function buildPaymentOrderPayloadFromCheckoutCompleted(
       orderId: "",
       productType,
       productId,
-      priceId: productId || null,
+      priceId: productId,
       planId: data.metadata?.planId ?? null,
       quantity: 1,
       grossAmount: orderAmount,
@@ -297,7 +294,7 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
       orderId: "",
       productType: "subscription",
       productId,
-      priceId: productId || null,
+      priceId: productId,
       quantity: 1,
       grossAmount: 0,
       netAmount: 0,
@@ -329,13 +326,6 @@ export async function upsertSalesOrderFromCheckoutCompleted(
     .limit(1);
 
   if (existingOrder) {
-    await db
-      .update(salesOrder)
-      .set({
-        ...toSalesOrderUpdate(payload.order),
-        updatedAt: new Date(),
-      })
-      .where(eq(salesOrder.id, existingOrder.id));
     return existingOrder.id;
   }
 
@@ -368,13 +358,17 @@ export async function upsertSalesOrderFromSubscriptionEvent(
   );
 
   if (eventType === "subscription.active") {
+    // 首购确认和重复 active 都复用首单，避免重复落单。
     const [checkoutOrder] = await db
       .select({ id: salesOrder.id })
       .from(salesOrder)
       .where(
         and(
           eq(salesOrder.providerSubscriptionId, sub.id),
-          eq(salesOrder.eventType, "checkout.completed")
+          or(
+            eq(salesOrder.eventType, "checkout.completed"),
+            eq(salesOrder.eventType, "subscription.active")
+          )
         )
       )
       .orderBy(desc(salesOrder.createdAt))
@@ -455,6 +449,15 @@ export async function applySalesAfterSalesEvent(
 
   if (!targetItem) {
     throw new Error(`Sales order item not found: ${params.orderId}`);
+  }
+  if (params.amount <= 0) {
+    throw new Error("After-sales amount must be greater than 0");
+  }
+  if (params.currency !== order.currency) {
+    throw new Error("After-sales currency does not match sales order");
+  }
+  if (params.amount > targetItem.refundableAmount) {
+    throw new Error("After-sales amount exceeds refundable amount");
   }
 
   const nextRefundedAmount = targetItem.refundedAmount + params.amount;
