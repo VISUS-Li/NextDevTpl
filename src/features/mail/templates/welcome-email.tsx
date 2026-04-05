@@ -33,14 +33,14 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Welcome to NextDevTpl - Welcome aboard!</Preview>
+      <Preview>Welcome to Trip - Your account is ready.</Preview>
       <Tailwind>
         <Body className="mx-auto my-auto bg-white font-sans">
           <Container className="mx-auto my-10 max-w-xl rounded-lg border border-solid border-gray-200 p-8">
             {/* Logo / 品牌区域 */}
             <Section className="mb-8 text-center">
               <Heading className="m-0 text-2xl font-bold text-gray-900">
-                NextDevTpl
+                Trip
               </Heading>
             </Section>
 
@@ -51,15 +51,15 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
 
             {/* 正文内容 */}
             <Text className="mb-4 text-base leading-relaxed text-gray-600">
-              We&apos;re thrilled to have you join NextDevTpl! Your account has
-              been successfully created and you&apos;re ready to start creating
-              flashcards.
+              Your Trip account has been created successfully. You can now
+              start managing tools, subscriptions, and customer access from one
+              place.
             </Text>
 
             <Text className="mb-6 text-base leading-relaxed text-gray-600">
               As a welcome gift, we&apos;ve added{" "}
               <strong>100 free credits</strong> to your account. Use them to
-              generate AI-powered flashcards from your learning materials.
+              explore the dashboard and your first product flows.
             </Text>
 
             {/* CTA 按钮 */}
@@ -78,10 +78,10 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
                 Quick Start Tips:
               </Text>
               <Text className="m-0 text-sm text-gray-600">
-                • Upload PDF, Word, or Markdown files to generate flashcards
+                • Add your first tool or subscription product
                 <br />
-                • Paste text or URLs to create cards instantly
-                <br />• Export to Anki format for spaced repetition learning
+                • Review pricing, checkout, and access settings
+                <br />• Open the dashboard to manage users and orders
               </Text>
             </Section>
 
@@ -99,7 +99,7 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
               .
             </Text>
             <Text className="m-0 mt-2 text-center text-xs text-gray-400">
-              © {new Date().getFullYear()} NextDevTpl. All rights reserved.
+              © {new Date().getFullYear()} Trip. All rights reserved.
             </Text>
           </Container>
         </Body>

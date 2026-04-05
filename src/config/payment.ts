@@ -146,7 +146,7 @@ export function getPricingPlans(
     plans.push({
       ...config.plans.free,
       name: "Free",
-      description: "Try NextDevTpl with no commitment",
+      description: "Try Trip with no commitment",
       features: [
         "200 credits (one-time)",
         "Text & file input",
@@ -164,7 +164,7 @@ export function getPricingPlans(
     plans.push({
       ...config.plans.starter,
       name: "Starter",
-      description: "For casual learners",
+      description: "For casual users",
       features: [
         "3,000 credits / month",
         "Text & file input",
@@ -183,7 +183,7 @@ export function getPricingPlans(
     plans.push({
       ...config.plans.pro,
       name: "Pro",
-      description: "For serious learners",
+      description: "For growing teams",
       features: [
         "8,000 credits / month",
         "All input sources (URL, video, etc.)",
@@ -192,7 +192,6 @@ export function getPricingPlans(
         "Priority generation queue",
         "Export to Anki & Markdown",
         "Deck history saved forever",
-        "🚧 Custom card styles (coming soon)",
         "Priority support",
       ],
       cta: "Subscribe",
@@ -204,7 +203,7 @@ export function getPricingPlans(
     plans.push({
       ...config.plans.ultra,
       name: "Ultra",
-      description: "For power users & educators",
+      description: "For power users",
       features: [
         "16,000 credits / month",
         "All input sources (URL, video, etc.)",
@@ -213,8 +212,6 @@ export function getPricingPlans(
         "Highest priority queue",
         "Export to Anki & Markdown",
         "Deck history saved forever",
-        "🚧 Custom card styles (coming soon)",
-        "🚧 AI-assisted card making (coming soon)",
         "Dedicated support",
       ],
       cta: "Subscribe",

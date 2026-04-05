@@ -25,26 +25,23 @@ export async function generateMetadata({
   const isZh = locale === "zh";
 
   const title = isZh
-    ? "NextDevTpl - 生产就绪的 Next.js SaaS 模板"
-    : "NextDevTpl - Production-ready Next.js SaaS Template";
+    ? "Trip - 工具销售官网"
+    : "Trip - Tool Storefront";
 
   const description = isZh
-    ? "使用AI技术将文本、PDF、网页、视频等内容自动转换为Anki兼容的闪卡。支持多种输入格式，一键导出.apkg文件，让学习更高效。"
-    : "AI-powered flashcard generator that converts text, PDFs, URLs, and videos into Anki-compatible study cards. Multiple input formats supported with one-click .apkg export.";
+    ? "Trip 是一个面向个人与团队的工具销售网站，用于展示、订阅和管理效率工具、AI 工具与数字产品。"
+    : "Trip is a storefront for browsing, buying, and subscribing to practical productivity tools, AI tools, and digital products.";
 
   return {
     title,
     description,
     keywords: [
-      "AI flashcard generator",
-      "Anki cards",
-      "study cards",
-      "spaced repetition",
-      "PDF to flashcards",
-      "text to Anki",
-      ...(isZh
-        ? ["AI闪卡生成器", "Anki卡片", "间隔重复", "PDF转闪卡"]
-        : []),
+      "tool storefront",
+      "digital tools",
+      "AI tools",
+      "productivity tools",
+      "subscriptions",
+      ...(isZh ? ["工具商城", "数字工具", "AI工具", "效率工具"] : []),
     ],
     openGraph: {
       title,

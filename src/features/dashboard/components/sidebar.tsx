@@ -148,7 +148,7 @@ export function DashboardSidebar() {
                 collapsed && "opacity-0",
               )}
             >
-              NextDev<span className="text-primary">Tpl</span>
+              Trip<span className="text-primary">.</span>
             </span>
           </Link>
         </div>
@@ -178,7 +178,7 @@ export function DashboardSidebar() {
                       title={collapsed ? translatedTitle : undefined}
                       onClick={() => mobile && setMobileOpen(false)}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+                        "flex min-h-11 items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors",
                         isActive
                           ? "bg-primary/10 text-primary"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
@@ -328,7 +328,7 @@ export function DashboardSidebar() {
       <Sheet open={isMobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="w-64 bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
+          className="w-[min(88vw,22rem)] bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full flex-col">

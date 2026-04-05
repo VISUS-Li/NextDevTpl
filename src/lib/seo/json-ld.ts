@@ -16,8 +16,8 @@ export function generateWebSiteSchema(locale: LocaleType) {
     url: getBaseUrl(),
     description:
       locale === "en"
-        ? "AI-powered flashcard generator that converts any content into Anki-compatible study cards"
-        : "AI驱动的闪卡生成器，将任何内容转换为Anki兼容的学习卡片",
+        ? "Tool storefront for discovering and subscribing to practical digital tools"
+        : "用于发现和订阅实用数字工具的工具销售官网",
     inLanguage: locale === "en" ? "en-US" : "zh-CN",
     potentialAction: {
       "@type": "SearchAction",
@@ -169,13 +169,13 @@ export function generateSoftwareApplicationSchema(locale: LocaleType) {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     name: siteConfig.name,
-    applicationCategory: "EducationalApplication",
+    applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     url: getBaseUrl(),
     description:
       locale === "en"
-        ? "AI-powered flashcard generator for creating Anki-compatible study cards from any content"
-        : "AI驱动的闪卡生成器，从任何内容创建Anki兼容的学习卡片",
+        ? "A web storefront for productivity tools, AI tools, and digital subscriptions"
+        : "一个面向效率工具、AI 工具和数字订阅的 Web 工具官网",
     offers: {
       "@type": "Offer",
       price: "0",

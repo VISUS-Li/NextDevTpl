@@ -73,11 +73,12 @@ export const auth = betterAuth({
    */
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    // 官网以快速注册和立即体验为主，开发和演示环境不强制邮箱验证
+    requireEmailVerification: false,
     sendResetPassword: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Reset your password - NextDevTpl",
+        subject: "Reset your password - Trip",
         react: ResetPasswordEmail({
           resetUrl: url,
           name: user.name || "there",
@@ -90,11 +91,12 @@ export const auth = betterAuth({
    * 邮箱验证配置
    */
   emailVerification: {
-    sendOnSignUp: true,
+    // 保留验证能力，但默认不在注册后阻塞登录
+    sendOnSignUp: false,
     sendVerificationEmail: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Verify your email - NextDevTpl",
+        subject: "Verify your email - Trip",
         react: VerifyEmailEmail({
           verifyUrl: url,
           name: user.name || "there",

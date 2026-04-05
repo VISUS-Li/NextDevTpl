@@ -62,19 +62,19 @@ export function DashboardMainWrapper({
   return (
     <main
       className={cn(
-        "p-2.5 min-h-screen transition-all duration-300",
+        "min-h-screen p-2 transition-all duration-300 sm:p-2.5",
         isCollapsed ? "md:ml-16" : "md:ml-64",
       )}
     >
       {/* 卡片容器 - Linear style: clean background, subtle border */}
-      <div className="min-h-[calc(100vh-20px)] rounded-lg bg-background border border-border flex flex-col">
+      <div className="flex min-h-[calc(100vh-16px)] flex-col rounded-lg border border-border bg-background sm:min-h-[calc(100vh-20px)]">
         {/* Header - 在卡片内部 */}
-        <header className="flex h-12 items-center gap-3 border-b border-border px-4 shrink-0">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 sm:px-4">
           {/* 移动端汉堡按钮 */}
           <button
             type="button"
             onClick={toggleMobile}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
           >
             <Menu className="h-4 w-4 pointer-events-none" />
           </button>
@@ -96,11 +96,11 @@ export function DashboardMainWrapper({
           <div className="h-4 w-px bg-border" />
 
           {/* 页面标题 */}
-          <span className="text-sm font-medium text-foreground">{pageTitle}</span>
+          <span className="truncate text-sm font-medium text-foreground">{pageTitle}</span>
         </header>
 
         {/* 内容区域 */}
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-3 sm:p-6">
           {children}
         </div>
       </div>

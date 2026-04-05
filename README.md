@@ -1,277 +1,294 @@
-# NextDevTpl
+# Trip 开发说明
 
-一个现代化的 SaaS 全栈开发模板，基于 Next.js 15 构建，包含认证、支付、积分、邮件、存储、工单、API 限流、日志、错误监控等完整的 SaaS 功能模块。
+这个 README 只服务一件事：让后续开发时，先看文档就能知道项目能做什么、入口在哪、改哪里、改完以后 README 也要同步到什么程度。
 
-> **开箱即用**：所有可选服务（限流、日志、监控）在未配置时自动降级为本地模式，不影响使用。配置对应环境变量即可启用完整功能。
+## 1. 当前项目定位
 
-## 特性
+这是一个基于 Next.js App Router 的工具销售官网项目，当前代码已经包含这些主能力：
 
-- **Next.js 15** - App Router、Turbopack、React 19
-- **TypeScript** - 严格模式，完整类型安全
-- **Tailwind CSS 4** - 最新版样式系统
-- **Shadcn/UI** - 高质量组件库
-- **Better Auth** - 现代认证方案（邮箱密码 + OAuth）
-- **Drizzle ORM** - 类型安全的数据库操作
-- **Creem** - 订阅支付集成
-- **积分系统** - FIFO 过期 + 复式记账
-- **邮件系统** - Resend + React Email
-- **存储系统** - S3/R2 兼容
-- **工单系统** - 用户支持
-- **管理后台** - 用户管理、数据统计
-- **国际化** - next-intl 多语言支持
-- **API 限流** - Upstash Redis，全局自动保护（可选）
-- **结构化日志** - Pino + Axiom 云日志（可选）
-- **错误监控** - Sentry 自动捕获（可选）
+- 认证：邮箱密码、GitHub OAuth、Google OAuth、会话管理、角色字段
+- 订阅与支付：Creem 价格配置、订阅状态、Webhook 入口
+- 积分系统：余额、批次、交易、FIFO 过期、充值与消费记录
+- 工单系统：用户提交工单、消息往返、管理员处理
+- 邮件系统：Resend 发送、React Email 模板、开发环境预览
+- 对象存储：S3 / R2 兼容的预签名上传
+- 国际化：`en` / `zh`
+- 文档与内容：Fumadocs、MDX 文档、博客、法律页
+- 监控与基础设施：限流、日志、Sentry、Inngest
+- 管理后台：用户、工单、积分与订阅统计
+- 官网定位：展示、销售和管理效率工具、AI 工具与数字产品
 
-## 技术栈
+## 2. 技术栈
 
-| 分类 | 技术 |
-|------|------|
-| 框架 | Next.js 15, React 19, TypeScript |
-| 样式 | Tailwind CSS 4, Shadcn/UI, Radix UI |
-| 数据库 | PostgreSQL, Drizzle ORM, Neon |
+| 分类 | 方案 |
+|---|---|
+| 框架 | Next.js 16, React 19, TypeScript |
+| UI | Tailwind CSS 4, Radix UI, 自定义 UI 组件 |
+| 数据库 | PostgreSQL, Drizzle ORM |
 | 认证 | Better Auth |
 | 支付 | Creem |
 | 邮件 | Resend, React Email |
 | 存储 | AWS S3 / Cloudflare R2 |
-| 验证 | Zod, React Hook Form, next-safe-action |
-| 限流 | Upstash Redis, @upstash/ratelimit |
+| 国际化 | next-intl |
+| 内容 | Fumadocs, MDX |
+| 后台任务 | Inngest |
+| 限流 | Upstash Redis |
 | 日志 | Pino, Axiom |
 | 监控 | Sentry |
-| 工具 | Biome, pnpm |
+| 代码质量 | Biome, Vitest |
 
-## 快速开始
+## 3. 本地启动
 
-只需 3 个环境变量即可启动。详见 **[Quick Start 文档](./docs/quick-start.md)**。
+### 3.1 必要条件
+
+- Node.js 24.x 已验证可用
+- pnpm 10.x 已验证可用
+- PostgreSQL 16 已验证可用
+
+### 3.2 安装依赖
 
 ```bash
-git clone git@github.com:evepupil/NextDevTpl.git
-cd NextDevTpl
 pnpm install
-cp .env.example .env.local
-# 编辑 .env.local 填入 DATABASE_URL、BETTER_AUTH_SECRET、BETTER_AUTH_URL
-pnpm db:push
+```
+
+### 3.3 环境变量
+
+项目使用 `.env.local`。最小启动只需要这 3 项：
+
+```env
+DATABASE_URL=postgresql://postgres@127.0.0.1:5433/nextdevtpl
+BETTER_AUTH_SECRET=dev-secret-nextdevtpl-local-2026
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+说明：
+
+- 认证、数据库是启动硬依赖
+- 支付、邮件、对象存储、Redis、Axiom、Sentry 没配时不会阻塞首页启动
+- 开发环境下邮件默认只做控制台预览，不会真实发送
+- 当前注册流程不强制邮箱验证，注册后可直接登录
+
+### 3.4 数据库初始化
+
+```bash
+pnpm exec drizzle-kit push --force
+```
+
+### 3.5 启动开发服务器
+
+```bash
 pnpm dev
 ```
 
-访问 http://localhost:3000
+默认地址：
 
-## 项目结构
+- `http://localhost:3000/zh`
+- `http://localhost:3000/en`
 
-```
-src/
-├── app/                          # Next.js App Router
-│   └── [locale]/                 # 国际化路由
-│       ├── (marketing)/          # 营销页面（公开）
-│       ├── (dashboard)/          # 用户仪表盘（需登录）
-│       └── (admin)/              # 管理后台（需管理员）
-├── components/ui/                # Shadcn/UI 基础组件
-├── shared/                       # 全局共享组件
-│   ├── providers.tsx             # 主题等 Provider
-│   ├── mode-toggle.tsx           # 暗色模式切换
-│   ├── language-switcher.tsx     # 语言切换
-│   └── icons/                    # 图标
-├── features/                     # Feature-based 模块
-│   ├── marketing/components/     # header, footer, hero, pricing...
-│   ├── dashboard/components/     # sidebar, topbar, cards...
-│   ├── admin/components/         # admin-sidebar
-│   ├── ai/components/            # chat-interface
-│   ├── auth/components/          # 认证相关
-│   ├── blog/components/          # 博客相关
-│   ├── settings/components/      # 设置相关
-│   └── support/components/       # 工单支持
-├── db/                           # 数据库 Schema
-├── lib/                          # 工具函数
-│   ├── auth/                     # 认证相关
-│   ├── rate-limit/               # API 限流
-│   ├── logger/                   # 结构化日志
-│   └── monitoring/               # 错误监控 (Sentry)
-├── credits/                      # 积分系统
-├── mail/                         # 邮件系统
-├── storage/                      # 存储系统
-└── config/                       # 配置文件
-```
+## 4. 启动验证结果
 
-## 功能模块
+本仓库在当前机器上已经完成以下验证：
 
-### 认证系统
+- `pnpm install` 通过
+- `pnpm exec drizzle-kit push --force` 通过
+- `pnpm dev` 启动成功
+- `GET /zh` 返回 `200`
+- `GET /zh/dashboard` 未登录时返回 `307` 并跳转到登录页
+- 新用户注册后可直接拿到 session cookie
+- 新用户可直接登录并访问 `/zh/dashboard`
+- `pnpm typecheck` 通过
 
-- 邮箱密码注册/登录
-- GitHub/Google OAuth
-- 会话管理
-- 用户角色（user/admin）
+## 5. 路由结构
 
-### 支付系统
+项目以 `src/app/[locale]` 为根，按业务分组：
 
-- Creem 订阅
-- 多种定价方案
-- Webhook 处理
-- 订阅管理
+### 5.1 营销与公开页面
 
-### 积分系统
+- `/[locale]`：首页
+- `/[locale]/blog`
+- `/[locale]/blog/[slug]`
+- `/[locale]/legal/[slug]`
+- `/[locale]/pseo`
+- `/[locale]/pseo/[slug]`
+- `/[locale]/docs/[...slug]`
+- `/[locale]/demo/plan-badges`
 
-- FIFO 过期机制
-- 复式记账
-- 批次管理
-- 交易历史
+对应目录：
 
-### 邮件系统
+- `src/app/[locale]/(marketing)`
+- `src/app/[locale]/docs`
 
-- React Email 模板
-- Resend 发送
-- 开发模式预览
+### 5.2 认证页面
 
-### 存储系统
+- `/[locale]/sign-in`
+- `/[locale]/sign-up`
+- `/[locale]/forgot-password`
 
-- S3/R2 兼容
-- 预签名上传
-- 文件管理
+对应目录：
 
-### 工单系统
+- `src/app/[locale]/(auth)`
+- `src/features/auth`
 
-- 用户创建工单
-- 消息对话
-- 状态管理
-- 管理员回复
+### 5.3 用户后台
 
-### 管理后台
+- `/[locale]/dashboard`
+- `/[locale]/dashboard/credits/buy`
+- `/[locale]/dashboard/settings`
+- `/[locale]/dashboard/support`
+- `/[locale]/dashboard/support/new`
+- `/[locale]/dashboard/support/[id]`
 
-- 数据统计面板
-- 用户管理（搜索、角色、封禁）
-- 积分充值
-- 工单处理
+对应目录：
 
-### API 限流
+- `src/app/[locale]/(dashboard)`
+- `src/features/dashboard`
+- `src/features/credits`
+- `src/features/settings`
+- `src/features/support`
 
-- Upstash Redis 滑动窗口
-- Middleware 全局自动保护
-- 路由级别差异化限制
-- 未配置时自动跳过
+### 5.4 管理后台
 
-### 日志系统
+- `/[locale]/admin`
+- `/[locale]/admin/users`
+- `/[locale]/admin/tickets`
+- `/[locale]/admin/tickets/[id]`
 
-- Pino 结构化日志
-- Axiom 云日志集成
-- Server Action 错误自动记录
-- 未配置时回退 console
+对应目录：
 
-### 错误监控
+- `src/app/[locale]/(admin)`
+- `src/features/admin`
 
-- Sentry 自动捕获
-- Server Action 错误自动上报
-- 用户上下文关联
-- 未配置时回退 console
+## 6. 权限与访问控制
 
-## 部署
+当前权限控制分两层：
 
-支持自有服务器部署，提供一键构建 + 推送 + 启动脚本。
+- `src/middleware.ts`
+  - 负责国际化路由
+  - 负责 `/dashboard` 未登录跳转
+  - 负责敏感 API 的限流
+- `src/app/[locale]/(admin)/admin/layout.tsx`
+  - 通过 `checkAdmin()` 做管理员权限检查
 
-### 部署方式
+结论：
 
-| 方式 | 说明 |
-|------|------|
-| **自有服务器（推荐）** | 通过 `deploy-build.bat` 一键部署到 Linux 服务器 |
-| **Vercel** | `git push` 即可，零配置 |
-| **Docker** | 自行编写 Dockerfile，`pnpm build` + `pnpm start` |
+- 普通受保护页面先看 `middleware.ts`
+- 管理后台权限先看 `src/lib/auth/admin.ts` 和 admin layout
 
-### 一键部署到服务器
+## 7. 目录说明
 
-项目提供了 `deploy-build.bat`（本地 Windows）+ `start-prod.sh`（服务器端）部署脚本，流程为：
+### 7.1 顶层目录
 
-**本地构建 → 打包 → 上传 → 服务器解压 → PM2 启动/重启**
+| 目录 | 作用 |
+|---|---|
+| `src/app` | App Router 页面与 API 路由 |
+| `src/features` | 按业务拆分的模块 |
+| `src/components/ui` | 通用 UI 组件 |
+| `src/lib` | 基础设施与底层封装 |
+| `src/config` | 站点、导航、支付、订阅等静态配置 |
+| `src/db` | 数据库连接与 schema |
+| `src/content` | 文档、博客、法律文本 |
+| `src/i18n` | 国际化配置 |
+| `src/test` | Vitest 测试 |
+| `drizzle` | Drizzle 生成产物 |
+| `docs` | 项目补充说明 |
+| `messages` | 多语言文案 |
+| `public` | 静态资源 |
 
-#### 1. 配置部署参数
+### 7.2 功能模块目录
 
-编辑 `deploy-build.bat` 头部的配置：
+| 目录 | 说明 |
+|---|---|
+| `src/features/auth` | 登录、注册、忘记密码、认证表单 |
+| `src/features/credits` | 积分账户、交易、余额、购买动作 |
+| `src/features/payment` | Creem 对接、支付动作、类型 |
+| `src/features/subscription` | 用户计划、订阅动作、计划徽章 |
+| `src/features/support` | 工单与消息、管理员处理 |
+| `src/features/settings` | 个人资料与账单、安全设置 |
+| `src/features/storage` | 上传、S3/R2 provider、预签名逻辑 |
+| `src/features/mail` | 邮件客户端、模板、发送逻辑 |
+| `src/features/admin` | 管理后台侧边栏与后台视图 |
+| `src/features/dashboard` | 用户后台布局、卡片、Sidebar |
+| `src/features/marketing` | 首页、定价、FAQ、CTA 等公开页面组件 |
+| `src/features/blog` | 博客列表和文章卡片 |
+| `src/features/pseo` | PSEO 页面数据和组件 |
+| `src/features/analytics` | 前端埋点入口 |
+| `src/features/shared` | Providers、全局组件、通用图标 |
 
-```bat
-set "REMOTE_USER=ubuntu"          # 服务器用户名
-set "REMOTE_HOST=<your-server>"   # 服务器 IP 或域名
-set "REMOTE_PORT=22"              # SSH 端口
-set "REMOTE_DIR=/home/ubuntu/NextjsTpl"  # 服务器上的项目目录
-set "SSH_KEY=%USERPROFILE%\.ssh\id_ed25519"  # SSH 私钥路径
-set "PORT=3303"                   # 应用运行端口
-```
+### 7.3 基础设施目录
 
-#### 2. 准备生产环境变量
+| 目录 | 说明 |
+|---|---|
+| `src/lib/auth` | Better Auth 客户端、服务端和管理员校验 |
+| `src/lib/ai` | AI Provider 封装 |
+| `src/lib/rate-limit` | 限流策略与响应头 |
+| `src/lib/logger` | Pino 日志 |
+| `src/lib/monitoring` | Sentry 接入 |
+| `src/lib/seo` | SEO 和 JSON-LD |
 
-```bash
-# 创建生产环境变量文件（不会被提交到 Git）
-cp .env.example .env.prod
-# 编辑 .env.prod，填入生产环境的真实配置
-```
+## 8. 数据与配置入口
 
-#### 3. 服务器前置准备
+后续二开时，优先看这些文件：
 
-```bash
-# 服务器上需要安装：
-# - Node.js 18+（推荐通过 nvm 安装）
-# - pnpm: npm install -g pnpm
-# - PM2: npm install -g pm2
+| 文件 | 作用 |
+|---|---|
+| `src/config/site.ts` | 站点名、域名、SEO 基础信息 |
+| `src/config/nav.ts` | Header、Footer、Dashboard、Admin 导航 |
+| `src/config/payment.ts` | 定价页展示、支付跳转配置、价格 ID |
+| `src/config/subscription-plan.ts` | 各订阅计划的权限边界 |
+| `src/db/schema.ts` | 全部表结构 |
+| `src/db/index.ts` | 数据库连接策略 |
+| `src/lib/auth/index.ts` | Better Auth 主配置 |
+| `src/middleware.ts` | i18n、受保护路由、限流白名单 |
+| `messages/*` | 国际化文案 |
+| `src/content/**/*` | 文档、博客、法律内容 |
 
-# 创建项目目录
-mkdir -p /home/ubuntu/NextjsTpl
-```
+## 9. API 与后台任务入口
 
-#### 4. 执行部署
+当前关键入口：
 
-```bash
-# Windows 本地执行
-deploy-build.bat
-```
+- `src/app/api/auth/[...all]/route.ts`：认证 API
+- `src/app/api/webhooks/creem/route.ts`：支付回调
+- `src/app/api/upload/presigned/route.ts`：文件上传签名
+- `src/app/api/jobs/credits/expire/route.ts`：积分过期任务
+- `src/app/api/inngest/route.ts`：Inngest 入口
+- `src/app/api/search/route.ts`：搜索接口
+- `src/app/api/image-proxy/[...path]/route.ts`：图片代理
 
-脚本会自动完成：本地 `pnpm build` → 打包 `.next` + 配置文件 → SCP 上传 → SSH 远程解压 → PM2 启动应用。
-
-#### 5. 服务器管理
-
-```bash
-pm2 status              # 查看应用状态
-pm2 logs NextjsTpl      # 查看日志
-pm2 restart NextjsTpl   # 重启应用
-pm2 stop NextjsTpl      # 停止应用
-```
-
-> 服务器端通常还需要配置 Nginx 反向代理（将 80/443 端口转发到应用端口）和 SSL 证书。
-
-## 命令
+## 10. 测试与检查
 
 ```bash
-pnpm dev          # 启动开发服务器
-pnpm build        # 生产构建
-pnpm start        # 启动生产服务器
-pnpm lint         # 代码检查
-pnpm format       # 代码格式化
-pnpm check        # 检查并自动修复
-pnpm typecheck    # 类型检查
-pnpm db:generate  # 生成迁移
-pnpm db:push      # 推送 Schema
-pnpm db:studio    # 打开 Drizzle Studio
+pnpm dev
+pnpm build
+pnpm typecheck
+pnpm lint
+pnpm test:run
 ```
 
-## 路由说明
+当前至少应保证：
 
-| 路由 | 说明 | 权限 |
-|------|------|------|
-| `/` | 首页 | 公开 |
-| `/pricing` | 定价页 | 公开 |
-| `/blog` | 博客 | 公开 |
-| `/docs` | 文档 | 公开 |
-| `/sign-in` | 登录 | 公开 |
-| `/sign-up` | 注册 | 公开 |
-| `/dashboard` | 仪表盘 | 登录用户 |
-| `/dashboard/support` | 我的工单 | 登录用户 |
-| `/settings` | 设置 | 登录用户 |
-| `/admin` | 管理后台 | 管理员 |
-| `/admin/users` | 用户管理 | 管理员 |
-| `/admin/tickets` | 工单管理 | 管理员 |
+- 类型检查通过
+- 改动涉及的主路径可手动访问
+- 涉及 schema 改动时，数据库能正常 `push`
 
-## 开发规范
+## 11. 后续开发建议
 
-- **Server Components 优先** - 只在需要交互时使用 `'use client'`
-- **Server Actions** - 所有数据变更使用 next-safe-action
-- **类型安全** - 所有 Props、API 响应必须有类型定义
-- **Feature-based** - 按功能模块组织代码
+如果你准备二开，这个顺序最省力：
 
-## License
+1. 先改 `src/config/site.ts`、`src/config/nav.ts`，把品牌、导航、外链换掉
+2. 再改 `messages` 和 `src/content`，统一文案与内容
+3. 再处理支付、邮件、对象存储这类外部服务配置
+4. 最后再做业务级扩展，比如新的 dashboard 页面、积分规则、工单流程
 
-MIT
+## 12. README 维护约定
+
+从现在开始，这个 README 视为开发基线文档。每次后续开发完成后，都要同步更新 README，至少检查这几部分是否需要变更：
+
+- 功能模块是否新增、删除或改名
+- 路由是否新增、删除或改权限
+- 目录结构是否调整
+- 环境变量是否增加或失效
+- 关键配置入口是否变化
+- 启动和验证步骤是否变化
+
+如果改动影响多个模块，不要只补一句“新增了某功能”，要把入口文件、路由位置、配置位置一起补全。后续开发默认先读这个 README，再动代码。

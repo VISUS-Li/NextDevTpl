@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useRouter } from "@/i18n/routing";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import { AuthLogo } from "./auth-logo";
 export function SignInForm() {
   const t = useTranslations("Auth.signIn");
   const tCommon = useTranslations("Auth.common");
+  const router = useRouter();
 
   // 表单状态
   const [email, setEmail] = useState("");
@@ -108,7 +110,7 @@ export function SignInForm() {
 
       // 登录成功，提示并跳转
       toast.success(t("success"));
-      window.location.href = "/dashboard";
+      router.push("/dashboard");
     } catch {
       setError(t("errors.invalidCredentials"));
       setIsLoading(false);
@@ -116,7 +118,7 @@ export function SignInForm() {
   };
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full max-w-md space-y-6 px-1 sm:px-0">
       {/* Logo 和标题 */}
       <div className="flex flex-col items-center space-y-2 text-center">
         <AuthLogo />
@@ -131,7 +133,7 @@ export function SignInForm() {
       {showResend && (
         <Button
           variant="outline"
-          className="w-full"
+          className="h-11 w-full text-base"
           onClick={handleResendEmail}
           disabled={resendCooldown > 0}
         >
@@ -145,7 +147,7 @@ export function SignInForm() {
       <div className="space-y-3">
         <Button
           variant="outline"
-          className="w-full"
+          className="h-11 w-full text-base"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
         >
@@ -167,7 +169,11 @@ export function SignInForm() {
       </div>
 
       {/* 邮箱密码表单 */}
-      <form onSubmit={handleEmailSignIn} className="space-y-4">
+      <form
+        onSubmit={handleEmailSignIn}
+        className="space-y-4"
+        suppressHydrationWarning
+      >
         {/* 邮箱输入 */}
         <div className="space-y-2">
           <Label htmlFor="email">{t("emailLabel")}</Label>
@@ -179,6 +185,11 @@ export function SignInForm() {
             onChange={(e) => setEmail(e.target.value)}
             disabled={isLoading}
             autoComplete="email"
+            inputMode="email"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            className="h-11 text-base"
           />
         </div>
 
@@ -193,7 +204,10 @@ export function SignInForm() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading}
               autoComplete="current-password"
-              className="pr-10"
+              className="h-11 pr-10 text-base"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
             <button
               type="button"
@@ -223,7 +237,7 @@ export function SignInForm() {
         {/* 提交按钮 */}
         <Button
           type="submit"
-          className="w-full"
+          className="h-11 w-full text-base"
           disabled={isLoading}
         >
           {isLoading ? t("loading") : t("submit")}

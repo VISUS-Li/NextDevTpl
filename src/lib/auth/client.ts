@@ -3,6 +3,16 @@
 import { createAuthClient } from "better-auth/react";
 
 /**
+ * 获取浏览器端认证基础地址
+ */
+function getAuthBaseUrl() {
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+}
+
+/**
  * Better Auth 客户端配置
  *
  * 此客户端用于在 React 组件中进行认证操作:
@@ -16,7 +26,7 @@ export const authClient = createAuthClient({
    * 认证 API 基础 URL
    * 默认指向 /api/auth，与 API 路由匹配
    */
-  baseURL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+  baseURL: getAuthBaseUrl(),
 });
 
 /**
@@ -44,7 +54,7 @@ export const {
  * @param redirectTo - 重置链接的跳转地址
  */
 export async function forgetPassword(email: string, redirectTo = "/reset-password") {
-  const baseURL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/forget-password`, {
     method: "POST",
@@ -70,7 +80,7 @@ export async function forgetPassword(email: string, redirectTo = "/reset-passwor
  * @param token - 重置令牌 (从 URL 获取)
  */
 export async function resetPassword(newPassword: string, token: string) {
-  const baseURL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/reset-password`, {
     method: "POST",
@@ -158,7 +168,7 @@ export async function signUpWithEmail(
  * @param newPassword - 新密码
  */
 export async function changePassword(currentPassword: string, newPassword: string) {
-  const baseURL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/change-password`, {
     method: "POST",
@@ -186,7 +196,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
  * @param email - 用户邮箱
  */
 export async function resendVerificationEmail(email: string) {
-  const baseURL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/send-verification-email`, {
     method: "POST",

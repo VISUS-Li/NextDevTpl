@@ -23,8 +23,8 @@ export function Footer() {
               {siteConfig.name}
             </Link>
             <p className="text-sm text-muted-foreground">
-              Production-ready Next.js SaaS template with auth, payments,
-              credits, i18n, and more.
+              Discover and manage practical tools for creators, operators, and
+              teams from one clean storefront.
             </p>
           </div>
 

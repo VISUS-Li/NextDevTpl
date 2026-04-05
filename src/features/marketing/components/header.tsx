@@ -104,7 +104,7 @@ export function Header() {
               <rect x="13" y="13" width="9" height="9" rx="2" />
             </svg>
             <span className="text-xl font-bold tracking-tight">
-              NextDev<span className="text-primary">Tpl</span>
+              Trip<span className="text-primary">.</span>
             </span>
           </Link>
 
@@ -167,7 +167,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors md:hidden"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -176,17 +176,33 @@ export function Header() {
 
       {/* 移动端导航 Sheet */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="right" className="w-72 p-0">
+        <SheetContent
+          side="right"
+          className="w-[min(88vw,22rem)] p-0 md:hidden"
+        >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full flex-col">
+            <div className="border-b border-border px-4 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Menu className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Trip</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("dashboard")}
+                  </p>
+                </div>
+              </div>
+            </div>
             {/* 导航链接 */}
-            <nav className="flex-1 overflow-y-auto px-4 pt-12">
+            <nav className="flex-1 overflow-y-auto px-4 py-4">
               {/* Products 可折叠区域 */}
               <div className="space-y-1">
                 <button
                   type="button"
                   onClick={() => setProductsExpanded(!productsExpanded)}
-                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
+                  className="flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
                 >
                   {navTitleMap.Products}
                   <ChevronDown
@@ -209,7 +225,7 @@ export function Header() {
                               key={item.title}
                               href={item.href}
                               onClick={() => setMobileOpen(false)}
-                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
+                              className="flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
                             >
                               <Icon className="h-3.5 w-3.5 text-primary" />
                               {tNav(
@@ -231,7 +247,7 @@ export function Header() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
+                    className="flex min-h-11 items-center rounded-md px-3 py-2 text-sm font-medium text-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
                   >
                     {navTitleMap[item.title] || item.title}
                   </Link>
@@ -240,9 +256,9 @@ export function Header() {
             </nav>
 
             {/* 底部操作按钮 */}
-            <div className="border-t border-border p-4 space-y-2">
+            <div className="space-y-2 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               {user ? (
-                <Button asChild className="w-full">
+                <Button asChild className="h-11 w-full text-base">
                   <Link
                     href="/dashboard"
                     onClick={() => setMobileOpen(false)}
@@ -252,7 +268,7 @@ export function Header() {
                 </Button>
               ) : (
                 <>
-                  <Button asChild variant="outline" className="w-full">
+                  <Button asChild variant="outline" className="h-11 w-full text-base">
                     <Link
                       href="/sign-in"
                       onClick={() => setMobileOpen(false)}
@@ -260,7 +276,7 @@ export function Header() {
                       {t("login")}
                     </Link>
                   </Button>
-                  <Button asChild className="w-full">
+                  <Button asChild className="h-11 w-full text-base">
                     <Link
                       href="/sign-up"
                       onClick={() => setMobileOpen(false)}

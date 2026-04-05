@@ -1,15 +1,15 @@
 {
   "HomePage": {
-    "title": "NextDevTpl",
-    "subtitle": "Production-Ready Next.js SaaS Template",
-    "description": "Ship your SaaS product faster with a production-ready full-stack template."
+    "title": "Trip",
+    "subtitle": "Tool Storefront",
+    "description": "A storefront for showcasing, selling, and managing digital tools and subscriptions."
   },
   "Hero": {
-    "badge": "New: AI Model Integration",
-    "title1": "The Ultimate Next.js",
-    "titleHighlight": "Starter Template",
-    "subtitle": "Build and ship faster with production-ready infrastructure. Authentication, payments, and beautiful UI components out of the box.",
-    "getStarted": "Get Started",
+    "badge": "New: tool subscriptions and sales support",
+    "title1": "Trip Tool Website",
+    "titleHighlight": "Launch your next product faster",
+    "subtitle": "Build a tool-selling website with ready-to-use authentication, payments, subscriptions, and admin workflows.",
+    "getStarted": "Create Account",
     "seeDemo": "View Demo",
     "trustLine": "Trusted by developers worldwide",
     "stats": {
@@ -25,11 +25,11 @@
     "items": {
       "ai": {
         "title": "Auth & Security",
-        "description": "Better Auth with email/password, Google and GitHub OAuth, email verification, and role-based access control out of the box."
+        "description": "Better Auth with email/password, Google and GitHub OAuth, role-based access control, and session management out of the box."
       },
       "multiSource": {
         "title": "Payment & Subscription",
-        "description": "Creem integration for subscriptions and one-time purchases. Four plan tiers with automatic billing cycle management."
+        "description": "Creem integration for subscriptions and one-time purchases with webhook-driven lifecycle updates."
       },
       "outline": {
         "title": "Credits System",
@@ -37,7 +37,7 @@
       },
       "export": {
         "title": "Async Processing",
-        "description": "Inngest-powered background jobs that bypass serverless timeouts. Built-in task queue with status polling and progress tracking."
+        "description": "Inngest-powered background jobs for long-running tasks, queues, and scheduled jobs."
       },
       "batch": {
         "title": "Internationalization",
@@ -45,7 +45,7 @@
       },
       "multilingual": {
         "title": "Admin Dashboard",
-        "description": "Built-in admin panel for user management, support tickets, and platform statistics. Role-based access with admin-only routes."
+        "description": "Built-in admin panel for user management, support tickets, and platform statistics."
       }
     }
   },
@@ -179,7 +179,7 @@
     },
     "signIn": {
       "title": "Welcome back",
-      "subtitle": "Please enter your credentials to sign in.",
+      "subtitle": "Sign in to Trip to manage your tools and subscriptions.",
       "emailLabel": "Email address",
       "emailPlaceholder": "jane@example.com",
       "passwordLabel": "Password",
@@ -196,12 +196,12 @@
         "github": "GitHub sign-in failed. Please try again.",
         "missingFields": "Please enter email and password.",
         "invalidCredentials": "Invalid email or password.",
-        "emailNotVerified": "Please verify your email before signing in. Check your inbox for the verification link."
+        "emailNotVerified": "This account is not verified yet."
       }
     },
     "signUp": {
-      "title": "Create an account",
-      "subtitle": "Enter your details to get started.",
+      "title": "Create your Trip account",
+      "subtitle": "Register and go straight into the dashboard.",
       "nameLabel": "Full name",
       "namePlaceholder": "Jane Doe",
       "emailLabel": "Email address",
@@ -224,9 +224,9 @@
         "emailInUse": "Sign-up failed. This email may already be in use."
       },
       "verifyEmail": {
-        "title": "Check your email",
-        "description": "We've sent a verification link to {email}. Please click the link to verify your account.",
-        "hint": "Didn't receive the email? Check your spam folder.",
+        "title": "Account created",
+        "description": "{email} has been registered successfully.",
+        "hint": "Redirecting to the dashboard.",
         "resend": "Resend verification email",
         "resendCooldown": "Resend in {seconds}s",
         "backToSignIn": "Back to sign in"
@@ -241,9 +241,9 @@
   },
   "CTA": {
     "badge": "Start free, no credit card required",
-    "title": "Ready to Launch Your SaaS?",
-    "subtitle": "Get started with a production-ready template and ship your product in days, not months. Everything you need is already built in.",
-    "getStarted": "Get Started Free",
+    "title": "Ready to launch your tool website?",
+    "subtitle": "Trip already includes authentication, subscriptions, user management, and an admin backend so you can keep building from here.",
+    "getStarted": "Create Account",
     "seeDemo": "Live Demo"
   },
   "DashboardPages": {
