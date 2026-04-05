@@ -18,6 +18,7 @@ import {
   upsertSalesOrderFromCheckoutCompleted,
   upsertSalesOrderFromSubscriptionEvent,
 } from "@/features/distribution/orders";
+import { settleCommissionForSalesOrder } from "@/features/distribution/commission";
 import { getPlanFromPriceId } from "@/config/subscription-plan";
 import { SUBSCRIPTION_MONTHLY_CREDITS } from "@/config/payment";
 import { logError, logEvent } from "@/lib/logger";
@@ -134,11 +135,12 @@ export async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) 
     .set({ customerId })
     .where(eq(user.id, userId));
 
-  await upsertSalesOrderFromCheckoutCompleted(userId, data);
+  const salesOrderId = await upsertSalesOrderFromCheckoutCompleted(userId, data);
 
   // 积分购买走一次性支付分支，不创建订阅
   if (data.metadata?.type === "credit_purchase") {
     await handleCreditPurchaseCompleted(userId, data);
+    await settleCommissionForSalesOrder(salesOrderId, "credit_purchase");
   }
 
   // 如果有订阅信息，创建订阅记录
@@ -248,12 +250,13 @@ export async function handleSubscriptionActive(sub: CreemSubscription) {
     }
 
     await updateSubscriptionStatus(sub);
-    await upsertSalesOrderFromSubscriptionEvent(
+    const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
       existingSub.userId,
       sub,
       "subscription.active"
     );
     await grantSubscriptionCredits(existingSub.userId, sub, "subscription_create");
+    await settleCommissionForSalesOrder(salesOrderId, "subscription_create");
     logEvent("payment.subscription.created", {
       userId: existingSub.userId,
       subscriptionId: sub.id,
@@ -264,8 +267,13 @@ export async function handleSubscriptionActive(sub: CreemSubscription) {
   }
 
   await createOrUpdateSubscription(userId, sub);
-  await upsertSalesOrderFromSubscriptionEvent(userId, sub, "subscription.active");
+  const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
+    userId,
+    sub,
+    "subscription.active"
+  );
   await grantSubscriptionCredits(userId, sub, "subscription_create");
+  await settleCommissionForSalesOrder(salesOrderId, "subscription_create");
   logEvent("payment.subscription.created", {
     userId,
     subscriptionId: sub.id,
@@ -294,12 +302,13 @@ export async function handleSubscriptionRenewed(sub: CreemSubscription) {
     return;
   }
 
-  await upsertSalesOrderFromSubscriptionEvent(
+  const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
     existingSub.userId,
     sub,
     "subscription.renewed"
   );
   await grantSubscriptionCredits(existingSub.userId, sub, "subscription_cycle");
+  await settleCommissionForSalesOrder(salesOrderId, "subscription_cycle");
 }
 
 /**

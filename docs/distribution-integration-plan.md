@@ -1605,6 +1605,28 @@ SQL 里真正承担分销业务的核心表如下。
 
 - 每条佣金都能追溯到订单项、规则快照、代理层级
 
+当前进度更新：
+
+- 本阶段已经开始落地，不再停留在表设计
+- 已完成内容：
+  1. 已新增 `commission_rule`、`commission_event`、`commission_record`、`commission_balance`、`commission_ledger`
+  2. 当前已经支持首版一级代理分佣，入口挂在统一订单主链上
+  3. 有归因的积分包订单在支付成功后会生成冻结佣金、余额快照和账本流水
+  4. 同一订单项 + 同一触发类型补了幂等，重复 webhook 不会重复记佣金
+  5. 佣金规则当前支持最小字段：订单类型、商品类型、百分比/固定金额、冻结天数、首购/续费/积分包开关
+- 当前还未完成内容：
+  1. 二级、三级代理分佣
+  2. 订阅首购和续费的差异化规则覆盖
+  3. 规则后台管理
+  4. 退款、拒付驱动的佣金冲正
+  5. 佣金解冻任务
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+3. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
+
 ### 阶段 4：冻结、解冻、退款冲正
 
 目标：
@@ -1781,5 +1803,6 @@ src/features/distribution/
 4. 当前已经补上统一订单服务层，`subscription.active` 和 `subscription.renewed` 也会进入统一订单域
 5. 当前已经补上 `PaymentOrderPayload` 和订单显式归因字段，后续分润不需要再从 metadata 反查
 6. 当前已经补上 `sales_after_sales_event` 和订单退款回写，退货和拒付也有统一入口
-7. 当前还没有进入佣金账本和提现阶段
-8. 下一步应继续推进佣金事件与账本，而不是直接跳到提现
+7. 当前已经补上佣金事件、佣金记录、冻结余额和佣金账本，积分包分佣可以闭环
+8. 当前还没有进入佣金解冻、佣金冲正和提现阶段
+9. 下一步应继续推进佣金冲正和解冻，而不是直接跳到提现

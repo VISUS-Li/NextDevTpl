@@ -36,6 +36,13 @@
       "when": 1775403185483,
       "tag": "0004_ordinary_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775403449105,
+      "tag": "0005_complex_hellion",
+      "breakpoints": true
     }
   ]
 }

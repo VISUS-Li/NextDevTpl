@@ -232,6 +232,65 @@ export const salesAfterSalesEventTypeEnum = pgEnum(
 );
 
 /**
+ * 佣金规则状态枚举
+ */
+export const commissionRuleStatusEnum = pgEnum("commission_rule_status", [
+  "active",
+  "inactive",
+]);
+
+/**
+ * 佣金计算方式枚举
+ */
+export const commissionCalculationModeEnum = pgEnum(
+  "commission_calculation_mode",
+  ["rate", "fixed"]
+);
+
+/**
+ * 佣金事件状态枚举
+ */
+export const commissionEventStatusEnum = pgEnum("commission_event_status", [
+  "pending",
+  "completed",
+  "skipped",
+]);
+
+/**
+ * 佣金记录状态枚举
+ */
+export const commissionRecordStatusEnum = pgEnum("commission_record_status", [
+  "frozen",
+  "available",
+  "reversed",
+  "withdrawn",
+]);
+
+/**
+ * 佣金账本类型枚举
+ */
+export const commissionLedgerEntryTypeEnum = pgEnum(
+  "commission_ledger_entry_type",
+  [
+    "commission_frozen",
+    "commission_available",
+    "commission_reverse",
+    "withdraw_freeze",
+    "withdraw_release",
+    "withdraw_paid",
+    "manual_adjustment",
+  ]
+);
+
+/**
+ * 佣金账本方向枚举
+ */
+export const commissionLedgerDirectionEnum = pgEnum(
+  "commission_ledger_direction",
+  ["credit", "debit"]
+);
+
+/**
  * 订单项商品类型枚举
  */
 export const salesOrderItemProductTypeEnum = pgEnum(
@@ -332,6 +391,146 @@ export const salesAfterSalesEvent = pgTable("sales_after_sales_event", {
   metadata: json("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 佣金规则表 (Commission Rule)
+// ============================================
+/**
+ * 佣金规则表 - 定义当前支持的分佣规则
+ */
+export const commissionRule = pgTable("commission_rule", {
+  id: text("id").primaryKey(),
+  status: commissionRuleStatusEnum("status").notNull().default("active"),
+  orderType: salesOrderTypeEnum("order_type"),
+  productType: salesOrderItemProductTypeEnum("product_type"),
+  commissionLevel: integer("commission_level").notNull().default(1),
+  calculationMode: commissionCalculationModeEnum("calculation_mode")
+    .notNull()
+    .default("rate"),
+  rate: integer("rate"),
+  fixedAmount: integer("fixed_amount"),
+  freezeDays: integer("freeze_days").notNull().default(7),
+  appliesToFirstPurchase: boolean("applies_to_first_purchase")
+    .notNull()
+    .default(true),
+  appliesToRenewal: boolean("applies_to_renewal").notNull().default(false),
+  appliesToCreditPackage: boolean("applies_to_credit_package")
+    .notNull()
+    .default(false),
+  priority: integer("priority").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 佣金事件表 (Commission Event)
+// ============================================
+/**
+ * 佣金事件表 - 记录某个订单项触发了一次分佣执行
+ */
+export const commissionEvent = pgTable("commission_event", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id")
+    .notNull()
+    .references(() => salesOrder.id, { onDelete: "cascade" }),
+  orderItemId: text("order_item_id")
+    .notNull()
+    .references(() => salesOrderItem.id, { onDelete: "cascade" }),
+  triggerUserId: text("trigger_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  triggerType: text("trigger_type").notNull(),
+  status: commissionEventStatusEnum("status").notNull().default("pending"),
+  currency: text("currency").notNull(),
+  commissionBaseAmount: integer("commission_base_amount").notNull().default(0),
+  settlementBasis: text("settlement_basis"),
+  ruleSnapshot: json("rule_snapshot").$type<Record<string, unknown>>(),
+  attributionSnapshot: json("attribution_snapshot").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 佣金记录表 (Commission Record)
+// ============================================
+/**
+ * 佣金记录表 - 记录代理应得的单条佣金
+ */
+export const commissionRecord = pgTable("commission_record", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => commissionEvent.id, { onDelete: "cascade" }),
+  beneficiaryUserId: text("beneficiary_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  sourceAgentUserId: text("source_agent_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  commissionLevel: integer("commission_level").notNull().default(1),
+  ruleId: text("rule_id").references(() => commissionRule.id, {
+    onDelete: "set null",
+  }),
+  ruleSnapshot: json("rule_snapshot").$type<Record<string, unknown>>(),
+  amount: integer("amount").notNull().default(0),
+  currency: text("currency").notNull(),
+  status: commissionRecordStatusEnum("status").notNull().default("frozen"),
+  availableAt: timestamp("available_at"),
+  reversedAt: timestamp("reversed_at"),
+  reversalReason: text("reversal_reason"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 佣金余额表 (Commission Balance)
+// ============================================
+/**
+ * 佣金余额表 - 记录代理佣金余额快照
+ */
+export const commissionBalance = pgTable("commission_balance", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  currency: text("currency").notNull(),
+  totalEarned: integer("total_earned").notNull().default(0),
+  availableAmount: integer("available_amount").notNull().default(0),
+  frozenAmount: integer("frozen_amount").notNull().default(0),
+  withdrawnAmount: integer("withdrawn_amount").notNull().default(0),
+  reversedAmount: integer("reversed_amount").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 佣金账本表 (Commission Ledger)
+// ============================================
+/**
+ * 佣金账本表 - 记录佣金余额如何变化
+ */
+export const commissionLedger = pgTable("commission_ledger", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  recordId: text("record_id").references(() => commissionRecord.id, {
+    onDelete: "set null",
+  }),
+  entryType: commissionLedgerEntryTypeEnum("entry_type").notNull(),
+  direction: commissionLedgerDirectionEnum("direction").notNull(),
+  amount: integer("amount").notNull().default(0),
+  beforeBalance: integer("before_balance").notNull().default(0),
+  afterBalance: integer("after_balance").notNull().default(0),
+  referenceType: text("reference_type"),
+  referenceId: text("reference_id"),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // ============================================
@@ -456,6 +655,21 @@ export type NewSalesOrderItem = typeof salesOrderItem.$inferInsert;
 export type SalesAfterSalesEvent = typeof salesAfterSalesEvent.$inferSelect;
 export type NewSalesAfterSalesEvent = typeof salesAfterSalesEvent.$inferInsert;
 
+export type CommissionRule = typeof commissionRule.$inferSelect;
+export type NewCommissionRule = typeof commissionRule.$inferInsert;
+
+export type CommissionEvent = typeof commissionEvent.$inferSelect;
+export type NewCommissionEvent = typeof commissionEvent.$inferInsert;
+
+export type CommissionRecord = typeof commissionRecord.$inferSelect;
+export type NewCommissionRecord = typeof commissionRecord.$inferInsert;
+
+export type CommissionBalance = typeof commissionBalance.$inferSelect;
+export type NewCommissionBalance = typeof commissionBalance.$inferInsert;
+
+export type CommissionLedger = typeof commissionLedger.$inferSelect;
+export type NewCommissionLedger = typeof commissionLedger.$inferInsert;
+
 export type SalesOrderProvider =
   (typeof salesOrderProviderEnum.enumValues)[number];
 
@@ -471,6 +685,24 @@ export type SalesOrderItemProductType =
 
 export type SalesAfterSalesEventType =
   (typeof salesAfterSalesEventTypeEnum.enumValues)[number];
+
+export type CommissionRuleStatus =
+  (typeof commissionRuleStatusEnum.enumValues)[number];
+
+export type CommissionCalculationMode =
+  (typeof commissionCalculationModeEnum.enumValues)[number];
+
+export type CommissionEventStatus =
+  (typeof commissionEventStatusEnum.enumValues)[number];
+
+export type CommissionRecordStatus =
+  (typeof commissionRecordStatusEnum.enumValues)[number];
+
+export type CommissionLedgerEntryType =
+  (typeof commissionLedgerEntryTypeEnum.enumValues)[number];
+
+export type CommissionLedgerDirection =
+  (typeof commissionLedgerDirectionEnum.enumValues)[number];
 
 export type DistributionProfile = typeof distributionProfile.$inferSelect;
 export type NewDistributionProfile = typeof distributionProfile.$inferInsert;

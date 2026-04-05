@@ -90,7 +90,69 @@ export async function cleanupUserData(userId: string) {
 		.from(schema.salesOrder)
 		.where(eq(schema.salesOrder.userId, userId));
 
+	const commissionEventIds = await testDb
+		.select({ id: schema.commissionEvent.id })
+		.from(schema.commissionEvent)
+		.where(eq(schema.commissionEvent.triggerUserId, userId));
+
+	await testDb
+		.delete(schema.commissionLedger)
+		.where(eq(schema.commissionLedger.userId, userId));
+
+	await testDb
+		.delete(schema.commissionBalance)
+		.where(eq(schema.commissionBalance.userId, userId));
+
+	await testDb
+		.delete(schema.commissionRecord)
+		.where(eq(schema.commissionRecord.beneficiaryUserId, userId));
+
+	if (commissionEventIds.length > 0) {
+		await testDb
+			.delete(schema.commissionRecord)
+			.where(
+				inArray(
+					schema.commissionRecord.eventId,
+					commissionEventIds.map((event) => event.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.commissionEvent)
+		.where(eq(schema.commissionEvent.triggerUserId, userId));
+
 	if (orderIds.length > 0) {
+		const orderCommissionEvents = await testDb
+			.select({ id: schema.commissionEvent.id })
+			.from(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		if (orderCommissionEvents.length > 0) {
+			await testDb
+				.delete(schema.commissionRecord)
+				.where(
+					inArray(
+						schema.commissionRecord.eventId,
+						orderCommissionEvents.map((event) => event.id)
+					)
+				);
+		}
+
+		await testDb
+			.delete(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
 		await testDb
 			.delete(schema.salesAfterSalesEvent)
 			.where(
@@ -170,7 +232,69 @@ export async function cleanupTestUsers(userIds: string[]) {
 		.from(schema.salesOrder)
 		.where(inArray(schema.salesOrder.userId, userIds));
 
+	const commissionEventIds = await testDb
+		.select({ id: schema.commissionEvent.id })
+		.from(schema.commissionEvent)
+		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+
+	await testDb
+		.delete(schema.commissionLedger)
+		.where(inArray(schema.commissionLedger.userId, userIds));
+
+	await testDb
+		.delete(schema.commissionBalance)
+		.where(inArray(schema.commissionBalance.userId, userIds));
+
+	await testDb
+		.delete(schema.commissionRecord)
+		.where(inArray(schema.commissionRecord.beneficiaryUserId, userIds));
+
+	if (commissionEventIds.length > 0) {
+		await testDb
+			.delete(schema.commissionRecord)
+			.where(
+				inArray(
+					schema.commissionRecord.eventId,
+					commissionEventIds.map((event) => event.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.commissionEvent)
+		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+
 	if (orderIds.length > 0) {
+		const orderCommissionEvents = await testDb
+			.select({ id: schema.commissionEvent.id })
+			.from(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		if (orderCommissionEvents.length > 0) {
+			await testDb
+				.delete(schema.commissionRecord)
+				.where(
+					inArray(
+						schema.commissionRecord.eventId,
+						orderCommissionEvents.map((event) => event.id)
+					)
+				);
+		}
+
+		await testDb
+			.delete(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
 		await testDb
 			.delete(schema.salesAfterSalesEvent)
 			.where(

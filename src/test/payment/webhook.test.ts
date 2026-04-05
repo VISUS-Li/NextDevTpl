@@ -23,6 +23,11 @@ import {
 } from "@/app/api/webhooks/creem/route";
 import { PRICE_IDS } from "@/config/payment";
 import {
+	commissionBalance,
+	commissionEvent,
+	commissionLedger,
+	commissionRecord,
+	commissionRule,
 	distributionAttribution,
 	salesAfterSalesEvent,
 	salesOrder,
@@ -77,10 +82,16 @@ async function getUserSalesOrders(userId: string) {
 
 // 收集测试中创建的用户 ID，用于清理
 const createdUserIds: string[] = [];
+const createdCommissionRuleIds: string[] = [];
 const proMonthlyPriceId = PRICE_IDS.PRO_MONTHLY;
 
 // 测试后清理
 afterAll(async () => {
+	if (createdCommissionRuleIds.length > 0) {
+		await testDb
+			.delete(commissionRule)
+			.where(inArray(commissionRule.id, createdCommissionRuleIds));
+	}
 	await cleanupTestUsers(createdUserIds);
 });
 
@@ -1075,6 +1086,167 @@ describe("Creem Webhook: after sales", () => {
 		expect(updatedOrder!.order.status).toBe("closed");
 		expect(updatedOrder!.items[0]!.refundedAmount).toBe(160);
 		expect(afterSalesEvents).toHaveLength(1);
+	});
+});
+
+describe("Creem Webhook: commission", () => {
+	it("有归因的积分订单应该生成冻结佣金", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		await createTestDistributionProfile({
+			userId: agentUser.id,
+			displayName: "Agent",
+		});
+		await createTestReferralCode({
+			agentUserId: agentUser.id,
+			code: "agent-commission",
+			campaign: "launch",
+			landingPath: "/pricing",
+		});
+
+		const ruleId = `rule_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 7,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		const attributionId = `attr_commission_${Date.now()}`;
+		await testDb.insert(distributionAttribution).values({
+			id: attributionId,
+			visitorKey: "visitor_commission",
+			userId: buyerUser.id,
+			agentUserId: agentUser.id,
+			referralCode: "agent-commission",
+			campaign: "launch",
+			landingPath: "/pricing",
+			source: "referral_link",
+			boundReason: "checkout",
+			boundAt: new Date(),
+			expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+			snapshot: {
+				referralCode: "agent-commission",
+				agentUserId: agentUser.id,
+			},
+		});
+
+		await handleCheckoutCompleted({
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 200,
+				paymentId: `cs_commission_${Date.now()}`,
+				packageId: "standard",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "200",
+				packageId: "standard",
+				referralCode: "agent-commission",
+				attributedAgentUserId: agentUser.id,
+				attributionId,
+				campaign: "launch",
+				landingPath: "/pricing",
+				visitorKey: "visitor_commission",
+			},
+		});
+
+		const commissionEvents = await testDb
+			.select()
+			.from(commissionEvent)
+			.where(eq(commissionEvent.triggerUserId, buyerUser.id));
+		const commissionRecords = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id));
+		const commissionBalances = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id));
+		const commissionLedgers = await testDb
+			.select()
+			.from(commissionLedger)
+			.where(eq(commissionLedger.userId, agentUser.id));
+
+		expect(commissionEvents).toHaveLength(1);
+		expect(commissionEvents[0]!.status).toBe("completed");
+		expect(commissionRecords).toHaveLength(1);
+		expect(commissionRecords[0]!.amount).toBe(20);
+		expect(commissionRecords[0]!.status).toBe("frozen");
+		expect(commissionBalances).toHaveLength(1);
+		expect(commissionBalances[0]!.frozenAmount).toBe(20);
+		expect(commissionBalances[0]!.totalEarned).toBe(20);
+		expect(commissionLedgers).toHaveLength(1);
+		expect(commissionLedgers[0]!.entryType).toBe("commission_frozen");
+	});
+
+	it("重复的积分订单 webhook 不应该重复记佣金", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		const ruleId = `rule_dup_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 7,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		const event = {
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 150,
+				paymentId: `cs_commission_dup_${Date.now()}`,
+				packageId: "lite",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "150",
+				packageId: "lite",
+				referralCode: "dup-commission",
+				attributedAgentUserId: agentUser.id,
+			},
+		};
+
+		await handleCheckoutCompleted(event);
+		await handleCheckoutCompleted(event);
+
+		const commissionEvents = await testDb
+			.select()
+			.from(commissionEvent)
+			.where(eq(commissionEvent.triggerUserId, buyerUser.id));
+		const commissionRecords = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id));
+		const [commissionBalanceRow] = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id))
+			.limit(1);
+
+		expect(commissionEvents).toHaveLength(1);
+		expect(commissionRecords).toHaveLength(1);
+		expect(commissionBalanceRow!.frozenAmount).toBe(15);
 	});
 });
 
