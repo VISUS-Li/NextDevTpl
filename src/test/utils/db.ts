@@ -6,7 +6,7 @@
  */
 
 import { neonConfig, Pool as NeonPool } from "@neondatabase/serverless";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { drizzle as drizzleNeonWs } from "drizzle-orm/neon-serverless";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -106,6 +106,23 @@ export async function cleanupUserData(userId: string) {
 		.where(eq(schema.salesOrder.userId, userId));
 
 	await testDb
+		.delete(schema.distributionAttribution)
+		.where(
+			or(
+				eq(schema.distributionAttribution.userId, userId),
+				eq(schema.distributionAttribution.agentUserId, userId)
+			)
+		);
+
+	await testDb
+		.delete(schema.distributionReferralCode)
+		.where(eq(schema.distributionReferralCode.agentUserId, userId));
+
+	await testDb
+		.delete(schema.distributionProfile)
+		.where(eq(schema.distributionProfile.userId, userId));
+
+	await testDb
 		.delete(schema.creditsTransaction)
 		.where(eq(schema.creditsTransaction.userId, userId));
 
@@ -158,6 +175,23 @@ export async function cleanupTestUsers(userIds: string[]) {
 	await testDb
 		.delete(schema.salesOrder)
 		.where(inArray(schema.salesOrder.userId, userIds));
+
+	await testDb
+		.delete(schema.distributionAttribution)
+		.where(
+			or(
+				inArray(schema.distributionAttribution.userId, userIds),
+				inArray(schema.distributionAttribution.agentUserId, userIds)
+			)
+		);
+
+	await testDb
+		.delete(schema.distributionReferralCode)
+		.where(inArray(schema.distributionReferralCode.agentUserId, userIds));
+
+	await testDb
+		.delete(schema.distributionProfile)
+		.where(inArray(schema.distributionProfile.userId, userIds));
 
 	// 1. 清理工单消息（依赖 ticket 和 user）
 	await testDb

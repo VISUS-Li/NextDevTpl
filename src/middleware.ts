@@ -1,6 +1,7 @@
 import createIntlMiddleware from "next-intl/middleware";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { applyAttributionCookies } from "@/features/distribution/attribution-cookie";
 import { routing } from "@/i18n/routing";
 import {
 	checkRateLimit,
@@ -89,6 +90,12 @@ export async function middleware(request: NextRequest) {
 		return NextResponse.next();
 	}
 
+	/**
+	 * 统一为响应补充分销归因 Cookie
+	 */
+	const withAttributionCookies = (response: NextResponse) =>
+		applyAttributionCookies(request, response);
+
 	// ============================================
 	// 非 API 路由：国际化 + 认证保护
 	// ============================================
@@ -129,16 +136,18 @@ export async function middleware(request: NextRequest) {
 		const signInUrl = new URL(`/${locale}/sign-in`, request.url);
 		// 保存原始 URL，登录后可以重定向回来
 		signInUrl.searchParams.set("callbackUrl", pathname);
-		return NextResponse.redirect(signInUrl);
+		return withAttributionCookies(NextResponse.redirect(signInUrl));
 	}
 
 	// 如果已登录用户访问认证页面，重定向到 Dashboard
 	if (isAuthRoute && sessionToken) {
-		return NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url));
+		return withAttributionCookies(
+			NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url))
+		);
 	}
 
 	// 执行国际化中间件
-	return intlMiddleware(request);
+	return withAttributionCookies(intlMiddleware(request));
 }
 
 /**

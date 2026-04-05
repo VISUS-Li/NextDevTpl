@@ -292,6 +292,97 @@ export const salesOrderItem = pgTable("sales_order_item", {
 });
 
 // ============================================
+// 分销归因枚举
+// ============================================
+
+/**
+ * 代理资料状态枚举
+ */
+export const distributionProfileStatusEnum = pgEnum(
+  "distribution_profile_status",
+  ["active", "inactive"]
+);
+
+/**
+ * 推广码状态枚举
+ */
+export const distributionReferralCodeStatusEnum = pgEnum(
+  "distribution_referral_code_status",
+  ["active", "inactive"]
+);
+
+// ============================================
+// 分销代理资料表 (Distribution Profile)
+// ============================================
+/**
+ * 分销代理资料表 - 存储代理关系与展示信息
+ */
+export const distributionProfile = pgTable("distribution_profile", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  status: distributionProfileStatusEnum("status").notNull().default("active"),
+  agentLevel: text("agent_level"),
+  displayName: text("display_name"),
+  inviterUserId: text("inviter_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  path: text("path"),
+  depth: integer("depth").notNull().default(0),
+  boundAt: timestamp("bound_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 推广码表 (Distribution Referral Code)
+// ============================================
+/**
+ * 推广码表 - 存储代理的推广码与入口配置
+ */
+export const distributionReferralCode = pgTable("distribution_referral_code", {
+  id: text("id").primaryKey(),
+  agentUserId: text("agent_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  code: text("code").notNull().unique(),
+  campaign: text("campaign"),
+  landingPath: text("landing_path"),
+  status: distributionReferralCodeStatusEnum("status")
+    .notNull()
+    .default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 归因快照表 (Distribution Attribution)
+// ============================================
+/**
+ * 归因快照表 - 记录用户在 Checkout 前绑定到哪个代理
+ */
+export const distributionAttribution = pgTable("distribution_attribution", {
+  id: text("id").primaryKey(),
+  visitorKey: text("visitor_key"),
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  agentUserId: text("agent_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  referralCode: text("referral_code").notNull(),
+  campaign: text("campaign"),
+  landingPath: text("landing_path"),
+  source: text("source"),
+  boundReason: text("bound_reason"),
+  boundAt: timestamp("bound_at").notNull(),
+  expiresAt: timestamp("expires_at"),
+  snapshot: json("snapshot").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // 类型导出
 // ============================================
 /**
@@ -331,6 +422,25 @@ export type SalesAfterSalesStatus =
 
 export type SalesOrderItemProductType =
   (typeof salesOrderItemProductTypeEnum.enumValues)[number];
+
+export type DistributionProfile = typeof distributionProfile.$inferSelect;
+export type NewDistributionProfile = typeof distributionProfile.$inferInsert;
+
+export type DistributionReferralCode =
+  typeof distributionReferralCode.$inferSelect;
+export type NewDistributionReferralCode =
+  typeof distributionReferralCode.$inferInsert;
+
+export type DistributionAttribution =
+  typeof distributionAttribution.$inferSelect;
+export type NewDistributionAttribution =
+  typeof distributionAttribution.$inferInsert;
+
+export type DistributionProfileStatus =
+  (typeof distributionProfileStatusEnum.enumValues)[number];
+
+export type DistributionReferralCodeStatus =
+  (typeof distributionReferralCodeStatusEnum.enumValues)[number];
 
 // ============================================
 // 积分系统枚举

@@ -9,6 +9,7 @@ import { subscription } from "@/db/schema";
 import { protectedAction } from "@/lib/safe-action";
 import { logEvent } from "@/lib/logger";
 import { PaymentType } from "@/features/payment/types";
+import { buildCheckoutAttributionMetadata } from "@/features/distribution/attribution";
 
 import { creem } from "./creem";
 
@@ -46,6 +47,8 @@ export const createCheckoutSession = protectedAction
     const { plan } = findPlanByPriceId(priceId);
 
     const baseUrl = getBaseUrl();
+    const attributionMetadata = await buildCheckoutAttributionMetadata(userId);
+    const clientOrderKey = `checkout_${userId}_${Date.now()}`;
 
     logEvent("payment.checkout.started", {
       userId,
@@ -58,10 +61,14 @@ export const createCheckoutSession = protectedAction
     const checkout = await creem.createCheckout({
       product_id: priceId,
       success_url: successUrl ?? `${baseUrl}${paymentConfig.redirectAfterCheckout}?success=true`,
-      request_id: `${userId}_${Date.now()}`,
+      request_id: clientOrderKey,
       metadata: {
         userId,
         planId: plan?.id ?? "unknown",
+        checkoutType: "subscription",
+        productType: "subscription",
+        clientOrderKey,
+        ...attributionMetadata,
       },
     });
 

@@ -1496,6 +1496,26 @@ SQL 里真正承担分销业务的核心表如下。
 
 - Checkout 前能稳定拿到代理归因
 
+当前进度更新：
+
+- 本阶段已经开始落地
+- 已完成内容：
+  1. 已新增 `distribution_profile`、`distribution_referral_code`、`distribution_attribution`
+  2. middleware 已开始捕获 URL 中的 `ref`、`campaign` 并写入 Cookie
+  3. Checkout 创建前已经开始读取归因上下文，并把归因字段写入支付 metadata
+  4. 已补充归因测试，覆盖 cookie 编解码、推广参数提取、归因绑定与复用
+- 当前还未完成内容：
+  1. 邀请码输入绑定页面
+  2. 管理端推广码生成和维护
+  3. 归因改绑审计
+  4. referral 与统一订单的显式字段关联
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/distribution/attribution.test.ts` 通过
+3. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+
 ### 阶段 2：统一订单中心
 
 目标：

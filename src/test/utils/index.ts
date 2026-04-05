@@ -26,6 +26,11 @@ export {
 	createTestUser,
 	createTestUsers,
 	type CreateTestUserOptions,
+	// 分销
+	createTestDistributionProfile,
+	createTestReferralCode,
+	type CreateTestDistributionProfileOptions,
+	type CreateTestReferralCodeOptions,
 	// 积分
 	createTestCreditsBatch,
 	createTestCreditsBalance,

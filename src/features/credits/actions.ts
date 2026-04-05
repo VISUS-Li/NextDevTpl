@@ -12,6 +12,7 @@ import { getBaseUrl } from "@/config/payment";
 import { actionClient, protectedAction } from "@/lib/safe-action";
 import { creem } from "@/features/payment/creem";
 import { logEvent } from "@/lib/logger";
+import { buildCheckoutAttributionMetadata } from "@/features/distribution/attribution";
 
 import {
   CREDIT_PACKAGES,
@@ -368,6 +369,8 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction("createC
     }
 
     const baseUrl = getBaseUrl();
+    const attributionMetadata = await buildCheckoutAttributionMetadata(userId);
+    const clientOrderKey = `credit_purchase_${userId}_${Date.now()}`;
 
     logEvent("payment.checkout.started", {
       userId,
@@ -385,12 +388,16 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction("createC
       success_url:
         successUrl ??
         `${baseUrl}/dashboard/settings?tab=usage&success=true&credits=${pkg.credits}`,
-      request_id: `credit_purchase_${userId}_${Date.now()}`,
+      request_id: clientOrderKey,
       metadata: {
         userId,
         type: "credit_purchase", // 关键: Webhook 用此判断类型
         credits: String(pkg.credits),
         packageId: pkg.id,
+        checkoutType: "credit_purchase",
+        productType: "credit_package",
+        clientOrderKey,
+        ...attributionMetadata,
       },
     });
 
