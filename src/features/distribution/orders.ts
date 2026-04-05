@@ -1,10 +1,42 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { salesOrder, salesOrderItem } from "@/db/schema";
+import {
+  distributionAttribution,
+  salesOrder,
+  salesOrderItem,
+} from "@/db/schema";
 import type {
   CreemCheckoutCompletedData,
   CreemSubscription,
 } from "@/features/payment/creem";
+
+/**
+ * 统一订单中的归因快照
+ */
+interface PaymentOrderAttribution {
+  referralCode: string | null;
+  attributedAgentUserId: string | null;
+  attributionId: string | null;
+  attributionSnapshot: Record<string, unknown> | null;
+}
+
+/**
+ * 统一订单标准载荷
+ */
+interface PaymentOrderPayload {
+  order: typeof salesOrder.$inferInsert;
+  item: typeof salesOrderItem.$inferInsert;
+}
+
+/**
+ * 生成订单更新时可复用的字段
+ */
+function toSalesOrderUpdate(
+  payload: PaymentOrderPayload["order"]
+): Omit<PaymentOrderPayload["order"], "id"> {
+  const { id: _id, ...updateData } = payload;
+  return updateData;
+}
 
 /**
  * 从 Checkout 事件中安全提取产品 ID
@@ -44,6 +76,76 @@ function normalizeOrderAmount(value: number | undefined): number {
 }
 
 /**
+ * 从 metadata 或归因表中解析订单归因
+ */
+async function getPaymentOrderAttribution(
+  metadata: Record<string, string> | undefined
+): Promise<PaymentOrderAttribution> {
+  const referralCode = metadata?.referralCode ?? null;
+  const attributedAgentUserId = metadata?.attributedAgentUserId ?? null;
+  const attributionId = metadata?.attributionId ?? null;
+
+  if (!attributionId) {
+    return {
+      referralCode,
+      attributedAgentUserId,
+      attributionId,
+      attributionSnapshot: referralCode
+        ? {
+            referralCode,
+            attributedAgentUserId,
+            campaign: metadata?.campaign || null,
+            landingPath: metadata?.landingPath || null,
+            visitorKey: metadata?.visitorKey || null,
+          }
+        : null,
+    };
+  }
+
+  const [attribution] = await db
+    .select({
+      referralCode: distributionAttribution.referralCode,
+      agentUserId: distributionAttribution.agentUserId,
+      visitorKey: distributionAttribution.visitorKey,
+      campaign: distributionAttribution.campaign,
+      landingPath: distributionAttribution.landingPath,
+      source: distributionAttribution.source,
+      boundReason: distributionAttribution.boundReason,
+      boundAt: distributionAttribution.boundAt,
+      snapshot: distributionAttribution.snapshot,
+    })
+    .from(distributionAttribution)
+    .where(eq(distributionAttribution.id, attributionId))
+    .limit(1);
+
+  if (!attribution) {
+    return {
+      referralCode,
+      attributedAgentUserId,
+      attributionId,
+      attributionSnapshot: null,
+    };
+  }
+
+  return {
+    referralCode: attribution.referralCode,
+    attributedAgentUserId: attribution.agentUserId,
+    attributionId,
+    attributionSnapshot: {
+      referralCode: attribution.referralCode,
+      agentUserId: attribution.agentUserId,
+      visitorKey: attribution.visitorKey,
+      campaign: attribution.campaign,
+      landingPath: attribution.landingPath,
+      source: attribution.source,
+      boundReason: attribution.boundReason,
+      boundAt: attribution.boundAt?.toISOString?.() ?? null,
+      ...(attribution.snapshot ?? {}),
+    },
+  };
+}
+
+/**
  * 构造订阅生命周期事件的统一订单幂等键
  */
 function getSubscriptionEventIdempotencyKey(
@@ -58,12 +160,12 @@ function getSubscriptionEventIdempotencyKey(
 }
 
 /**
- * 从 checkout.completed 落统一订单
+ * 构造 checkout.completed 的统一订单标准载荷
  */
-export async function upsertSalesOrderFromCheckoutCompleted(
+async function buildPaymentOrderPayloadFromCheckoutCompleted(
   userId: string,
   data: CreemCheckoutCompletedData
-) {
+): Promise<PaymentOrderPayload> {
   const eventIdempotencyKey = getCheckoutEventIdempotencyKey(data);
   const orderType =
     data.metadata?.type === "credit_purchase" ? "credit_purchase" : "subscription";
@@ -76,98 +178,155 @@ export async function upsertSalesOrderFromCheckoutCompleted(
   );
   const currency = data.order?.currency ?? data.product?.currency ?? "USD";
   const paidAt = new Date();
+  const attribution = await getPaymentOrderAttribution(data.metadata);
+
+  return {
+    order: {
+      id: crypto.randomUUID(),
+      userId,
+      provider: "creem",
+      providerOrderId: data.order?.id ?? null,
+      providerCheckoutId: data.id,
+      providerSubscriptionId: data.subscription?.id ?? null,
+      providerPaymentId: paymentId,
+      orderType,
+      status: "paid",
+      afterSalesStatus: "none",
+      currency,
+      grossAmount: orderAmount,
+      paidAt,
+      eventTime: paidAt,
+      eventType: "checkout.completed",
+      eventIdempotencyKey,
+      referralCode: attribution.referralCode,
+      attributedAgentUserId: attribution.attributedAgentUserId,
+      attributionId: attribution.attributionId,
+      attributionSnapshot: attribution.attributionSnapshot,
+      metadata: {
+        checkoutStatus: data.status,
+        checkoutMode: data.mode,
+        packageId: data.metadata?.packageId,
+        planId: data.metadata?.planId,
+        referralCode: attribution.referralCode,
+        attributedAgentUserId: attribution.attributedAgentUserId,
+        attributionId: attribution.attributionId,
+        campaign: data.metadata?.campaign,
+        landingPath: data.metadata?.landingPath,
+        visitorKey: data.metadata?.visitorKey,
+        clientOrderKey: data.metadata?.clientOrderKey,
+      },
+    },
+    item: {
+      id: crypto.randomUUID(),
+      orderId: "",
+      productType,
+      productId,
+      priceId: productId || null,
+      planId: data.metadata?.planId ?? null,
+      quantity: 1,
+      grossAmount: orderAmount,
+      netAmount: orderAmount,
+      commissionBaseAmount: orderAmount,
+      refundedAmount: 0,
+      refundableAmount: orderAmount,
+      metadata: {
+        packageId: data.metadata?.packageId,
+        credits: data.metadata?.credits,
+        subscriptionId: data.subscription?.id,
+        referralCode: attribution.referralCode,
+        clientOrderKey: data.metadata?.clientOrderKey,
+      },
+    },
+  };
+}
+
+/**
+ * 构造订阅生命周期事件的统一订单标准载荷
+ */
+function buildPaymentOrderPayloadFromSubscriptionEvent(
+  userId: string,
+  sub: CreemSubscription,
+  eventType: "subscription.active" | "subscription.renewed" | "subscription.paid"
+): PaymentOrderPayload {
+  const productId = getSubscriptionProductId(sub);
+  const eventTime = new Date(sub.current_period_start_date);
+  const eventIdempotencyKey = getSubscriptionEventIdempotencyKey(sub, eventType);
+
+  return {
+    order: {
+      id: crypto.randomUUID(),
+      userId,
+      provider: "creem",
+      providerSubscriptionId: sub.id,
+      providerPaymentId: `${sub.id}:${sub.current_period_start_date}`,
+      orderType: "subscription",
+      status: eventType === "subscription.active" ? "confirmed" : "paid",
+      afterSalesStatus: "none",
+      currency: "USD",
+      grossAmount: 0,
+      paidAt: eventTime,
+      eventTime,
+      eventType,
+      eventIdempotencyKey,
+      metadata: {
+        subscriptionId: sub.id,
+        periodStart: sub.current_period_start_date,
+        periodEnd: sub.current_period_end_date,
+      },
+    },
+    item: {
+      id: crypto.randomUUID(),
+      orderId: "",
+      productType: "subscription",
+      productId,
+      priceId: productId || null,
+      quantity: 1,
+      grossAmount: 0,
+      netAmount: 0,
+      commissionBaseAmount: 0,
+      refundedAmount: 0,
+      refundableAmount: 0,
+      metadata: {
+        subscriptionId: sub.id,
+        periodStart: sub.current_period_start_date,
+        periodEnd: sub.current_period_end_date,
+      },
+    },
+  };
+}
+
+/**
+ * 从 checkout.completed 落统一订单
+ */
+export async function upsertSalesOrderFromCheckoutCompleted(
+  userId: string,
+  data: CreemCheckoutCompletedData
+) {
+  const payload = await buildPaymentOrderPayloadFromCheckoutCompleted(userId, data);
 
   const [existingOrder] = await db
     .select({ id: salesOrder.id })
     .from(salesOrder)
-    .where(eq(salesOrder.eventIdempotencyKey, eventIdempotencyKey))
+    .where(eq(salesOrder.eventIdempotencyKey, payload.order.eventIdempotencyKey))
     .limit(1);
 
   if (existingOrder) {
     await db
       .update(salesOrder)
       .set({
-        userId,
-        provider: "creem",
-        providerOrderId: data.order?.id ?? null,
-        providerCheckoutId: data.id,
-        providerSubscriptionId: data.subscription?.id ?? null,
-        providerPaymentId: paymentId,
-        orderType,
-        status: "paid",
-        afterSalesStatus: "none",
-        currency,
-        grossAmount: orderAmount,
-        paidAt,
-        eventTime: paidAt,
-        eventType: "checkout.completed",
-        metadata: {
-          checkoutStatus: data.status,
-          checkoutMode: data.mode,
-          packageId: data.metadata?.packageId,
-          planId: data.metadata?.planId,
-          referralCode: data.metadata?.referralCode,
-          attributedAgentUserId: data.metadata?.attributedAgentUserId,
-          attributionId: data.metadata?.attributionId,
-          campaign: data.metadata?.campaign,
-          landingPath: data.metadata?.landingPath,
-        },
+        ...toSalesOrderUpdate(payload.order),
         updatedAt: new Date(),
       })
       .where(eq(salesOrder.id, existingOrder.id));
     return existingOrder.id;
   }
 
-  const orderId = crypto.randomUUID();
-  await db.insert(salesOrder).values({
-    id: orderId,
-    userId,
-    provider: "creem",
-    providerOrderId: data.order?.id ?? null,
-    providerCheckoutId: data.id,
-    providerSubscriptionId: data.subscription?.id ?? null,
-    providerPaymentId: paymentId,
-    orderType,
-    status: "paid",
-    afterSalesStatus: "none",
-    currency,
-    grossAmount: orderAmount,
-    paidAt,
-    eventTime: paidAt,
-    eventType: "checkout.completed",
-    eventIdempotencyKey,
-    metadata: {
-      checkoutStatus: data.status,
-      checkoutMode: data.mode,
-      packageId: data.metadata?.packageId,
-      planId: data.metadata?.planId,
-      referralCode: data.metadata?.referralCode,
-      attributedAgentUserId: data.metadata?.attributedAgentUserId,
-      attributionId: data.metadata?.attributionId,
-      campaign: data.metadata?.campaign,
-      landingPath: data.metadata?.landingPath,
-    },
-  });
+  const orderId = payload.order.id;
+  await db.insert(salesOrder).values(payload.order);
 
   await db.insert(salesOrderItem).values({
-    id: crypto.randomUUID(),
+    ...payload.item,
     orderId,
-    productType,
-    productId,
-    priceId: productId || null,
-    planId: data.metadata?.planId ?? null,
-    quantity: 1,
-    grossAmount: orderAmount,
-    netAmount: orderAmount,
-    commissionBaseAmount: orderAmount,
-    refundedAmount: 0,
-    refundableAmount: orderAmount,
-    metadata: {
-      packageId: data.metadata?.packageId,
-      credits: data.metadata?.credits,
-      subscriptionId: data.subscription?.id,
-      referralCode: data.metadata?.referralCode,
-    },
   });
 
   return orderId;
@@ -184,9 +343,11 @@ export async function upsertSalesOrderFromSubscriptionEvent(
   sub: CreemSubscription,
   eventType: "subscription.active" | "subscription.renewed" | "subscription.paid"
 ) {
-  const productId = getSubscriptionProductId(sub);
-  const eventTime = new Date(sub.current_period_start_date);
-  const eventIdempotencyKey = getSubscriptionEventIdempotencyKey(sub, eventType);
+  const payload = buildPaymentOrderPayloadFromSubscriptionEvent(
+    userId,
+    sub,
+    eventType
+  );
 
   if (eventType === "subscription.active") {
     const [checkoutOrder] = await db
@@ -206,8 +367,8 @@ export async function upsertSalesOrderFromSubscriptionEvent(
         .update(salesOrder)
         .set({
           status: "confirmed",
-          eventType,
-          eventTime,
+          eventType: payload.order.eventType,
+          eventTime: payload.order.eventTime,
           updatedAt: new Date(),
         })
         .where(eq(salesOrder.id, checkoutOrder.id));
@@ -218,53 +379,19 @@ export async function upsertSalesOrderFromSubscriptionEvent(
   const [existingOrder] = await db
     .select({ id: salesOrder.id })
     .from(salesOrder)
-    .where(eq(salesOrder.eventIdempotencyKey, eventIdempotencyKey))
+    .where(eq(salesOrder.eventIdempotencyKey, payload.order.eventIdempotencyKey))
     .limit(1);
 
   if (existingOrder) {
     return existingOrder.id;
   }
 
-  const orderId = crypto.randomUUID();
-  await db.insert(salesOrder).values({
-    id: orderId,
-    userId,
-    provider: "creem",
-    providerSubscriptionId: sub.id,
-    providerPaymentId: `${sub.id}:${sub.current_period_start_date}`,
-    orderType: "subscription",
-    status: eventType === "subscription.active" ? "confirmed" : "paid",
-    afterSalesStatus: "none",
-    currency: "USD",
-    grossAmount: 0,
-    paidAt: eventTime,
-    eventTime,
-    eventType,
-    eventIdempotencyKey,
-    metadata: {
-      subscriptionId: sub.id,
-      periodStart: sub.current_period_start_date,
-      periodEnd: sub.current_period_end_date,
-    },
-  });
+  const orderId = payload.order.id;
+  await db.insert(salesOrder).values(payload.order);
 
   await db.insert(salesOrderItem).values({
-    id: crypto.randomUUID(),
+    ...payload.item,
     orderId,
-    productType: "subscription",
-    productId,
-    priceId: productId || null,
-    quantity: 1,
-    grossAmount: 0,
-    netAmount: 0,
-    commissionBaseAmount: 0,
-    refundedAmount: 0,
-    refundableAmount: 0,
-    metadata: {
-      subscriptionId: sub.id,
-      periodStart: sub.current_period_start_date,
-      periodEnd: sub.current_period_end_date,
-    },
   });
 
   return orderId;

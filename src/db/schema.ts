@@ -260,6 +260,15 @@ export const salesOrder = pgTable("sales_order", {
   eventTime: timestamp("event_time").notNull(),
   eventType: text("event_type").notNull(),
   eventIdempotencyKey: text("event_idempotency_key").notNull().unique(),
+  referralCode: text("referral_code"),
+  attributedAgentUserId: text("attributed_agent_user_id").references(
+    () => user.id,
+    { onDelete: "set null" }
+  ),
+  attributionId: text("attribution_id"),
+  attributionSnapshot: json("attribution_snapshot").$type<
+    Record<string, unknown>
+  >(),
   metadata: json("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

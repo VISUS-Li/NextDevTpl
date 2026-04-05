@@ -22,7 +22,12 @@ import {
 	handleSubscriptionRenewed,
 } from "@/app/api/webhooks/creem/route";
 import { PRICE_IDS } from "@/config/payment";
-import { salesOrder, salesOrderItem, subscription } from "@/db/schema";
+import {
+	distributionAttribution,
+	salesOrder,
+	salesOrderItem,
+	subscription,
+} from "@/db/schema";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
 import type {
 	CreemCheckoutCompletedData,
@@ -30,6 +35,8 @@ import type {
 } from "@/features/payment/creem";
 import {
 	cleanupTestUsers,
+	createTestDistributionProfile,
+	createTestReferralCode,
 	createTestSubscription,
 	createTestUser,
 	getUserCreditsState,
@@ -573,6 +580,75 @@ describe("Creem Webhook: checkout.completed", () => {
 			const orders = await getUserSalesOrders(testUser.id);
 			expect(orders).toHaveLength(1);
 			expect(orders[0]!.items).toHaveLength(1);
+		});
+
+		it("应该把归因字段显式写入统一订单", async () => {
+			const agentUser = await createTestUser();
+			const buyerUser = await createTestUser();
+			createdUserIds.push(agentUser.id, buyerUser.id);
+
+			await createTestDistributionProfile({
+				userId: agentUser.id,
+				displayName: "Agent",
+			});
+			await createTestReferralCode({
+				agentUserId: agentUser.id,
+				code: "agent-pro",
+				campaign: "spring",
+				landingPath: "/pricing",
+			});
+
+			const attributionId = `attr_${Date.now()}`;
+			await testDb.insert(distributionAttribution).values({
+				id: attributionId,
+				visitorKey: "visitor_test",
+				userId: buyerUser.id,
+				agentUserId: agentUser.id,
+				referralCode: "agent-pro",
+				campaign: "spring",
+				landingPath: "/pricing",
+				source: "referral_link",
+				boundReason: "checkout",
+				boundAt: new Date(),
+				expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+				snapshot: {
+					referralCode: "agent-pro",
+					agentUserId: agentUser.id,
+					campaign: "spring",
+				},
+			});
+
+			await handleCheckoutCompleted({
+				...createCreditPurchaseCheckoutCompleted({
+					userId: buyerUser.id,
+					credits: 120,
+					paymentId: `cs_attr_${Date.now()}`,
+					packageId: "starter",
+				}),
+				metadata: {
+					userId: buyerUser.id,
+					type: "credit_purchase",
+					credits: "120",
+					packageId: "starter",
+					referralCode: "agent-pro",
+					attributedAgentUserId: agentUser.id,
+					attributionId,
+					campaign: "spring",
+					landingPath: "/pricing",
+					visitorKey: "visitor_test",
+				},
+			});
+
+			const orders = await getUserSalesOrders(buyerUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.order.referralCode).toBe("agent-pro");
+			expect(orders[0]!.order.attributedAgentUserId).toBe(agentUser.id);
+			expect(orders[0]!.order.attributionId).toBe(attributionId);
+			expect(orders[0]!.order.attributionSnapshot).toMatchObject({
+				referralCode: "agent-pro",
+				agentUserId: agentUser.id,
+				campaign: "spring",
+			});
 		});
 	});
 });
