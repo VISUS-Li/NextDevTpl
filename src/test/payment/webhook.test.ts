@@ -16,10 +16,18 @@
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { handleCheckoutCompleted } from "@/app/api/webhooks/creem/route";
+import {
+	handleCheckoutCompleted,
+	handleSubscriptionActive,
+	handleSubscriptionRenewed,
+} from "@/app/api/webhooks/creem/route";
+import { PRICE_IDS } from "@/config/payment";
 import { salesOrder, salesOrderItem, subscription } from "@/db/schema";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
-import type { CreemCheckoutCompletedData } from "@/features/payment/creem";
+import type {
+	CreemCheckoutCompletedData,
+	CreemSubscription,
+} from "@/features/payment/creem";
 import {
 	cleanupTestUsers,
 	createTestSubscription,
@@ -60,6 +68,7 @@ async function getUserSalesOrders(userId: string) {
 
 // 收集测试中创建的用户 ID，用于清理
 const createdUserIds: string[] = [];
+const proMonthlyPriceId = PRICE_IDS.PRO_MONTHLY;
 
 // 测试后清理
 afterAll(async () => {
@@ -309,6 +318,40 @@ function createSubscriptionCheckoutCompleted(params: {
 	};
 }
 
+/**
+ * 构造订阅生命周期事件
+ */
+function createSubscriptionEvent(params: {
+	userId: string;
+	subscriptionId: string;
+	priceId: string;
+	periodStart: Date;
+	periodEnd: Date;
+	status?: CreemSubscription["status"];
+}): CreemSubscription {
+	const {
+		userId,
+		subscriptionId,
+		priceId,
+		periodStart,
+		periodEnd,
+		status = "active",
+	} = params;
+
+	return {
+		id: subscriptionId,
+		status,
+		product: priceId,
+		customer: `customer_${userId}`,
+		current_period_start_date: periodStart.toISOString(),
+		current_period_end_date: periodEnd.toISOString(),
+		cancel_at_period_end: false,
+		metadata: {
+			userId,
+		},
+	};
+}
+
 // ============================================
 // Checkout Session Completed 测试
 // ============================================
@@ -323,7 +366,7 @@ describe("Creem Webhook: checkout.completed", () => {
 				createSubscriptionCheckoutCompleted({
 					userId: testUser.id,
 					subscriptionId: `sub_checkout_${Date.now()}`,
-					priceId: "price_monthly_pro",
+					priceId: proMonthlyPriceId,
 				})
 			);
 
@@ -332,7 +375,7 @@ describe("Creem Webhook: checkout.completed", () => {
 			expect(orders[0]!.order.orderType).toBe("subscription");
 			expect(orders[0]!.items).toHaveLength(1);
 			expect(orders[0]!.items[0]!.productType).toBe("subscription");
-			expect(orders[0]!.items[0]!.priceId).toBe("price_monthly_pro");
+			expect(orders[0]!.items[0]!.priceId).toBe(proMonthlyPriceId);
 		});
 
 		it("应该为新用户创建订阅记录", async () => {
@@ -345,7 +388,7 @@ describe("Creem Webhook: checkout.completed", () => {
 			await handleSubscriptionCreated({
 				userId: testUser.id,
 				subscriptionId: `sub_test_${Date.now()}`,
-				priceId: "price_monthly_pro",
+				priceId: proMonthlyPriceId,
 				status: "active",
 				currentPeriodStart: now,
 				currentPeriodEnd: thirtyDaysLater,
@@ -355,7 +398,7 @@ describe("Creem Webhook: checkout.completed", () => {
 			const sub = await getUserSubscription(testUser.id);
 			expect(sub).toBeDefined();
 			expect(sub!.status).toBe("active");
-			expect(sub!.priceId).toBe("price_monthly_pro");
+			expect(sub!.priceId).toBe(proMonthlyPriceId);
 
 			const orders = await getUserSalesOrders(testUser.id);
 			expect(orders).toHaveLength(0);
@@ -539,6 +582,122 @@ describe("Creem Webhook: checkout.completed", () => {
 // ============================================
 
 describe("Creem Webhook: subscription lifecycle", () => {
+	describe("统一订单落单", () => {
+		it("subscription.active 应该确认首购 checkout 订单", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const subscriptionId = `sub_active_${Date.now()}`;
+			await handleCheckoutCompleted(
+				createSubscriptionCheckoutCompleted({
+					userId: testUser.id,
+					subscriptionId,
+					priceId: proMonthlyPriceId,
+				})
+			);
+
+			const ordersBeforeActive = await getUserSalesOrders(testUser.id);
+			expect(ordersBeforeActive).toHaveLength(1);
+			expect(ordersBeforeActive[0]!.order.status).toBe("paid");
+			expect(ordersBeforeActive[0]!.order.eventType).toBe("checkout.completed");
+
+			const periodStart = new Date();
+			const periodEnd = new Date(
+				periodStart.getTime() + 30 * 24 * 60 * 60 * 1000
+			);
+			await handleSubscriptionActive(
+				createSubscriptionEvent({
+					userId: testUser.id,
+					subscriptionId,
+					priceId: proMonthlyPriceId,
+					periodStart,
+					periodEnd,
+				})
+			);
+
+			const ordersAfterActive = await getUserSalesOrders(testUser.id);
+			expect(ordersAfterActive).toHaveLength(1);
+			expect(ordersAfterActive[0]!.order.status).toBe("confirmed");
+			expect(ordersAfterActive[0]!.order.eventType).toBe("subscription.active");
+			expect(ordersAfterActive[0]!.items).toHaveLength(1);
+		});
+
+		it("subscription.renewed 应该生成新的续费订单", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const subscriptionId = `sub_renew_${Date.now()}`;
+			const firstStart = new Date();
+			const firstEnd = new Date(
+				firstStart.getTime() + 30 * 24 * 60 * 60 * 1000
+			);
+			await createTestSubscription({
+				userId: testUser.id,
+				subscriptionId,
+				priceId: proMonthlyPriceId,
+				status: "active",
+				currentPeriodStart: firstStart,
+				currentPeriodEnd: firstEnd,
+			});
+
+			await handleSubscriptionRenewed(
+				createSubscriptionEvent({
+					userId: testUser.id,
+					subscriptionId,
+					priceId: proMonthlyPriceId,
+					periodStart: new Date(firstEnd.getTime()),
+					periodEnd: new Date(firstEnd.getTime() + 30 * 24 * 60 * 60 * 1000),
+				})
+			);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.order.status).toBe("paid");
+			expect(orders[0]!.order.eventType).toBe("subscription.renewed");
+			expect(orders[0]!.order.providerSubscriptionId).toBe(subscriptionId);
+			expect(orders[0]!.items).toHaveLength(1);
+			expect(orders[0]!.items[0]!.productType).toBe("subscription");
+		});
+
+		it("重复的 subscription.renewed 不应该重复创建续费订单", async () => {
+			const testUser = await createTestUser();
+			createdUserIds.push(testUser.id);
+
+			const subscriptionId = `sub_renew_dup_${Date.now()}`;
+			const firstStart = new Date();
+			const firstEnd = new Date(
+				firstStart.getTime() + 30 * 24 * 60 * 60 * 1000
+			);
+			const renewalStart = new Date(firstEnd.getTime());
+			const renewalEnd = new Date(
+				firstEnd.getTime() + 30 * 24 * 60 * 60 * 1000
+			);
+			await createTestSubscription({
+				userId: testUser.id,
+				subscriptionId,
+				priceId: proMonthlyPriceId,
+				status: "active",
+				currentPeriodStart: firstStart,
+				currentPeriodEnd: firstEnd,
+			});
+
+			const renewalEvent = createSubscriptionEvent({
+				userId: testUser.id,
+				subscriptionId,
+				priceId: proMonthlyPriceId,
+				periodStart: renewalStart,
+				periodEnd: renewalEnd,
+			});
+
+			await handleSubscriptionRenewed(renewalEvent);
+			await handleSubscriptionRenewed(renewalEvent);
+
+			const orders = await getUserSalesOrders(testUser.id);
+			expect(orders).toHaveLength(1);
+			expect(orders[0]!.items).toHaveLength(1);
+		});
+	});
+
 	describe("subscription.updated", () => {
 		it("应该更新订阅状态", async () => {
 			const testUser = await createTestUser();

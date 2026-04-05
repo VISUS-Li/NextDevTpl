@@ -67,7 +67,8 @@
 - 当前效果是“积分包 Checkout -> 支付成功 -> Creem webhook -> 发放积分”已经闭环
 - 同一笔积分购买已经补了幂等保护，重复 webhook 不会重复发积分
 - 当前还额外补上了 `sales_order` / `sales_order_item` 最小落单
-- 但这一步还不是完整订单中心，目前仍然缺少统一订单服务层、归因快照和售后事件流
+- 当前已经继续补上统一订单服务层，`checkout.completed`、`subscription.active`、`subscription.renewed` 已开始复用同一层落单
+- 但这一步还不是完整订单中心，目前仍然缺少标准化 `PaymentOrderPayload`、归因快照入单和售后事件流
 
 
 ## 3. guns-distribution 的完整业务逻辑
@@ -1551,20 +1552,24 @@ SQL 里真正承担分销业务的核心表如下。
   2. 同一笔积分购买补了幂等校验
   3. 已新增 `sales_order` / `sales_order_item` 最小表结构
   4. `checkout.completed` 已开始落统一订单，覆盖订阅和积分包
-  5. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
-  6. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
+  5. 已抽出统一订单服务层，Checkout 和订阅生命周期事件开始复用同一套落单逻辑
+  6. `subscription.active` 会确认首购订单，`subscription.renewed` 会生成续费订单
+  7. 续费事件已补幂等，重复 `subscription.renewed` 不会重复创建续费订单
+  8. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
+  9. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
 - 当前还未完成内容：
   1. `PaymentOrderPayload`
-  2. 统一订单服务层
-  3. 订阅续费事件统一落单
-  4. 归因快照与订单关联
-  5. 售后事件表与订单状态流
+  2. 归因快照与订单显式字段关联
+  3. 售后事件表与订单状态流
+  4. 退款、部分退款、拒付驱动的订单回写
+  5. 多支付渠道标准化适配层
 
 本轮验证结果：
 
 1. `pnpm typecheck` 通过
 2. `pnpm exec vitest run src/test/payment/webhook.test.ts` 通过
 3. `pnpm exec vitest run src/test/credits/purchase.test.ts` 通过
+4. `pnpm exec vitest run src/test/distribution/attribution.test.ts` 通过
 
 ### 阶段 3：佣金引擎
 
@@ -1766,5 +1771,6 @@ src/features/distribution/
 1. 方案文档里点名的 `credit_purchase` 断点已经补齐第一步
 2. 当前已经具备“积分包支付完成后真实发积分”和“重复 webhook 不重复发积分”
 3. 当前已经具备统一订单最小骨架，`checkout.completed` 会为订阅和积分包写入 `sales_order` / `sales_order_item`
-4. 当前还没有进入分销归因、佣金账本、售后事件阶段
-5. 下一步应继续推进统一订单服务层和归因模型，而不是直接跳到佣金计算
+4. 当前已经补上统一订单服务层，`subscription.active` 和 `subscription.renewed` 也会进入统一订单域
+5. 当前还没有进入佣金账本、提现和售后事件阶段
+6. 下一步应继续推进 `PaymentOrderPayload`、订单归因显式字段和售后事件流，而不是直接跳到提现
