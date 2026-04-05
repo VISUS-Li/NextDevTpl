@@ -1638,8 +1638,11 @@ Review 补充：
   2. 部分退款按比例扣减冻结佣金
   3. 全额退款会把佣金记录标记为 `reversed`
   4. 同时写入 `commission_ledger.commission_reverse`
-- 这一步仍然只覆盖当前已落地的冻结佣金模型
-- `available` 佣金、已提现佣金、负债场景仍然属于后续阶段
+- 当前已经继续补到可用余额阶段：
+  1. 已支持按 `available_at` 解冻佣金
+  2. 已支持 `frozen -> available` 的余额迁移和账本流水
+  3. 已支持 `available` 佣金在退款后回扣可用余额
+- 已提现佣金、负债场景仍然属于后续阶段
 
 ### 阶段 4：冻结、解冻、退款冲正
 
@@ -1666,6 +1669,27 @@ Review 补充：
 通过标准：
 
 - 账本始终平衡，余额不失真
+
+当前进度更新：
+
+- 本阶段已经开始落地
+- 已完成内容：
+  1. 已新增统一售后事件表和订单回写
+  2. 已支持冻结佣金在退款后按比例冲正
+  3. 已支持全额退款把佣金记录标记为 `reversed`
+  4. 已支持 `available_at` 到期后将佣金从冻结转为可用
+  5. 已支持 `available` 佣金在退款后扣减可用余额
+  6. 已补充冻结、解冻、冻结冲正、可用冲正测试
+- 当前还未完成内容：
+  1. 已提现佣金退款后的负债处理
+  2. 后台定时任务或 Cron 入口
+  3. 原生支付渠道售后 webhook 接入
+  4. 代理人工调账
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
 
 ### 阶段 5：提现与后台
 

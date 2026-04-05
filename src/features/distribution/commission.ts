@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import { db } from "@/db";
 import {
   commissionBalance,
@@ -388,4 +388,71 @@ export async function reverseCommissionForSalesOrderItem(params: {
   }
 
   return reversedEventIds;
+}
+
+/**
+ * 将已到解冻时间的佣金转为可用
+ */
+export async function releaseAvailableCommissionRecords(now = new Date()) {
+  const records = await db
+    .select()
+    .from(commissionRecord)
+    .where(
+      and(
+        eq(commissionRecord.status, "frozen"),
+        lte(commissionRecord.availableAt, now)
+      )
+    );
+
+  const releasedRecordIds: string[] = [];
+
+  for (const record of records) {
+    const [balance] = await db
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, record.beneficiaryUserId))
+      .limit(1);
+
+    if (!balance) {
+      continue;
+    }
+
+    const nextFrozenAmount = Math.max(0, balance.frozenAmount - record.amount);
+    const nextAvailableAmount = balance.availableAmount + record.amount;
+
+    await db
+      .update(commissionRecord)
+      .set({
+        status: "available",
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionRecord.id, record.id));
+
+    await db
+      .update(commissionBalance)
+      .set({
+        frozenAmount: nextFrozenAmount,
+        availableAmount: nextAvailableAmount,
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionBalance.id, balance.id));
+
+    await db.insert(commissionLedger).values({
+      id: crypto.randomUUID(),
+      userId: record.beneficiaryUserId,
+      recordId: record.id,
+      entryType: "commission_available",
+      direction: "credit",
+      amount: record.amount,
+      beforeBalance: balance.availableAmount,
+      afterBalance: nextAvailableAmount,
+      referenceType: "commission_record",
+      referenceId: record.id,
+      memo: "commission released to available",
+    });
+
+    releasedRecordIds.push(record.id);
+  }
+
+  return releasedRecordIds;
 }

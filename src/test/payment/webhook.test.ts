@@ -35,6 +35,9 @@ import {
 	subscription,
 } from "@/db/schema";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
+import {
+	releaseAvailableCommissionRecords,
+} from "@/features/distribution/commission";
 import { applySalesAfterSalesEvent } from "@/features/distribution/orders";
 import type {
 	CreemCheckoutCompletedData,
@@ -1382,6 +1385,142 @@ describe("Creem Webhook: commission", () => {
 		expect(balance!.frozenAmount).toBe(0);
 		expect(balance!.reversedAmount).toBe(20);
 		expect(record!.status).toBe("reversed");
+	});
+
+	it("冻结佣金到期后应该转为可用余额", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		const ruleId = `rule_release_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 0,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		await handleCheckoutCompleted({
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 200,
+				paymentId: `cs_release_${Date.now()}`,
+				packageId: "standard",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "200",
+				packageId: "standard",
+				referralCode: "release-commission",
+				attributedAgentUserId: agentUser.id,
+			},
+		});
+
+		await releaseAvailableCommissionRecords(new Date(Date.now() + 1000));
+
+		const [balance] = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id))
+			.limit(1);
+		const [record] = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id))
+			.limit(1);
+		const availableLedgers = await testDb
+			.select()
+			.from(commissionLedger)
+			.where(eq(commissionLedger.userId, agentUser.id));
+
+		expect(balance!.frozenAmount).toBe(0);
+		expect(balance!.availableAmount).toBe(20);
+		expect(record!.status).toBe("available");
+		expect(
+			availableLedgers.filter((entry) => entry.entryType === "commission_available")
+		).toHaveLength(1);
+	});
+
+	it("可用佣金在退款后应该扣减可用余额", async () => {
+		const agentUser = await createTestUser();
+		const buyerUser = await createTestUser();
+		createdUserIds.push(agentUser.id, buyerUser.id);
+
+		const ruleId = `rule_release_refund_${Date.now()}`;
+		createdCommissionRuleIds.push(ruleId);
+		await testDb.insert(commissionRule).values({
+			id: ruleId,
+			status: "active",
+			orderType: "credit_purchase",
+			productType: "credit_package",
+			commissionLevel: 1,
+			calculationMode: "rate",
+			rate: 10,
+			freezeDays: 0,
+			appliesToCreditPackage: true,
+			priority: 10,
+		});
+
+		await handleCheckoutCompleted({
+			...createCreditPurchaseCheckoutCompleted({
+				userId: buyerUser.id,
+				credits: 200,
+				paymentId: `cs_release_refund_${Date.now()}`,
+				packageId: "standard",
+			}),
+			metadata: {
+				userId: buyerUser.id,
+				type: "credit_purchase",
+				credits: "200",
+				packageId: "standard",
+				referralCode: "release-refund",
+				attributedAgentUserId: agentUser.id,
+			},
+		});
+
+		await releaseAvailableCommissionRecords(new Date(Date.now() + 1000));
+
+		const [orderRecord] = await getUserSalesOrders(buyerUser.id);
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "refunded",
+			eventIdempotencyKey: `commission_available_refund_${Date.now()}`,
+			amount: 200,
+			currency: "USD",
+			reason: "available_refund_review",
+		});
+
+		const [balance] = await testDb
+			.select()
+			.from(commissionBalance)
+			.where(eq(commissionBalance.userId, agentUser.id))
+			.limit(1);
+		const [record] = await testDb
+			.select()
+			.from(commissionRecord)
+			.where(eq(commissionRecord.beneficiaryUserId, agentUser.id))
+			.limit(1);
+		const reverseLedgers = await testDb
+			.select()
+			.from(commissionLedger)
+			.where(eq(commissionLedger.userId, agentUser.id));
+
+		expect(balance!.availableAmount).toBe(0);
+		expect(balance!.frozenAmount).toBe(0);
+		expect(balance!.reversedAmount).toBe(20);
+		expect(record!.status).toBe("reversed");
+		expect(
+			reverseLedgers.filter((entry) => entry.entryType === "commission_reverse")
+		).toHaveLength(1);
 	});
 });
 
