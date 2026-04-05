@@ -115,10 +115,10 @@ describe("DistributionDashboardView", () => {
     });
 
     const numberInputs = container.querySelectorAll('input[type="number"]');
-    fireEvent.change(numberInputs[0], {
+    fireEvent.change(numberInputs[0]!, {
       target: { value: "3000" },
     });
-    fireEvent.change(numberInputs[1], {
+    fireEvent.change(numberInputs[1]!, {
       target: { value: "100" },
     });
     fireEvent.change(screen.getByPlaceholderText("bank_transfer / alipay / wechat"), {
