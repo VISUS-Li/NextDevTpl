@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Coins, Ban, UserCheck, Loader2 } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Ban, Coins, Loader2, Search, UserCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,15 +15,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAllUsersAction,
-  banUserAction,
   adminGrantCreditsAction,
+  banUserAction,
+  getAllUsersAction,
 } from "@/features/support/actions";
 import { UserRoleSelect } from "@/features/support/components";
-import { toast } from "sonner";
 
 /**
  * 用户类型定义
@@ -71,7 +70,9 @@ export default function AdminUsersPage() {
 
   // 封禁对话框状态
   const [banDialogOpen, setBanDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(
+    null
+  );
   const [banReason, setBanReason] = useState("");
   const [isBanning, setIsBanning] = useState(false);
 
@@ -84,7 +85,7 @@ export default function AdminUsersPage() {
   /**
    * 加载用户列表
    */
-  const loadUsers = async (query?: string) => {
+  const loadUsers = useCallback(async (query?: string) => {
     setIsLoading(true);
     try {
       const result = await getAllUsersAction(query ? { query } : undefined);
@@ -97,12 +98,12 @@ export default function AdminUsersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // 初始加载
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
   /**
    * 处理搜索
@@ -168,7 +169,7 @@ export default function AdminUsersPage() {
     if (!selectedUser) return;
 
     const amount = parseInt(grantAmount, 10);
-    if (isNaN(amount) || amount <= 0) {
+    if (Number.isNaN(amount) || amount <= 0) {
       toast.error("请输入有效的积分数量");
       return;
     }
@@ -233,7 +234,10 @@ export default function AdminUsersPage() {
     };
 
     // 获取配置，使用默认值避免 undefined
-    const defaultConfig = { label: "未完成", color: "bg-gray-100 text-gray-800" };
+    const defaultConfig = {
+      label: "未完成",
+      color: "bg-gray-100 text-gray-800",
+    };
     const config = statusMap[sub.status] ?? defaultConfig;
     return (
       <Badge variant="secondary" className={config.color}>
@@ -255,9 +259,7 @@ export default function AdminUsersPage() {
       {/* 页面标题 */}
       <div>
         <h2 className="text-2xl font-bold tracking-tight">用户管理</h2>
-        <p className="text-muted-foreground">
-          查看和管理系统中的所有用户
-        </p>
+        <p className="text-muted-foreground">查看和管理系统中的所有用户</p>
       </div>
 
       {/* 统计信息 */}
@@ -301,7 +303,10 @@ export default function AdminUsersPage() {
       {/* 搜索栏 */}
       <Card>
         <CardContent className="pt-6">
-          <form onSubmit={handleSearch} className="flex gap-4">
+          <form
+            onSubmit={handleSearch}
+            className="flex flex-col gap-3 sm:flex-row sm:gap-4"
+          >
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -311,7 +316,7 @@ export default function AdminUsersPage() {
                 className="pl-10"
               />
             </div>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className="sm:w-auto">
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               搜索
             </Button>
@@ -319,6 +324,7 @@ export default function AdminUsersPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="sm:w-auto"
                 onClick={() => {
                   setSearchInput("");
                   setSearchQuery("");
@@ -355,7 +361,7 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <div className="relative overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="hidden w-full text-sm text-left md:table">
                 <thead className="text-xs uppercase bg-muted/50">
                   <tr>
                     <th className="px-4 py-3">用户</th>
@@ -451,6 +457,92 @@ export default function AdminUsersPage() {
                   ))}
                 </tbody>
               </table>
+
+              {/* 移动端卡片列表 */}
+              <div className="space-y-3 md:hidden">
+                {users.map((u) => (
+                  <div key={u.id} className="rounded-lg border p-4">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={u.image || undefined} alt={u.name} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {getInitials(u.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{u.name}</span>
+                          {u.banned ? (
+                            <Badge variant="destructive">已封禁</Badge>
+                          ) : u.emailVerified ? (
+                            <Badge
+                              variant="secondary"
+                              className="bg-green-100 text-green-800"
+                            >
+                              已验证
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className="bg-yellow-100 text-yellow-800"
+                            >
+                              未验证
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 break-all text-xs text-muted-foreground">
+                          {u.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">积分</p>
+                        <div className="flex items-center gap-2">
+                          <Coins className="h-4 w-4 text-yellow-500" />
+                          <span className="font-medium">
+                            {u.credits?.balance ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">订阅</p>
+                        {getSubscriptionBadge(u.subscription)}
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">角色</p>
+                        <UserRoleSelect userId={u.id} currentRole={u.role} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openGrantDialog(u)}
+                        title="充值积分"
+                      >
+                        <Coins className="mr-2 h-4 w-4" />
+                        充值积分
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={u.banned ? "default" : "destructive"}
+                        onClick={() => openBanDialog(u)}
+                        title={u.banned ? "解封" : "封禁"}
+                      >
+                        {u.banned ? (
+                          <UserCheck className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Ban className="mr-2 h-4 w-4" />
+                        )}
+                        {u.banned ? "解除封禁" : "封禁用户"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
