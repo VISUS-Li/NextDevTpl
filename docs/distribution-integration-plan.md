@@ -69,7 +69,8 @@
 - 当前还额外补上了 `sales_order` / `sales_order_item` 最小落单
 - 当前已经继续补上统一订单服务层，`checkout.completed`、`subscription.active`、`subscription.renewed` 已开始复用同一层落单
 - 当前已经继续补上标准化 `PaymentOrderPayload` 和订单显式归因字段
-- 但这一步还不是完整订单中心，目前仍然缺少售后事件流和退款回写
+- 当前已经继续补上统一售后事件流，退款、拒付、退货可以先走内部统一模型
+- 但这一步还不是完整订单中心，目前仍然缺少支付渠道原生售后事件接入
 
 
 ## 3. guns-distribution 的完整业务逻辑
@@ -1558,14 +1559,16 @@ SQL 里真正承担分销业务的核心表如下。
   7. 续费事件已补幂等，重复 `subscription.renewed` 不会重复创建续费订单
   8. 已新增标准化 `PaymentOrderPayload`，Webhook 到订单域的映射开始统一
   9. `sales_order` 已显式写入 `referral_code`、`attributed_agent_user_id`、`attribution_id`、`attribution_snapshot`
-  10. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
-  11. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
+  10. 已新增 `sales_after_sales_event`，退款、全额退款、退货、拒付开始统一入事件表
+  11. 售后事件会同步回写 `sales_order.after_sales_status` 和订单项退款金额
+  12. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
+  13. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
 - 当前还未完成内容：
-  1. 售后事件表与订单状态流
-  2. 退款、部分退款、拒付驱动的订单回写
-  3. 多支付渠道标准化适配层
-  4. 订单金额字段的进一步细化
-  5. 续费金额从支付侧事件回填
+  1. 支付渠道原生退款/拒付 webhook 接入
+  2. 多支付渠道标准化适配层
+  3. 订单金额字段的进一步细化
+  4. 续费金额从支付侧事件回填
+  5. 分润冻结与退款冲正联动
 
 本轮验证结果：
 
@@ -1777,5 +1780,6 @@ src/features/distribution/
 3. 当前已经具备统一订单最小骨架，`checkout.completed` 会为订阅和积分包写入 `sales_order` / `sales_order_item`
 4. 当前已经补上统一订单服务层，`subscription.active` 和 `subscription.renewed` 也会进入统一订单域
 5. 当前已经补上 `PaymentOrderPayload` 和订单显式归因字段，后续分润不需要再从 metadata 反查
-6. 当前还没有进入佣金账本、提现和售后事件阶段
-7. 下一步应继续推进售后事件流和退款回写，而不是直接跳到提现
+6. 当前已经补上 `sales_after_sales_event` 和订单退款回写，退货和拒付也有统一入口
+7. 当前还没有进入佣金账本和提现阶段
+8. 下一步应继续推进佣金事件与账本，而不是直接跳到提现

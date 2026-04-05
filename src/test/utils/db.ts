@@ -92,6 +92,15 @@ export async function cleanupUserData(userId: string) {
 
 	if (orderIds.length > 0) {
 		await testDb
+			.delete(schema.salesAfterSalesEvent)
+			.where(
+				inArray(
+					schema.salesAfterSalesEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		await testDb
 			.delete(schema.salesOrderItem)
 			.where(
 				inArray(
@@ -162,6 +171,15 @@ export async function cleanupTestUsers(userIds: string[]) {
 		.where(inArray(schema.salesOrder.userId, userIds));
 
 	if (orderIds.length > 0) {
+		await testDb
+			.delete(schema.salesAfterSalesEvent)
+			.where(
+				inArray(
+					schema.salesAfterSalesEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
 		await testDb
 			.delete(schema.salesOrderItem)
 			.where(

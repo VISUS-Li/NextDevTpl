@@ -224,6 +224,14 @@ export const salesAfterSalesStatusEnum = pgEnum("sales_after_sales_status", [
 ]);
 
 /**
+ * 售后事件类型枚举
+ */
+export const salesAfterSalesEventTypeEnum = pgEnum(
+  "sales_after_sales_event_type",
+  ["partial_refund", "refunded", "returned", "chargeback"]
+);
+
+/**
  * 订单项商品类型枚举
  */
 export const salesOrderItemProductTypeEnum = pgEnum(
@@ -295,6 +303,32 @@ export const salesOrderItem = pgTable("sales_order_item", {
   commissionBaseAmount: integer("commission_base_amount").notNull().default(0),
   refundedAmount: integer("refunded_amount").notNull().default(0),
   refundableAmount: integer("refundable_amount").notNull().default(0),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 统一售后事件表 (Sales After Sales Events)
+// ============================================
+/**
+ * 售后事件表 - 记录退款、退货、拒付等售后变更
+ */
+export const salesAfterSalesEvent = pgTable("sales_after_sales_event", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id")
+    .notNull()
+    .references(() => salesOrder.id, { onDelete: "cascade" }),
+  orderItemId: text("order_item_id").references(() => salesOrderItem.id, {
+    onDelete: "set null",
+  }),
+  eventType: salesAfterSalesEventTypeEnum("event_type").notNull(),
+  eventIdempotencyKey: text("event_idempotency_key").notNull().unique(),
+  providerEventId: text("provider_event_id"),
+  amount: integer("amount").notNull().default(0),
+  currency: text("currency").notNull(),
+  reason: text("reason"),
+  eventTime: timestamp("event_time").notNull(),
   metadata: json("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -419,6 +453,9 @@ export type NewSalesOrder = typeof salesOrder.$inferInsert;
 export type SalesOrderItem = typeof salesOrderItem.$inferSelect;
 export type NewSalesOrderItem = typeof salesOrderItem.$inferInsert;
 
+export type SalesAfterSalesEvent = typeof salesAfterSalesEvent.$inferSelect;
+export type NewSalesAfterSalesEvent = typeof salesAfterSalesEvent.$inferInsert;
+
 export type SalesOrderProvider =
   (typeof salesOrderProviderEnum.enumValues)[number];
 
@@ -431,6 +468,9 @@ export type SalesAfterSalesStatus =
 
 export type SalesOrderItemProductType =
   (typeof salesOrderItemProductTypeEnum.enumValues)[number];
+
+export type SalesAfterSalesEventType =
+  (typeof salesAfterSalesEventTypeEnum.enumValues)[number];
 
 export type DistributionProfile = typeof distributionProfile.$inferSelect;
 export type NewDistributionProfile = typeof distributionProfile.$inferInsert;

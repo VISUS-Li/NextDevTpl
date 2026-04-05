@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   distributionAttribution,
+  salesAfterSalesEvent,
   salesOrder,
   salesOrderItem,
 } from "@/db/schema";
@@ -26,6 +27,22 @@ interface PaymentOrderAttribution {
 interface PaymentOrderPayload {
   order: typeof salesOrder.$inferInsert;
   item: typeof salesOrderItem.$inferInsert;
+}
+
+/**
+ * 统一售后事件入参
+ */
+interface ApplySalesAfterSalesEventParams {
+  orderId: string;
+  eventType: "partial_refund" | "refunded" | "returned" | "chargeback";
+  eventIdempotencyKey: string;
+  amount: number;
+  currency: string;
+  eventTime?: Date;
+  orderItemId?: string;
+  providerEventId?: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -395,4 +412,96 @@ export async function upsertSalesOrderFromSubscriptionEvent(
   });
 
   return orderId;
+}
+
+/**
+ * 将退款、退货、拒付写入统一售后事件并回写订单
+ */
+export async function applySalesAfterSalesEvent(
+  params: ApplySalesAfterSalesEventParams
+) {
+  const [existingEvent] = await db
+    .select({ id: salesAfterSalesEvent.id })
+    .from(salesAfterSalesEvent)
+    .where(
+      eq(salesAfterSalesEvent.eventIdempotencyKey, params.eventIdempotencyKey)
+    )
+    .limit(1);
+
+  if (existingEvent) {
+    return existingEvent.id;
+  }
+
+  const [order] = await db
+    .select()
+    .from(salesOrder)
+    .where(eq(salesOrder.id, params.orderId))
+    .limit(1);
+
+  if (!order) {
+    throw new Error(`Sales order not found: ${params.orderId}`);
+  }
+
+  const [targetItem] = await db
+    .select()
+    .from(salesOrderItem)
+    .where(
+      params.orderItemId
+        ? eq(salesOrderItem.id, params.orderItemId)
+        : eq(salesOrderItem.orderId, params.orderId)
+    )
+    .limit(1);
+
+  if (!targetItem) {
+    throw new Error(`Sales order item not found: ${params.orderId}`);
+  }
+
+  const nextRefundedAmount = targetItem.refundedAmount + params.amount;
+  const nextRefundableAmount = Math.max(
+    0,
+    targetItem.grossAmount - nextRefundedAmount
+  );
+  const nextAfterSalesStatus =
+    params.eventType === "partial_refund" &&
+    nextRefundedAmount < targetItem.grossAmount
+      ? "partial_refund"
+      : params.eventType;
+  const nextOrderStatus =
+    nextAfterSalesStatus === "partial_refund" ? order.status : "closed";
+  const eventTime = params.eventTime ?? new Date();
+  const eventId = crypto.randomUUID();
+
+  await db.insert(salesAfterSalesEvent).values({
+    id: eventId,
+    orderId: params.orderId,
+    orderItemId: targetItem.id,
+    eventType: params.eventType,
+    eventIdempotencyKey: params.eventIdempotencyKey,
+    providerEventId: params.providerEventId ?? null,
+    amount: params.amount,
+    currency: params.currency,
+    reason: params.reason ?? null,
+    eventTime,
+    metadata: params.metadata,
+  });
+
+  await db
+    .update(salesOrderItem)
+    .set({
+      refundedAmount: nextRefundedAmount,
+      refundableAmount: nextRefundableAmount,
+      updatedAt: new Date(),
+    })
+    .where(eq(salesOrderItem.id, targetItem.id));
+
+  await db
+    .update(salesOrder)
+    .set({
+      status: nextOrderStatus,
+      afterSalesStatus: nextAfterSalesStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(salesOrder.id, params.orderId));
+
+  return eventId;
 }

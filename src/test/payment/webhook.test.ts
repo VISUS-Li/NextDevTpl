@@ -24,11 +24,13 @@ import {
 import { PRICE_IDS } from "@/config/payment";
 import {
 	distributionAttribution,
+	salesAfterSalesEvent,
 	salesOrder,
 	salesOrderItem,
 	subscription,
 } from "@/db/schema";
 import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
+import { applySalesAfterSalesEvent } from "@/features/distribution/orders";
 import type {
 	CreemCheckoutCompletedData,
 	CreemSubscription,
@@ -963,6 +965,116 @@ describe("Creem Webhook: Edge Cases", () => {
 		const state = await getUserCreditsState(testUser.id);
 		expect(state.balance).toBeUndefined();
 		expect(state.batches).toHaveLength(0);
+	});
+});
+
+describe("Creem Webhook: after sales", () => {
+	it("部分退款应该回写订单和订单项", async () => {
+		const testUser = await createTestUser();
+		createdUserIds.push(testUser.id);
+
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 200,
+				paymentId: `cs_partial_${Date.now()}`,
+				packageId: "standard",
+			})
+		);
+
+		const [orderRecord] = await getUserSalesOrders(testUser.id);
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "partial_refund",
+			eventIdempotencyKey: `refund_partial_${Date.now()}`,
+			amount: 50,
+			currency: "USD",
+			reason: "manual_partial_refund",
+		});
+
+		const [updatedOrder] = await getUserSalesOrders(testUser.id);
+		expect(updatedOrder!.order.afterSalesStatus).toBe("partial_refund");
+		expect(updatedOrder!.order.status).toBe("paid");
+		expect(updatedOrder!.items[0]!.refundedAmount).toBe(50);
+		expect(updatedOrder!.items[0]!.refundableAmount).toBe(150);
+	});
+
+	it("全额退款应该关闭订单", async () => {
+		const testUser = await createTestUser();
+		createdUserIds.push(testUser.id);
+
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 180,
+				paymentId: `cs_refund_${Date.now()}`,
+				packageId: "standard",
+			})
+		);
+
+		const [orderRecord] = await getUserSalesOrders(testUser.id);
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "refunded",
+			eventIdempotencyKey: `refund_full_${Date.now()}`,
+			amount: 180,
+			currency: "USD",
+			reason: "manual_refund",
+		});
+
+		const [updatedOrder] = await getUserSalesOrders(testUser.id);
+		expect(updatedOrder!.order.afterSalesStatus).toBe("refunded");
+		expect(updatedOrder!.order.status).toBe("closed");
+		expect(updatedOrder!.items[0]!.refundedAmount).toBe(180);
+		expect(updatedOrder!.items[0]!.refundableAmount).toBe(0);
+	});
+
+	it("重复的拒付事件不应该重复回写", async () => {
+		const testUser = await createTestUser();
+		createdUserIds.push(testUser.id);
+
+		await handleCheckoutCompleted(
+			createCreditPurchaseCheckoutCompleted({
+				userId: testUser.id,
+				credits: 160,
+				paymentId: `cs_chargeback_${Date.now()}`,
+				packageId: "lite",
+			})
+		);
+
+		const [orderRecord] = await getUserSalesOrders(testUser.id);
+		const eventIdempotencyKey = `chargeback_${Date.now()}`;
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "chargeback",
+			eventIdempotencyKey,
+			amount: 160,
+			currency: "USD",
+			reason: "provider_chargeback",
+		});
+		await applySalesAfterSalesEvent({
+			orderId: orderRecord!.order.id,
+			orderItemId: orderRecord!.items[0]!.id,
+			eventType: "chargeback",
+			eventIdempotencyKey,
+			amount: 160,
+			currency: "USD",
+			reason: "provider_chargeback",
+		});
+
+		const [updatedOrder] = await getUserSalesOrders(testUser.id);
+		const afterSalesEvents = await testDb
+			.select()
+			.from(salesAfterSalesEvent)
+			.where(eq(salesAfterSalesEvent.orderId, orderRecord!.order.id));
+
+		expect(updatedOrder!.order.afterSalesStatus).toBe("chargeback");
+		expect(updatedOrder!.order.status).toBe("closed");
+		expect(updatedOrder!.items[0]!.refundedAmount).toBe(160);
+		expect(afterSalesEvents).toHaveLength(1);
 	});
 });
 
