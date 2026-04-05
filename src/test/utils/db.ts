@@ -100,6 +100,10 @@ export async function cleanupUserData(userId: string) {
 		.where(eq(schema.commissionLedger.userId, userId));
 
 	await testDb
+		.delete(schema.withdrawalRequest)
+		.where(eq(schema.withdrawalRequest.userId, userId));
+
+	await testDb
 		.delete(schema.commissionBalance)
 		.where(eq(schema.commissionBalance.userId, userId));
 
@@ -240,6 +244,10 @@ export async function cleanupTestUsers(userIds: string[]) {
 	await testDb
 		.delete(schema.commissionLedger)
 		.where(inArray(schema.commissionLedger.userId, userIds));
+
+	await testDb
+		.delete(schema.withdrawalRequest)
+		.where(inArray(schema.withdrawalRequest.userId, userIds));
 
 	await testDb
 		.delete(schema.commissionBalance)

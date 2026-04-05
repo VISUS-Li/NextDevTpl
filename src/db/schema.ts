@@ -291,6 +291,14 @@ export const commissionLedgerDirectionEnum = pgEnum(
 );
 
 /**
+ * 提现申请状态枚举
+ */
+export const withdrawalRequestStatusEnum = pgEnum(
+  "withdrawal_request_status",
+  ["pending", "approved", "rejected", "paid", "failed"]
+);
+
+/**
  * 订单项商品类型枚举
  */
 export const salesOrderItemProductTypeEnum = pgEnum(
@@ -534,6 +542,33 @@ export const commissionLedger = pgTable("commission_ledger", {
 });
 
 // ============================================
+// 提现申请表 (Withdrawal Request)
+// ============================================
+/**
+ * 提现申请表 - 记录代理提现申请与审核状态
+ */
+export const withdrawalRequest = pgTable("withdrawal_request", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull().default(0),
+  feeAmount: integer("fee_amount").notNull().default(0),
+  netAmount: integer("net_amount").notNull().default(0),
+  currency: text("currency").notNull(),
+  status: withdrawalRequestStatusEnum("status").notNull().default("pending"),
+  payeeSnapshot: json("payee_snapshot").$type<Record<string, unknown>>(),
+  operatorUserId: text("operator_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  operatorNote: text("operator_note"),
+  reviewedAt: timestamp("reviewed_at"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // 分销归因枚举
 // ============================================
 
@@ -670,6 +705,9 @@ export type NewCommissionBalance = typeof commissionBalance.$inferInsert;
 export type CommissionLedger = typeof commissionLedger.$inferSelect;
 export type NewCommissionLedger = typeof commissionLedger.$inferInsert;
 
+export type WithdrawalRequest = typeof withdrawalRequest.$inferSelect;
+export type NewWithdrawalRequest = typeof withdrawalRequest.$inferInsert;
+
 export type SalesOrderProvider =
   (typeof salesOrderProviderEnum.enumValues)[number];
 
@@ -703,6 +741,9 @@ export type CommissionLedgerEntryType =
 
 export type CommissionLedgerDirection =
   (typeof commissionLedgerDirectionEnum.enumValues)[number];
+
+export type WithdrawalRequestStatus =
+  (typeof withdrawalRequestStatusEnum.enumValues)[number];
 
 export type DistributionProfile = typeof distributionProfile.$inferSelect;
 export type NewDistributionProfile = typeof distributionProfile.$inferInsert;

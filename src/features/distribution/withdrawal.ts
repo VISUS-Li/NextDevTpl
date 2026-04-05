@@ -1,0 +1,203 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import {
+  commissionBalance,
+  commissionLedger,
+  withdrawalRequest,
+} from "@/db/schema";
+
+/**
+ * 创建提现申请
+ */
+export async function createWithdrawalRequest(params: {
+  userId: string;
+  amount: number;
+  currency: string;
+  feeAmount?: number;
+  payeeSnapshot?: Record<string, unknown>;
+}) {
+  const [balance] = await db
+    .select()
+    .from(commissionBalance)
+    .where(eq(commissionBalance.userId, params.userId))
+    .limit(1);
+
+  if (!balance || balance.availableAmount < params.amount) {
+    throw new Error("Insufficient available commission balance");
+  }
+
+  const feeAmount = params.feeAmount ?? 0;
+  const requestId = crypto.randomUUID();
+  const nextAvailableAmount = balance.availableAmount - params.amount;
+  const nextFrozenAmount = balance.frozenAmount + params.amount;
+
+  await db.insert(withdrawalRequest).values({
+    id: requestId,
+    userId: params.userId,
+    amount: params.amount,
+    feeAmount,
+    netAmount: params.amount - feeAmount,
+    currency: params.currency,
+    status: "pending",
+    payeeSnapshot: params.payeeSnapshot,
+  });
+
+  await db
+    .update(commissionBalance)
+    .set({
+      availableAmount: nextAvailableAmount,
+      frozenAmount: nextFrozenAmount,
+      updatedAt: new Date(),
+    })
+    .where(eq(commissionBalance.id, balance.id));
+
+  await db.insert(commissionLedger).values({
+    id: crypto.randomUUID(),
+    userId: params.userId,
+    entryType: "withdraw_freeze",
+    direction: "debit",
+    amount: params.amount,
+    beforeBalance: balance.availableAmount,
+    afterBalance: nextAvailableAmount,
+    referenceType: "withdrawal_request",
+    referenceId: requestId,
+    memo: "withdrawal requested",
+  });
+
+  return requestId;
+}
+
+/**
+ * 拒绝提现申请
+ */
+export async function rejectWithdrawalRequest(params: {
+  requestId: string;
+  operatorUserId: string;
+  operatorNote?: string;
+}) {
+  const [request] = await db
+    .select()
+    .from(withdrawalRequest)
+    .where(eq(withdrawalRequest.id, params.requestId))
+    .limit(1);
+
+  if (!request || request.status !== "pending") {
+    throw new Error("Withdrawal request is not pending");
+  }
+
+  const [balance] = await db
+    .select()
+    .from(commissionBalance)
+    .where(eq(commissionBalance.userId, request.userId))
+    .limit(1);
+
+  if (!balance) {
+    throw new Error("Commission balance not found");
+  }
+
+  const nextAvailableAmount = balance.availableAmount + request.amount;
+  const nextFrozenAmount = Math.max(0, balance.frozenAmount - request.amount);
+
+  await db
+    .update(withdrawalRequest)
+    .set({
+      status: "rejected",
+      operatorUserId: params.operatorUserId,
+      operatorNote: params.operatorNote ?? null,
+      reviewedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(withdrawalRequest.id, params.requestId));
+
+  await db
+    .update(commissionBalance)
+    .set({
+      availableAmount: nextAvailableAmount,
+      frozenAmount: nextFrozenAmount,
+      updatedAt: new Date(),
+    })
+    .where(eq(commissionBalance.id, balance.id));
+
+  await db.insert(commissionLedger).values({
+    id: crypto.randomUUID(),
+    userId: request.userId,
+    entryType: "withdraw_release",
+    direction: "credit",
+    amount: request.amount,
+    beforeBalance: balance.availableAmount,
+    afterBalance: nextAvailableAmount,
+    referenceType: "withdrawal_request",
+    referenceId: request.id,
+    memo: params.operatorNote ?? "withdrawal rejected",
+  });
+
+  return request.id;
+}
+
+/**
+ * 确认提现打款
+ */
+export async function markWithdrawalRequestPaid(params: {
+  requestId: string;
+  operatorUserId: string;
+  operatorNote?: string;
+}) {
+  const [request] = await db
+    .select()
+    .from(withdrawalRequest)
+    .where(eq(withdrawalRequest.id, params.requestId))
+    .limit(1);
+
+  if (!request || request.status !== "pending") {
+    throw new Error("Withdrawal request is not pending");
+  }
+
+  const [balance] = await db
+    .select()
+    .from(commissionBalance)
+    .where(eq(commissionBalance.userId, request.userId))
+    .limit(1);
+
+  if (!balance) {
+    throw new Error("Commission balance not found");
+  }
+
+  const nextFrozenAmount = Math.max(0, balance.frozenAmount - request.amount);
+  const nextWithdrawnAmount = balance.withdrawnAmount + request.amount;
+
+  await db
+    .update(withdrawalRequest)
+    .set({
+      status: "paid",
+      operatorUserId: params.operatorUserId,
+      operatorNote: params.operatorNote ?? null,
+      reviewedAt: new Date(),
+      paidAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(withdrawalRequest.id, params.requestId));
+
+  await db
+    .update(commissionBalance)
+    .set({
+      frozenAmount: nextFrozenAmount,
+      withdrawnAmount: nextWithdrawnAmount,
+      updatedAt: new Date(),
+    })
+    .where(eq(commissionBalance.id, balance.id));
+
+  await db.insert(commissionLedger).values({
+    id: crypto.randomUUID(),
+    userId: request.userId,
+    entryType: "withdraw_paid",
+    direction: "debit",
+    amount: request.amount,
+    beforeBalance: balance.frozenAmount,
+    afterBalance: nextFrozenAmount,
+    referenceType: "withdrawal_request",
+    referenceId: request.id,
+    memo: params.operatorNote ?? "withdrawal paid",
+  });
+
+  return request.id;
+}

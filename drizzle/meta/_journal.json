@@ -43,6 +43,13 @@
       "when": 1775403449105,
       "tag": "0005_complex_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775404705409,
+      "tag": "0006_tidy_butterfly",
+      "breakpoints": true
     }
   ]
 }

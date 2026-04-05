@@ -1715,6 +1715,29 @@ Review 补充：
 
 - 从“推广进入 -> 支付成功 -> 佣金到账 -> 提现完成”全链路可手动走通
 
+当前进度更新：
+
+- 本阶段已经开始落地，但当前只覆盖提现后端，不含页面
+- 已完成内容：
+  1. 已新增 `withdrawal_request`
+  2. 已支持创建提现申请
+  3. 已支持拒绝提现后释放冻结余额
+  4. 已支持确认打款后增加 `withdrawn_amount`
+  5. 已支持对应 `withdraw_freeze`、`withdraw_release`、`withdraw_paid` 账本流水
+  6. 已补充提现申请、拒绝、打款测试
+- 当前还未完成内容：
+  1. 代理端提现页面
+  2. 后台审核页面
+  3. 审批权限控制
+  4. 提现手续费规则配置
+  5. 已提现后退款负债联动
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/distribution/withdrawal.test.ts src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+3. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
+
 
 ## 11. 测试矩阵
 
@@ -1843,5 +1866,6 @@ src/features/distribution/
 6. 当前已经补上 `sales_after_sales_event` 和订单退款回写，退货和拒付也有统一入口
 7. 当前已经补上佣金事件、佣金记录、冻结余额和佣金账本，积分包分佣可以闭环
 8. 当前已经补上退款驱动的冻结佣金冲正，至少不会出现“退款后冻结佣金不回退”的错账
-9. 当前还没有进入佣金解冻、可用佣金冲正和提现阶段
-10. 下一步应继续推进佣金解冻和可用余额冲正，而不是直接跳到提现
+9. 当前已经补上佣金解冻、可用佣金冲正和最小提现后端
+10. 当前还缺代理端页面、后台审核页、已提现负债处理和多支付渠道接入
+11. 下一步应继续推进后台页面与管理能力，而不是继续堆底层表
