@@ -1,13 +1,17 @@
 import { eq } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { commissionBalance, commissionLedger, withdrawalRequest } from "@/db/schema";
+import {
+  commissionBalance,
+  commissionLedger,
+  withdrawalRequest,
+} from "@/db/schema";
 import {
   createWithdrawalRequest,
   markWithdrawalRequestPaid,
   rejectWithdrawalRequest,
 } from "@/features/distribution/withdrawal";
-import { testDb, cleanupTestUsers, createTestUser } from "../utils";
+import { cleanupTestUsers, createTestUser, testDb } from "../utils";
 
 /**
  * 提现流程测试
@@ -160,7 +164,9 @@ describe("Distribution Withdrawal", () => {
     expect(balance!.availableAmount).toBe(20);
     expect(balance!.frozenAmount).toBe(0);
     expect(balance!.withdrawnAmount).toBe(70);
-    expect(ledgers.some((entry) => entry.entryType === "withdraw_paid")).toBe(true);
+    expect(ledgers.some((entry) => entry.entryType === "withdraw_paid")).toBe(
+      true
+    );
   });
 
   it("提现手续费应该一并冻结并在打款后计入已提现金额", async () => {
@@ -251,5 +257,72 @@ describe("Distribution Withdrawal", () => {
         currency: "EUR",
       })
     ).rejects.toThrow("Withdrawal currency does not match commission balance");
+  });
+
+  it("创建提现时账本写入失败应该整体回滚", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+
+    await testDb.insert(commissionBalance).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      currency: "USD",
+      totalEarned: 90,
+      availableAmount: 90,
+      frozenAmount: 0,
+      withdrawnAmount: 0,
+      reversedAmount: 0,
+    });
+
+    const duplicateLedgerId = `withdraw_ledger_dup_${Date.now()}`;
+    const requestId = `withdraw_request_tx_${Date.now()}`;
+    await testDb.insert(commissionLedger).values({
+      id: duplicateLedgerId,
+      userId: user.id,
+      entryType: "withdraw_freeze",
+      direction: "debit",
+      amount: 1,
+      beforeBalance: 1,
+      afterBalance: 0,
+      referenceType: "seed",
+      referenceId: "seed",
+      memo: "seed",
+    });
+
+    const uuidSpy = vi
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce(requestId)
+      .mockReturnValueOnce(duplicateLedgerId);
+
+    await expect(
+      createWithdrawalRequest({
+        userId: user.id,
+        amount: 40,
+        feeAmount: 5,
+        currency: "USD",
+      })
+    ).rejects.toThrow();
+
+    uuidSpy.mockRestore();
+
+    const [request] = await testDb
+      .select()
+      .from(withdrawalRequest)
+      .where(eq(withdrawalRequest.id, requestId))
+      .limit(1);
+    const [balance] = await testDb
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, user.id))
+      .limit(1);
+    const ledgers = await testDb
+      .select()
+      .from(commissionLedger)
+      .where(eq(commissionLedger.userId, user.id));
+
+    expect(request).toBeUndefined();
+    expect(balance!.availableAmount).toBe(90);
+    expect(balance!.frozenAmount).toBe(0);
+    expect(ledgers).toHaveLength(1);
   });
 });

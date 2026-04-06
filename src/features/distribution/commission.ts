@@ -10,6 +10,12 @@ import {
   salesOrderItem,
 } from "@/db/schema";
 
+type DistributionDb = typeof db;
+type DistributionTx = Parameters<
+  Parameters<DistributionDb["transaction"]>[0]
+>[0];
+type DistributionExecutor = DistributionDb | DistributionTx;
+
 /**
  * 佣金触发类型
  */
@@ -37,12 +43,15 @@ function calculateCommissionAmount(params: {
 /**
  * 根据触发类型匹配当前规则
  */
-async function findCommissionRule(params: {
-  orderType: typeof salesOrder.$inferSelect.orderType;
-  productType: typeof salesOrderItem.$inferSelect.productType;
-  triggerType: CommissionTriggerType;
-}) {
-  const rules = await db
+async function findCommissionRule(
+  params: {
+    orderType: typeof salesOrder.$inferSelect.orderType;
+    productType: typeof salesOrderItem.$inferSelect.productType;
+    triggerType: CommissionTriggerType;
+  },
+  executor: DistributionExecutor = db
+) {
+  const rules = await executor
     .select()
     .from(commissionRule)
     .where(
@@ -91,188 +100,201 @@ export async function settleCommissionForSalesOrder(
   orderId: string,
   triggerType: CommissionTriggerType
 ) {
-  const [order] = await db
-    .select()
-    .from(salesOrder)
-    .where(eq(salesOrder.id, orderId))
-    .limit(1);
+  return await db.transaction(async (tx) => {
+    const [order] = await tx
+      .select()
+      .from(salesOrder)
+      .where(eq(salesOrder.id, orderId))
+      .limit(1);
 
-  if (!order?.attributedAgentUserId) {
-    return null;
-  }
+    if (!order?.attributedAgentUserId) {
+      return null;
+    }
 
-  const [item] = await db
-    .select()
-    .from(salesOrderItem)
-    .where(eq(salesOrderItem.orderId, orderId))
-    .limit(1);
+    const [item] = await tx
+      .select()
+      .from(salesOrderItem)
+      .where(eq(salesOrderItem.orderId, orderId))
+      .limit(1);
 
-  if (!item || item.commissionBaseAmount <= 0) {
-    return null;
-  }
+    if (!item || item.commissionBaseAmount <= 0) {
+      return null;
+    }
 
-  const [existingEvent] = await db
-    .select({ id: commissionEvent.id })
-    .from(commissionEvent)
-    .where(
-      and(
-        eq(commissionEvent.orderItemId, item.id),
-        eq(commissionEvent.triggerType, triggerType)
+    const [existingEvent] = await tx
+      .select({ id: commissionEvent.id })
+      .from(commissionEvent)
+      .where(
+        and(
+          eq(commissionEvent.orderItemId, item.id),
+          eq(commissionEvent.triggerType, triggerType)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (existingEvent) {
-    return existingEvent.id;
-  }
+    if (existingEvent) {
+      return existingEvent.id;
+    }
 
-  const rule = await findCommissionRule({
-    orderType: order.orderType,
-    productType: item.productType,
-    triggerType,
-  });
+    const rule = await findCommissionRule(
+      {
+        orderType: order.orderType,
+        productType: item.productType,
+        triggerType,
+      },
+      tx
+    );
 
-  const eventId = crypto.randomUUID();
-  if (!rule) {
-    await db.insert(commissionEvent).values({
+    const eventId = crypto.randomUUID();
+    if (!rule) {
+      await tx.insert(commissionEvent).values({
+        id: eventId,
+        orderId: order.id,
+        orderItemId: item.id,
+        triggerUserId: order.userId,
+        triggerType,
+        status: "skipped",
+        currency: order.currency,
+        commissionBaseAmount: item.commissionBaseAmount,
+        settlementBasis: "rule_missing",
+        attributionSnapshot: order.attributionSnapshot,
+        errorMessage: "commission_rule_missing",
+        executedAt: new Date(),
+      });
+      return eventId;
+    }
+
+    const commissionAmount = calculateCommissionAmount({
+      baseAmount: item.commissionBaseAmount,
+      calculationMode: rule.calculationMode,
+      rate: rule.rate,
+      fixedAmount: rule.fixedAmount,
+    });
+
+    await tx.insert(commissionEvent).values({
       id: eventId,
       orderId: order.id,
       orderItemId: item.id,
       triggerUserId: order.userId,
       triggerType,
-      status: "skipped",
+      status: "completed",
       currency: order.currency,
       commissionBaseAmount: item.commissionBaseAmount,
-      settlementBasis: "rule_missing",
+      settlementBasis: `level_${rule.commissionLevel}`,
+      ruleSnapshot: {
+        ruleId: rule.id,
+        calculationMode: rule.calculationMode,
+        rate: rule.rate,
+        fixedAmount: rule.fixedAmount,
+        freezeDays: rule.freezeDays,
+      },
       attributionSnapshot: order.attributionSnapshot,
-      errorMessage: "commission_rule_missing",
       executedAt: new Date(),
     });
-    return eventId;
-  }
 
-  const commissionAmount = calculateCommissionAmount({
-    baseAmount: item.commissionBaseAmount,
-    calculationMode: rule.calculationMode,
-    rate: rule.rate,
-    fixedAmount: rule.fixedAmount,
-  });
-
-  await db.insert(commissionEvent).values({
-    id: eventId,
-    orderId: order.id,
-    orderItemId: item.id,
-    triggerUserId: order.userId,
-    triggerType,
-    status: "completed",
-    currency: order.currency,
-    commissionBaseAmount: item.commissionBaseAmount,
-    settlementBasis: `level_${rule.commissionLevel}`,
-    ruleSnapshot: {
+    const availableAt = new Date(
+      Date.now() + rule.freezeDays * 24 * 60 * 60 * 1000
+    );
+    const recordId = crypto.randomUUID();
+    await tx.insert(commissionRecord).values({
+      id: recordId,
+      eventId,
+      beneficiaryUserId: order.attributedAgentUserId,
+      sourceAgentUserId: order.attributedAgentUserId,
+      commissionLevel: rule.commissionLevel,
       ruleId: rule.id,
-      calculationMode: rule.calculationMode,
-      rate: rule.rate,
-      fixedAmount: rule.fixedAmount,
-      freezeDays: rule.freezeDays,
-    },
-    attributionSnapshot: order.attributionSnapshot,
-    executedAt: new Date(),
-  });
+      ruleSnapshot: {
+        rate: rule.rate,
+        fixedAmount: rule.fixedAmount,
+        freezeDays: rule.freezeDays,
+      },
+      amount: commissionAmount,
+      currency: order.currency,
+      status: "frozen",
+      availableAt,
+      metadata: {
+        orderId: order.id,
+        orderItemId: item.id,
+        triggerType,
+      },
+    });
 
-  const availableAt = new Date(
-    Date.now() + rule.freezeDays * 24 * 60 * 60 * 1000
-  );
-  const recordId = crypto.randomUUID();
-  await db.insert(commissionRecord).values({
-    id: recordId,
-    eventId,
-    beneficiaryUserId: order.attributedAgentUserId,
-    sourceAgentUserId: order.attributedAgentUserId,
-    commissionLevel: rule.commissionLevel,
-    ruleId: rule.id,
-    ruleSnapshot: {
-      rate: rule.rate,
-      fixedAmount: rule.fixedAmount,
-      freezeDays: rule.freezeDays,
-    },
-    amount: commissionAmount,
-    currency: order.currency,
-    status: "frozen",
-    availableAt,
-    metadata: {
-      orderId: order.id,
-      orderItemId: item.id,
-      triggerType,
-    },
-  });
+    const [balance] = await tx
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, order.attributedAgentUserId))
+      .limit(1);
 
-  const [balance] = await db
-    .select()
-    .from(commissionBalance)
-    .where(eq(commissionBalance.userId, order.attributedAgentUserId))
-    .limit(1);
+    const beforeFrozenAmount = balance?.frozenAmount ?? 0;
+    const afterFrozenAmount = beforeFrozenAmount + commissionAmount;
 
-  const beforeFrozenAmount = balance?.frozenAmount ?? 0;
-  const afterFrozenAmount = beforeFrozenAmount + commissionAmount;
+    if (balance) {
+      await tx
+        .update(commissionBalance)
+        .set({
+          totalEarned: balance.totalEarned + commissionAmount,
+          frozenAmount: afterFrozenAmount,
+          updatedAt: new Date(),
+        })
+        .where(eq(commissionBalance.id, balance.id));
+    } else {
+      await tx.insert(commissionBalance).values({
+        id: crypto.randomUUID(),
+        userId: order.attributedAgentUserId,
+        currency: order.currency,
+        totalEarned: commissionAmount,
+        availableAmount: 0,
+        frozenAmount: commissionAmount,
+        withdrawnAmount: 0,
+        reversedAmount: 0,
+      });
+    }
 
-  if (balance) {
-    await db
-      .update(commissionBalance)
-      .set({
-        totalEarned: balance.totalEarned + commissionAmount,
-        frozenAmount: afterFrozenAmount,
-        updatedAt: new Date(),
-      })
-      .where(eq(commissionBalance.id, balance.id));
-  } else {
-    await db.insert(commissionBalance).values({
+    // 佣金事件、记录、余额和账本必须同时成功，避免出现错账。
+    await tx.insert(commissionLedger).values({
       id: crypto.randomUUID(),
       userId: order.attributedAgentUserId,
-      currency: order.currency,
-      totalEarned: commissionAmount,
-      availableAmount: 0,
-      frozenAmount: commissionAmount,
-      withdrawnAmount: 0,
-      reversedAmount: 0,
+      recordId,
+      entryType: "commission_frozen",
+      direction: "credit",
+      amount: commissionAmount,
+      beforeBalance: beforeFrozenAmount,
+      afterBalance: afterFrozenAmount,
+      referenceType: "commission_record",
+      referenceId: recordId,
+      memo: `commission frozen for ${triggerType}`,
     });
-  }
 
-  await db.insert(commissionLedger).values({
-    id: crypto.randomUUID(),
-    userId: order.attributedAgentUserId,
-    recordId,
-    entryType: "commission_frozen",
-    direction: "credit",
-    amount: commissionAmount,
-    beforeBalance: beforeFrozenAmount,
-    afterBalance: afterFrozenAmount,
-    referenceType: "commission_record",
-    referenceId: recordId,
-    memo: `commission frozen for ${triggerType}`,
+    return eventId;
   });
-
-  return eventId;
 }
 
 /**
  * 回冲订单项对应的冻结或可用佣金
  */
-export async function reverseCommissionForSalesOrderItem(params: {
-  orderItemId: string;
-  afterSalesEventId: string;
-  reason: string;
-}) {
-  const [orderItem] = await db
+export async function reverseCommissionForSalesOrderItem(
+  params: {
+    orderItemId: string;
+    afterSalesEventId: string;
+    reason: string;
+  },
+  executor: DistributionExecutor = db
+) {
+  const [orderItem] = await executor
     .select()
     .from(salesOrderItem)
     .where(eq(salesOrderItem.id, params.orderItemId))
     .limit(1);
 
-  if (!orderItem || orderItem.grossAmount <= 0 || orderItem.refundedAmount <= 0) {
+  if (
+    !orderItem ||
+    orderItem.grossAmount <= 0 ||
+    orderItem.refundedAmount <= 0
+  ) {
     return [];
   }
 
-  const events = await db
+  const events = await executor
     .select()
     .from(commissionEvent)
     .where(eq(commissionEvent.orderItemId, params.orderItemId));
@@ -282,12 +304,13 @@ export async function reverseCommissionForSalesOrderItem(params: {
   }
 
   const eventIds = events.map((event) => event.id);
-  const records = await db
+  const singleEventId = eventIds[0];
+  const records = await executor
     .select()
     .from(commissionRecord)
     .where(
-      eventIds.length === 1
-        ? eq(commissionRecord.eventId, eventIds[0]!)
+      eventIds.length === 1 && singleEventId
+        ? eq(commissionRecord.eventId, singleEventId)
         : inArray(commissionRecord.eventId, eventIds)
     );
 
@@ -296,21 +319,25 @@ export async function reverseCommissionForSalesOrderItem(params: {
   }
 
   const recordIds = records.map((record) => record.id);
-  const reverseLedgers = await db
+  const singleRecordId = recordIds[0];
+  const reverseLedgers = await executor
     .select()
     .from(commissionLedger)
     .where(
-      recordIds.length === 1
-        ? eq(commissionLedger.recordId, recordIds[0]!)
+      recordIds.length === 1 && singleRecordId
+        ? eq(commissionLedger.recordId, singleRecordId)
         : inArray(commissionLedger.recordId, recordIds)
     );
 
   const relevantReverseLedgers =
     recordIds.length <= 1
-      ? reverseLedgers.filter((entry) => entry.entryType === "commission_reverse")
+      ? reverseLedgers.filter(
+          (entry) => entry.entryType === "commission_reverse"
+        )
       : reverseLedgers.filter(
           (entry) =>
-            entry.recordId && recordIds.includes(entry.recordId) &&
+            entry.recordId &&
+            recordIds.includes(entry.recordId) &&
             entry.entryType === "commission_reverse"
         );
 
@@ -322,7 +349,9 @@ export async function reverseCommissionForSalesOrderItem(params: {
       .reduce((sum, entry) => sum + entry.amount, 0);
     const targetReversedAmount = Math.min(
       record.amount,
-      Math.round((record.amount * orderItem.refundedAmount) / orderItem.grossAmount)
+      Math.round(
+        (record.amount * orderItem.refundedAmount) / orderItem.grossAmount
+      )
     );
     const reverseAmount = targetReversedAmount - alreadyReversed;
 
@@ -330,7 +359,7 @@ export async function reverseCommissionForSalesOrderItem(params: {
       continue;
     }
 
-    const [balance] = await db
+    const [balance] = await executor
       .select()
       .from(commissionBalance)
       .where(eq(commissionBalance.userId, record.beneficiaryUserId))
@@ -346,7 +375,7 @@ export async function reverseCommissionForSalesOrderItem(params: {
       : balance.frozenAmount;
     const afterBalance = Math.max(0, beforeBalance - reverseAmount);
 
-    await db
+    await executor
       .update(commissionBalance)
       .set({
         availableAmount: affectsAvailable
@@ -359,7 +388,7 @@ export async function reverseCommissionForSalesOrderItem(params: {
       .where(eq(commissionBalance.id, balance.id));
 
     const fullyReversed = targetReversedAmount >= record.amount;
-    await db
+    await executor
       .update(commissionRecord)
       .set({
         status: fullyReversed ? "reversed" : record.status,
@@ -370,7 +399,7 @@ export async function reverseCommissionForSalesOrderItem(params: {
       .where(eq(commissionRecord.id, record.id));
 
     const reverseLedgerId = crypto.randomUUID();
-    await db.insert(commissionLedger).values({
+    await executor.insert(commissionLedger).values({
       id: reverseLedgerId,
       userId: record.beneficiaryUserId,
       recordId: record.id,
@@ -394,65 +423,70 @@ export async function reverseCommissionForSalesOrderItem(params: {
  * 将已到解冻时间的佣金转为可用
  */
 export async function releaseAvailableCommissionRecords(now = new Date()) {
-  const records = await db
-    .select()
-    .from(commissionRecord)
-    .where(
-      and(
-        eq(commissionRecord.status, "frozen"),
-        lte(commissionRecord.availableAt, now)
-      )
-    );
-
-  const releasedRecordIds: string[] = [];
-
-  for (const record of records) {
-    const [balance] = await db
+  return await db.transaction(async (tx) => {
+    const records = await tx
       .select()
-      .from(commissionBalance)
-      .where(eq(commissionBalance.userId, record.beneficiaryUserId))
-      .limit(1);
+      .from(commissionRecord)
+      .where(
+        and(
+          eq(commissionRecord.status, "frozen"),
+          lte(commissionRecord.availableAt, now)
+        )
+      );
 
-    if (!balance) {
-      continue;
+    const releasedRecordIds: string[] = [];
+
+    for (const record of records) {
+      const [balance] = await tx
+        .select()
+        .from(commissionBalance)
+        .where(eq(commissionBalance.userId, record.beneficiaryUserId))
+        .limit(1);
+
+      if (!balance) {
+        continue;
+      }
+
+      const nextFrozenAmount = Math.max(
+        0,
+        balance.frozenAmount - record.amount
+      );
+      const nextAvailableAmount = balance.availableAmount + record.amount;
+
+      await tx
+        .update(commissionRecord)
+        .set({
+          status: "available",
+          updatedAt: new Date(),
+        })
+        .where(eq(commissionRecord.id, record.id));
+
+      await tx
+        .update(commissionBalance)
+        .set({
+          frozenAmount: nextFrozenAmount,
+          availableAmount: nextAvailableAmount,
+          updatedAt: new Date(),
+        })
+        .where(eq(commissionBalance.id, balance.id));
+
+      await tx.insert(commissionLedger).values({
+        id: crypto.randomUUID(),
+        userId: record.beneficiaryUserId,
+        recordId: record.id,
+        entryType: "commission_available",
+        direction: "credit",
+        amount: record.amount,
+        beforeBalance: balance.availableAmount,
+        afterBalance: nextAvailableAmount,
+        referenceType: "commission_record",
+        referenceId: record.id,
+        memo: "commission released to available",
+      });
+
+      releasedRecordIds.push(record.id);
     }
 
-    const nextFrozenAmount = Math.max(0, balance.frozenAmount - record.amount);
-    const nextAvailableAmount = balance.availableAmount + record.amount;
-
-    await db
-      .update(commissionRecord)
-      .set({
-        status: "available",
-        updatedAt: new Date(),
-      })
-      .where(eq(commissionRecord.id, record.id));
-
-    await db
-      .update(commissionBalance)
-      .set({
-        frozenAmount: nextFrozenAmount,
-        availableAmount: nextAvailableAmount,
-        updatedAt: new Date(),
-      })
-      .where(eq(commissionBalance.id, balance.id));
-
-    await db.insert(commissionLedger).values({
-      id: crypto.randomUUID(),
-      userId: record.beneficiaryUserId,
-      recordId: record.id,
-      entryType: "commission_available",
-      direction: "credit",
-      amount: record.amount,
-      beforeBalance: balance.availableAmount,
-      afterBalance: nextAvailableAmount,
-      referenceType: "commission_record",
-      referenceId: record.id,
-      memo: "commission released to available",
-    });
-
-    releasedRecordIds.push(record.id);
-  }
-
-  return releasedRecordIds;
+    return releasedRecordIds;
+  });
 }
