@@ -54,6 +54,37 @@ describe("AdminDistributionView", () => {
             frozenCommission: 5300,
           },
           agentBalances: [],
+          graph: [
+            {
+              profileId: "profile-1",
+              userId: "user-1",
+              displayName: "北区代理",
+              userName: "北区代理",
+              email: "agent@example.com",
+              agentLevel: "L1",
+              status: "active",
+              depth: 1,
+              path: "root/user-1",
+              inviterUserId: null,
+              balance: {
+                currency: "CNY",
+                totalEarned: 8600,
+                availableAmount: 3600,
+                frozenAmount: 1800,
+                withdrawnAmount: 1200,
+              },
+              stats: {
+                directChildren: 1,
+                totalDescendants: 1,
+                attributedOrders: 3,
+                subscriptionOrders: 1,
+                creditOrders: 2,
+                grossSales: 32900,
+              },
+              recentOrders: [],
+              children: [],
+            },
+          ],
           recentOrders: [],
           recentCommissions: [],
           recentWithdrawals: [],
@@ -65,6 +96,7 @@ describe("AdminDistributionView", () => {
     expect(screen.getByText("活跃代理")).toBeInTheDocument();
     expect(screen.getByText("推广成交订单")).toBeInTheDocument();
     expect(screen.getByText("累计佣金")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "分销图" })).toBeInTheDocument();
   });
 
   it("submits paid review for pending withdrawal", async () => {
@@ -80,6 +112,7 @@ describe("AdminDistributionView", () => {
             frozenCommission: 5300,
           },
           agentBalances: [],
+          graph: [],
           recentOrders: [],
           recentCommissions: [],
           recentWithdrawals: [

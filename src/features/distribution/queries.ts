@@ -11,6 +11,187 @@ import {
   withdrawalRequest,
 } from "@/db/schema";
 
+interface DistributionGraphOrder {
+  id: string;
+  orderType: "subscription" | "credit_purchase";
+  grossAmount: number;
+  currency: string;
+  referralCode: string | null;
+  afterSalesStatus: "none" | "partial_refund" | "refunded" | "returned" | "chargeback";
+  buyerName: string | null;
+  buyerEmail: string | null;
+  paidAt: Date | null;
+  createdAt: Date;
+}
+
+interface DistributionGraphNode {
+  profileId: string;
+  userId: string;
+  displayName: string | null;
+  userName: string | null;
+  email: string | null;
+  agentLevel: string | null;
+  status: "active" | "inactive";
+  depth: number;
+  path: string | null;
+  inviterUserId: string | null;
+  balance: {
+    currency: string | null;
+    totalEarned: number;
+    availableAmount: number;
+    frozenAmount: number;
+    withdrawnAmount: number;
+  };
+  stats: {
+    directChildren: number;
+    totalDescendants: number;
+    attributedOrders: number;
+    subscriptionOrders: number;
+    creditOrders: number;
+    grossSales: number;
+  };
+  recentOrders: DistributionGraphOrder[];
+  children: DistributionGraphNode[];
+}
+
+/**
+ * 构建管理端分销关系图
+ */
+function buildDistributionGraph(params: {
+  profiles: Array<{
+    profileId: string;
+    userId: string;
+    displayName: string | null;
+    agentLevel: string | null;
+    status: "active" | "inactive";
+    depth: number;
+    inviterUserId: string | null;
+    path: string | null;
+    userName: string | null;
+    email: string | null;
+    currency: string | null;
+    totalEarned: number | null;
+    availableAmount: number | null;
+    frozenAmount: number | null;
+    withdrawnAmount: number | null;
+  }>;
+  orders: Array<{
+    id: string;
+    orderType: "subscription" | "credit_purchase";
+    grossAmount: number;
+    currency: string;
+    referralCode: string | null;
+    attributedAgentUserId: string | null;
+    afterSalesStatus: "none" | "partial_refund" | "refunded" | "returned" | "chargeback";
+    paidAt: Date | null;
+    createdAt: Date;
+    buyerName: string | null;
+    buyerEmail: string | null;
+  }>;
+}) {
+  const ordersByAgent = new Map<string, DistributionGraphOrder[]>();
+
+  for (const order of params.orders) {
+    if (!order.attributedAgentUserId) {
+      continue;
+    }
+
+    const list = ordersByAgent.get(order.attributedAgentUserId) ?? [];
+    list.push({
+      id: order.id,
+      orderType: order.orderType,
+      grossAmount: order.grossAmount,
+      currency: order.currency,
+      referralCode: order.referralCode,
+      afterSalesStatus: order.afterSalesStatus,
+      buyerName: order.buyerName,
+      buyerEmail: order.buyerEmail,
+      paidAt: order.paidAt,
+      createdAt: order.createdAt,
+    });
+    ordersByAgent.set(order.attributedAgentUserId, list);
+  }
+
+  for (const list of ordersByAgent.values()) {
+    list.sort(
+      (left, right) =>
+        (right.paidAt ?? right.createdAt).getTime() -
+        (left.paidAt ?? left.createdAt).getTime()
+    );
+  }
+
+  const profileByUserId = new Map(
+    params.profiles.map((profile) => [profile.userId, profile] as const)
+  );
+  const childrenByInviter = new Map<string, string[]>();
+
+  for (const profile of params.profiles) {
+    if (!profile.inviterUserId) {
+      continue;
+    }
+    const list = childrenByInviter.get(profile.inviterUserId) ?? [];
+    list.push(profile.userId);
+    childrenByInviter.set(profile.inviterUserId, list);
+  }
+
+  /**
+   * 递归生成单个代理节点
+   */
+  function buildNode(userId: string): DistributionGraphNode | null {
+    const profile = profileByUserId.get(userId);
+    if (!profile) {
+      return null;
+    }
+
+    const children = (childrenByInviter.get(userId) ?? [])
+      .map((childUserId) => buildNode(childUserId))
+      .filter((node): node is DistributionGraphNode => Boolean(node));
+    const orders = ordersByAgent.get(userId) ?? [];
+
+    return {
+      profileId: profile.profileId,
+      userId: profile.userId,
+      displayName: profile.displayName,
+      userName: profile.userName,
+      email: profile.email,
+      agentLevel: profile.agentLevel,
+      status: profile.status,
+      depth: profile.depth,
+      path: profile.path,
+      inviterUserId: profile.inviterUserId,
+      balance: {
+        currency: profile.currency,
+        totalEarned: profile.totalEarned ?? 0,
+        availableAmount: profile.availableAmount ?? 0,
+        frozenAmount: profile.frozenAmount ?? 0,
+        withdrawnAmount: profile.withdrawnAmount ?? 0,
+      },
+      stats: {
+        directChildren: children.length,
+        totalDescendants: children.reduce(
+          (sum, child) => sum + child.stats.totalDescendants + 1,
+          0
+        ),
+        attributedOrders: orders.length,
+        subscriptionOrders: orders.filter((order) => order.orderType === "subscription").length,
+        creditOrders: orders.filter((order) => order.orderType === "credit_purchase").length,
+        grossSales: orders.reduce((sum, order) => sum + order.grossAmount, 0),
+      },
+      recentOrders: orders.slice(0, 3),
+      children,
+    };
+  }
+
+  return params.profiles
+    .filter(
+      (profile) =>
+        !profile.inviterUserId || !profileByUserId.has(profile.inviterUserId)
+    )
+    .sort((left, right) => left.depth - right.depth)
+    .map((profile) => buildNode(profile.userId))
+    .filter((node): node is DistributionGraphNode => Boolean(node));
+}
+
 /**
  * 读取代理端分销中心所需的数据
  */
@@ -106,6 +287,8 @@ export async function getAdminDistributionOverview() {
     recentOrders,
     recentCommissions,
     recentWithdrawals,
+    graphProfiles,
+    graphOrders,
   ] = await Promise.all([
     db
       .select({ count: count() })
@@ -204,7 +387,52 @@ export async function getAdminDistributionOverview() {
       .leftJoin(user, eq(user.id, withdrawalRequest.userId))
       .orderBy(desc(withdrawalRequest.createdAt))
       .limit(10),
+    db
+      .select({
+        profileId: distributionProfile.id,
+        userId: distributionProfile.userId,
+        displayName: distributionProfile.displayName,
+        agentLevel: distributionProfile.agentLevel,
+        status: distributionProfile.status,
+        depth: distributionProfile.depth,
+        inviterUserId: distributionProfile.inviterUserId,
+        path: distributionProfile.path,
+        userName: user.name,
+        email: user.email,
+        currency: commissionBalance.currency,
+        totalEarned: commissionBalance.totalEarned,
+        availableAmount: commissionBalance.availableAmount,
+        frozenAmount: commissionBalance.frozenAmount,
+        withdrawnAmount: commissionBalance.withdrawnAmount,
+      })
+      .from(distributionProfile)
+      .leftJoin(user, eq(user.id, distributionProfile.userId))
+      .leftJoin(commissionBalance, eq(commissionBalance.userId, distributionProfile.userId))
+      .orderBy(distributionProfile.depth, desc(distributionProfile.createdAt)),
+    db
+      .select({
+        id: salesOrder.id,
+        orderType: salesOrder.orderType,
+        grossAmount: salesOrder.grossAmount,
+        currency: salesOrder.currency,
+        referralCode: salesOrder.referralCode,
+        attributedAgentUserId: salesOrder.attributedAgentUserId,
+        afterSalesStatus: salesOrder.afterSalesStatus,
+        paidAt: salesOrder.paidAt,
+        createdAt: salesOrder.createdAt,
+        buyerName: user.name,
+        buyerEmail: user.email,
+      })
+      .from(salesOrder)
+      .leftJoin(user, eq(user.id, salesOrder.userId))
+      .where(isNotNull(salesOrder.attributedAgentUserId))
+      .orderBy(desc(salesOrder.paidAt), desc(salesOrder.createdAt)),
   ]);
+
+  const graph = buildDistributionGraph({
+    profiles: graphProfiles,
+    orders: graphOrders,
+  });
 
   return {
     summary: {
@@ -219,5 +447,6 @@ export async function getAdminDistributionOverview() {
     recentOrders,
     recentCommissions,
     recentWithdrawals,
+    graph,
   };
 }

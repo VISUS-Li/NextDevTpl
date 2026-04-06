@@ -256,6 +256,18 @@ export function findPlanByPriceId(priceId: string): {
 }
 
 /**
+ * 根据价格 ID 获取最小货币单位金额
+ */
+export function getPriceAmountById(priceId: string): number | null {
+  const { price } = findPlanByPriceId(priceId);
+  if (!price) {
+    return null;
+  }
+
+  return Math.round(price.amount * 100);
+}
+
+/**
  * 获取计划的价格（根据周期）
  */
 export function getPlanPrice(

@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   BadgeDollarSign,
+  ChevronRight,
   Loader2,
   Network,
   ReceiptText,
@@ -35,6 +36,47 @@ import {
   getOrderTypeLabel,
   getWithdrawalStatusMeta,
 } from "@/features/distribution/presentation";
+
+interface AdminDistributionGraphNode {
+  profileId: string;
+  userId: string;
+  displayName: string | null;
+  userName: string | null;
+  email: string | null;
+  agentLevel: string | null;
+  status: "active" | "inactive";
+  depth: number;
+  path: string | null;
+  inviterUserId: string | null;
+  balance: {
+    currency: string | null;
+    totalEarned: number;
+    availableAmount: number;
+    frozenAmount: number;
+    withdrawnAmount: number;
+  };
+  stats: {
+    directChildren: number;
+    totalDescendants: number;
+    attributedOrders: number;
+    subscriptionOrders: number;
+    creditOrders: number;
+    grossSales: number;
+  };
+  recentOrders: Array<{
+    id: string;
+    orderType: "subscription" | "credit_purchase";
+    grossAmount: number;
+    currency: string;
+    afterSalesStatus: "none" | "partial_refund" | "refunded" | "returned" | "chargeback";
+    referralCode: string | null;
+    buyerName: string | null;
+    buyerEmail: string | null;
+    paidAt: Date | null;
+    createdAt: Date;
+  }>;
+  children: AdminDistributionGraphNode[];
+}
 
 /**
  * 管理端分销视图数据类型
@@ -105,7 +147,96 @@ interface AdminDistributionViewProps {
       userName: string | null;
       userEmail: string | null;
     }>;
+    graph?: AdminDistributionGraphNode[];
   };
+}
+
+/**
+ * 渲染单个分销树节点
+ */
+function DistributionGraphTreeNode({
+  node,
+}: {
+  node: AdminDistributionGraphNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border bg-card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium">
+                {node.displayName || node.userName || node.email || node.userId}
+              </p>
+              <Badge variant={node.status === "active" ? "default" : "outline"}>
+                {node.status === "active" ? "启用中" : "停用"}
+              </Badge>
+              <Badge variant="outline">{node.agentLevel || "L1"}</Badge>
+              <Badge variant="outline">层级 {node.depth}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {node.email || "未记录邮箱"} · 直推 {node.stats.directChildren} 人 · 全部下级 {node.stats.totalDescendants} 人
+            </p>
+            <p className="text-xs text-muted-foreground">
+              路径 {node.path || "未记录"} · 成交 {node.stats.attributedOrders} 单
+            </p>
+          </div>
+          <div className="grid gap-1 text-sm lg:text-right">
+            <span>累计销售 {formatDistributionAmount(node.stats.grossSales, node.balance.currency)}</span>
+            <span>累计佣金 {formatDistributionAmount(node.balance.totalEarned, node.balance.currency)}</span>
+            <span>可提现 {formatDistributionAmount(node.balance.availableAmount, node.balance.currency)}</span>
+            <span>冻结 {formatDistributionAmount(node.balance.frozenAmount, node.balance.currency)}</span>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span>订阅单 {node.stats.subscriptionOrders}</span>
+          <span>积分单 {node.stats.creditOrders}</span>
+          <span>已提现 {formatDistributionAmount(node.balance.withdrawnAmount, node.balance.currency)}</span>
+        </div>
+        {node.recentOrders.length > 0 ? (
+          <div className="mt-4 space-y-2 rounded-xl bg-muted/40 p-3">
+            <p className="text-xs font-medium text-foreground">最近成交</p>
+            {node.recentOrders.map((order) => (
+              <div
+                key={order.id}
+                className="flex flex-col gap-1 rounded-lg border border-border/60 bg-background/90 p-3 text-xs md:flex-row md:items-center md:justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{getOrderTypeLabel(order.orderType)}</span>
+                    <Badge variant="outline">{getAfterSalesLabel(order.afterSalesStatus)}</Badge>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {order.buyerName || order.buyerEmail || "未记录买家"} · 推广码 {order.referralCode || "未记录"}
+                  </p>
+                </div>
+                <div className="text-muted-foreground md:text-right">
+                  <p className="font-medium text-foreground">
+                    {formatDistributionAmount(order.grossAmount, order.currency)}
+                  </p>
+                  <p>{formatDistributionDate(order.paidAt || order.createdAt)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {node.children.length > 0 ? (
+        <div className="ml-4 border-l border-dashed border-border pl-4">
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <ChevronRight className="h-4 w-4" />
+            下级代理
+          </div>
+          <div className="space-y-3">
+            {node.children.map((child) => (
+              <DistributionGraphTreeNode key={child.profileId} node={child} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -223,6 +354,7 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
           <TabsTrigger value="overview">总览</TabsTrigger>
           <TabsTrigger value="withdrawals">提现审核</TabsTrigger>
           <TabsTrigger value="agents">代理</TabsTrigger>
+          <TabsTrigger value="graph">分销图</TabsTrigger>
           <TabsTrigger value="orders">订单</TabsTrigger>
           <TabsTrigger value="commissions">佣金</TabsTrigger>
         </TabsList>
@@ -412,6 +544,28 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
                       <span>已提现 {formatDistributionAmount(item.withdrawnAmount ?? 0)}</span>
                     </div>
                   </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="graph">
+          <Card>
+            <CardHeader>
+              <CardTitle>分销关系图</CardTitle>
+              <CardDescription>
+                直接展示代理层级、下级人数、成交订单、累计销售额和佣金余额，方便核对分销和分佣关系。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!data.graph || data.graph.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                  暂无分销关系图数据。
+                </div>
+              ) : (
+                data.graph.map((node) => (
+                  <DistributionGraphTreeNode key={node.profileId} node={node} />
                 ))
               )}
             </CardContent>

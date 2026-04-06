@@ -532,7 +532,7 @@ function logDemoSummary(params: {
         renewalCheck: {
           renewalOrderId: params.renewalOrderId,
           renewalCommissionEventId: params.renewalEventId,
-          note: "如果这里是 null，说明续费订单没有生成佣金，当前实现需要重点复核",
+          note: "这里应该有值，说明续费订单也生成了佣金事件",
         },
       },
       null,
@@ -1035,9 +1035,9 @@ describeIfDemo("Distribution Demo Simulation", () => {
 
     expect(alphaProfile).toBeTruthy();
     expect(alphaBalance).toMatchObject({
-      totalEarned: 9_480,
+      totalEarned: 9_660,
       availableAmount: 2_980,
-      frozenAmount: 2_250,
+      frozenAmount: 2_430,
       withdrawnAmount: 1_550,
       reversedAmount: 2_700,
     });
@@ -1061,6 +1061,8 @@ describeIfDemo("Distribution Demo Simulation", () => {
     expect(gammaDashboard.summary.attributedOrders).toBe(0);
     expect(adminOverview.summary.activeAgents).toBeGreaterThanOrEqual(2);
     expect(adminOverview.summary.pendingWithdrawals).toBeGreaterThanOrEqual(1);
+    expect(renewalCommissionEvent?.id).toBeTruthy();
+    expect(adminOverview.graph?.length).toBeGreaterThanOrEqual(2);
 
     logDemoSummary({
       alphaUserId,

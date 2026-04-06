@@ -21,7 +21,7 @@ import {
   handleSubscriptionActive,
   handleSubscriptionRenewed,
 } from "@/app/api/webhooks/creem/route";
-import { PRICE_IDS } from "@/config/payment";
+import { getPriceAmountById, PRICE_IDS } from "@/config/payment";
 import {
   commissionBalance,
   commissionEvent,
@@ -294,6 +294,7 @@ function createSubscriptionCheckoutCompleted(params: {
   const { userId, subscriptionId, priceId } = params;
   const now = new Date();
   const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const amount = getPriceAmountById(priceId) ?? 900;
 
   return {
     id: `checkout_${subscriptionId}`,
@@ -303,7 +304,7 @@ function createSubscriptionCheckoutCompleted(params: {
       id: `order_${subscriptionId}`,
       customer: `customer_${userId}`,
       product: priceId,
-      amount: 9,
+      amount,
       currency: "USD",
       status: "paid",
       type: "subscription",
@@ -312,7 +313,7 @@ function createSubscriptionCheckoutCompleted(params: {
     product: {
       id: priceId,
       name: "Pro Monthly",
-      price: 9,
+      price: amount,
       currency: "USD",
       billing_type: "recurring",
       billing_period: "month",
@@ -1364,6 +1365,145 @@ describe("Creem Webhook: commission", () => {
     expect(commissionBalances[0]!.totalEarned).toBe(20);
     expect(commissionLedgers).toHaveLength(1);
     expect(commissionLedgers[0]!.entryType).toBe("commission_frozen");
+  });
+
+  it("有归因的订阅首购和续费都应该生成佣金", async () => {
+    const agentUser = await createTestUser();
+    const buyerUser = await createTestUser();
+    createdUserIds.push(agentUser.id, buyerUser.id);
+
+    await createTestDistributionProfile({
+      userId: agentUser.id,
+      displayName: "Subscription Agent",
+    });
+    await createTestReferralCode({
+      agentUserId: agentUser.id,
+      code: "agent-subscription",
+      campaign: "subscription-launch",
+      landingPath: "/pricing",
+    });
+
+    const ruleId = `rule_subscription_${Date.now()}`;
+    createdCommissionRuleIds.push(ruleId);
+    await testDb.insert(commissionRule).values({
+      id: ruleId,
+      status: "active",
+      orderType: "subscription",
+      productType: "subscription",
+      commissionLevel: 1,
+      calculationMode: "rate",
+      rate: 20,
+      freezeDays: 2,
+      appliesToFirstPurchase: true,
+      appliesToRenewal: true,
+      priority: 20,
+    });
+
+    const attributionId = `attr_subscription_${Date.now()}`;
+    await testDb.insert(distributionAttribution).values({
+      id: attributionId,
+      visitorKey: "visitor_subscription",
+      userId: buyerUser.id,
+      agentUserId: agentUser.id,
+      referralCode: "agent-subscription",
+      campaign: "subscription-launch",
+      landingPath: "/pricing",
+      source: "referral_link",
+      boundReason: "checkout",
+      boundAt: new Date(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      snapshot: {
+        referralCode: "agent-subscription",
+        agentUserId: agentUser.id,
+      },
+    });
+
+    const subscriptionId = `sub_commission_${Date.now()}`;
+    const firstStart = new Date("2026-03-01T00:00:00.000Z");
+    const firstEnd = new Date("2026-04-01T00:00:00.000Z");
+    await handleCheckoutCompleted({
+      ...createSubscriptionCheckoutCompleted({
+        userId: buyerUser.id,
+        subscriptionId,
+        priceId: proMonthlyPriceId,
+      }),
+      metadata: {
+        userId: buyerUser.id,
+        planId: "pro",
+        referralCode: "agent-subscription",
+        attributedAgentUserId: agentUser.id,
+        attributionId,
+        campaign: "subscription-launch",
+        landingPath: "/pricing",
+        visitorKey: "visitor_subscription",
+      },
+      subscription: {
+        id: subscriptionId,
+        status: "active",
+        product: {
+          id: proMonthlyPriceId,
+          price: 900,
+          currency: "USD",
+        },
+        customer: `customer_${buyerUser.id}`,
+        current_period_start_date: firstStart.toISOString(),
+        current_period_end_date: firstEnd.toISOString(),
+        cancel_at_period_end: false,
+        metadata: {
+          userId: buyerUser.id,
+        },
+      },
+    });
+    await handleSubscriptionActive(
+      createSubscriptionEvent({
+        userId: buyerUser.id,
+        subscriptionId,
+        priceId: proMonthlyPriceId,
+        periodStart: firstStart,
+        periodEnd: firstEnd,
+      })
+    );
+
+    const renewalStart = new Date("2026-04-01T00:00:00.000Z");
+    const renewalEnd = new Date("2026-05-01T00:00:00.000Z");
+    await handleSubscriptionRenewed(
+      createSubscriptionEvent({
+        userId: buyerUser.id,
+        subscriptionId,
+        priceId: proMonthlyPriceId,
+        periodStart: renewalStart,
+        periodEnd: renewalEnd,
+      })
+    );
+
+    const subscriptionEvents = await testDb
+      .select()
+      .from(commissionEvent)
+      .where(eq(commissionEvent.triggerUserId, buyerUser.id));
+    const subscriptionRecords = await testDb
+      .select()
+      .from(commissionRecord)
+      .where(eq(commissionRecord.beneficiaryUserId, agentUser.id));
+    const [balance] = await testDb
+      .select()
+      .from(commissionBalance)
+      .where(eq(commissionBalance.userId, agentUser.id))
+      .limit(1);
+    const expectedCommissionAmount = Math.round(
+      ((getPriceAmountById(proMonthlyPriceId) ?? 0) * 20) / 100
+    );
+
+    expect(subscriptionEvents).toHaveLength(2);
+    expect(subscriptionEvents.map((item) => item.triggerType).sort()).toEqual([
+      "subscription_create",
+      "subscription_cycle",
+    ]);
+    expect(subscriptionRecords).toHaveLength(2);
+    expect(
+      subscriptionRecords.every((item) => item.amount === expectedCommissionAmount)
+    ).toBe(true);
+    expect(balance?.totalEarned).toBe(expectedCommissionAmount * 2);
+    expect(balance?.frozenAmount).toBe(expectedCommissionAmount * 2);
   });
 
   it("重复的积分订单 webhook 不应该重复记佣金", async () => {

@@ -1,4 +1,5 @@
 import { and, desc, eq, or } from "drizzle-orm";
+import { getPriceAmountById } from "@/config/payment";
 import { db } from "@/db";
 import {
   normalizeDistributionCurrency,
@@ -286,6 +287,7 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
     | "subscription.paid"
 ): PaymentOrderPayload {
   const productId = getSubscriptionProductId(sub);
+  const orderAmount = getPriceAmountById(productId) ?? 0;
   const eventTime = new Date(sub.current_period_start_date);
   const eventIdempotencyKey = getSubscriptionEventIdempotencyKey(
     sub,
@@ -306,7 +308,7 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
       status: eventType === "subscription.active" ? "confirmed" : "paid",
       afterSalesStatus: "none",
       currency,
-      grossAmount: 0,
+      grossAmount: orderAmount,
       paidAt: eventTime,
       eventTime,
       eventType,
@@ -324,11 +326,11 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
       productId,
       priceId: productId,
       quantity: 1,
-      grossAmount: 0,
-      netAmount: 0,
-      commissionBaseAmount: 0,
+      grossAmount: orderAmount,
+      netAmount: orderAmount,
+      commissionBaseAmount: orderAmount,
       refundedAmount: 0,
-      refundableAmount: 0,
+      refundableAmount: orderAmount,
       metadata: {
         subscriptionId: sub.id,
         periodStart: sub.current_period_start_date,
@@ -416,6 +418,28 @@ async function confirmExistingSubscriptionOrder(
 }
 
 /**
+ * 读取订阅首单的归因快照，用于续费沿用同一代理关系
+ */
+async function getSubscriptionOrderAttributionSnapshot(
+  tx: DistributionTx,
+  subscriptionId: string
+) {
+  const [sourceOrder] = await tx
+    .select({
+      referralCode: salesOrder.referralCode,
+      attributedAgentUserId: salesOrder.attributedAgentUserId,
+      attributionId: salesOrder.attributionId,
+      attributionSnapshot: salesOrder.attributionSnapshot,
+    })
+    .from(salesOrder)
+    .where(eq(salesOrder.providerSubscriptionId, subscriptionId))
+    .orderBy(desc(salesOrder.paidAt), desc(salesOrder.createdAt))
+    .limit(1);
+
+  return sourceOrder ?? null;
+}
+
+/**
  * 从订阅生命周期事件落统一订单
  *
  * `subscription.active` 优先确认首购 checkout 订单
@@ -461,8 +485,20 @@ export async function upsertSalesOrderFromSubscriptionEvent(
       return existingOrder.id;
     }
 
+    const attribution =
+      eventType === "subscription.active"
+        ? null
+        : await getSubscriptionOrderAttributionSnapshot(tx, sub.id);
     const orderId = payload.order.id;
-    await tx.insert(salesOrder).values(payload.order);
+    await tx.insert(salesOrder).values({
+      ...payload.order,
+      referralCode: attribution?.referralCode ?? payload.order.referralCode,
+      attributedAgentUserId:
+        attribution?.attributedAgentUserId ?? payload.order.attributedAgentUserId,
+      attributionId: attribution?.attributionId ?? payload.order.attributionId,
+      attributionSnapshot:
+        attribution?.attributionSnapshot ?? payload.order.attributionSnapshot,
+    });
     await tx.insert(salesOrderItem).values({
       ...payload.item,
       orderId,
