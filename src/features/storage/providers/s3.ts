@@ -164,6 +164,32 @@ export const s3Provider: StorageProvider = {
   },
 
   /**
+   * 直接写入对象
+   *
+   * @param key - 文件键名
+   * @param bucket - 存储桶名称
+   * @param body - 文件内容
+   * @param contentType - 内容类型
+   */
+  async putObject(
+    key: string,
+    bucket: string,
+    body: Buffer | Uint8Array | string,
+    contentType: string
+  ): Promise<void> {
+    const client = getS3Client();
+
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    });
+
+    await client.send(command);
+  },
+
+  /**
    * 获取文件内容
    *
    * @param key - 文件键名

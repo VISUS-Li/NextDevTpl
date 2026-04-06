@@ -53,6 +53,21 @@ export interface StorageProvider {
   deleteObject(key: string, bucket: string): Promise<void>;
 
   /**
+   * 直接写入文件内容
+   *
+   * @param key - 文件键名
+   * @param bucket - 存储桶名称
+   * @param body - 文件内容
+   * @param contentType - 内容类型
+   */
+  putObject(
+    key: string,
+    bucket: string,
+    body: Buffer | Uint8Array | string,
+    contentType: string
+  ): Promise<void>;
+
+  /**
    * 获取文件内容
    *
    * @param key - 文件键名 (路径)
