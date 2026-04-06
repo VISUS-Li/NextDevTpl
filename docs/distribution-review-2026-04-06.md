@@ -164,6 +164,63 @@
 - `src/test/payment/webhook.test.ts`
 - `src/test/distribution/withdrawal.test.ts`
 
+## 本轮追加更新
+
+### 1. 默认币种改为人民币
+
+- 分销金额展示与提现兜底币种改为 `CNY`
+- 仍然保留上游 webhook 自带币种优先
+- 相关文件：
+  - `src/features/distribution/presentation.ts`
+  - `src/features/distribution/actions.ts`
+  - `src/features/distribution/components/distribution-dashboard-view.tsx`
+
+### 2. 订阅续费现在也会分佣
+
+之前问题：
+- 续费订单金额写成 `0`
+- 续费订单没有继承首购归因
+- 结果是 `subscription_cycle` 无法生成佣金
+
+修复后：
+- 续费订单会根据 `priceId` 补真实金额
+- 续费订单会沿用首购订单的代理归因与快照
+- 演示种子中 `renewalCommissionEventId` 已不再是 `null`
+
+相关文件：
+- `src/config/payment.ts`
+- `src/features/distribution/orders.ts`
+- `src/test/payment/webhook.test.ts`
+- `src/test/distribution/demo-simulation.test.ts`
+
+### 3. 管理端新增树状分销图
+
+管理端页面 `/en/admin/distribution` 新增 `分销图` 页签，当前可直接查看：
+- 根代理与下级代理的树状层级
+- 每个代理的直推人数、全部下级人数
+- 推广成交订单数、订阅单数、积分单数
+- 累计销售额、累计佣金、可提现、冻结、已提现
+- 每个节点最近成交订单
+
+相关文件：
+- `src/features/distribution/queries.ts`
+- `src/features/distribution/components/admin-distribution-view.tsx`
+- `src/test/distribution/admin-distribution-view.test.tsx`
+
+### 4. 手机预览方式
+
+如需在手机端验收，当前通过 Cloudflare Quick Tunnel 访问：
+
+```text
+https://pull-dispatched-greensboro-drivers.trycloudflare.com
+```
+
+验收路径：
+- 登录页：`/en/sign-in`
+- 管理端分销：`/en/admin/distribution`
+- 演示管理员账号：`dist-demo-admin@example.com`
+- 密码：`DemoPass123!`
+
 ## 验证结果
 
 执行命令：
@@ -179,6 +236,22 @@ pnpm typecheck
 - `src/test/distribution/withdrawal.test.ts`：5 通过
 - `src/test/payment/webhook.test.ts`：37 通过
 - 合计：48 个测试全部通过
+- `pnpm typecheck` 通过
+
+本轮追加验证：
+
+```bash
+pnpm typecheck
+DATABASE_URL=$(sed -n 's/^DATABASE_URL=//p' .env.local | tail -n 1) pnpm vitest run src/test/payment/webhook.test.ts -t '有归因的订阅首购和续费都应该生成佣金'
+DATABASE_URL=$(sed -n 's/^DATABASE_URL=//p' .env.local | tail -n 1) pnpm vitest run src/test/distribution/admin-distribution-view.test.tsx
+DATABASE_URL=$(sed -n 's/^DATABASE_URL=//p' .env.local | tail -n 1) RUN_DISTRIBUTION_DEMO=1 pnpm vitest run src/test/distribution/demo-simulation.test.ts
+```
+
+结果：
+
+- 订阅首购与续费分佣测试通过
+- 管理端分销图组件测试通过
+- 演示种子测试通过，并确认续费佣金事件已生成
 - `pnpm typecheck` 通过
 
 ## 仍需关注的点
