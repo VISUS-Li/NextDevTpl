@@ -156,18 +156,28 @@ interface AdminDistributionViewProps {
  */
 function DistributionGraphTreeNode({
   node,
+  isRoot = false,
 }: {
   node: AdminDistributionGraphNode;
+  isRoot?: boolean;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border bg-card p-4">
+    <div className="relative space-y-3">
+      {!isRoot ? (
+        <>
+          <span className="absolute -left-6 top-0 h-full border-l-2 border-dashed border-slate-300" />
+          <span className="absolute -left-6 top-8 w-6 border-t-2 border-dashed border-slate-300" />
+        </>
+      ) : null}
+
+      <div className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-medium">
                 {node.displayName || node.userName || node.email || node.userId}
               </p>
+              {isRoot ? <Badge variant="secondary">根节点</Badge> : null}
               <Badge variant={node.status === "active" ? "default" : "outline"}>
                 {node.status === "active" ? "启用中" : "停用"}
               </Badge>
@@ -223,14 +233,17 @@ function DistributionGraphTreeNode({
       </div>
 
       {node.children.length > 0 ? (
-        <div className="ml-4 border-l border-dashed border-border pl-4">
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="relative ml-8 space-y-3 pl-6 before:absolute before:left-0 before:top-0 before:h-full before:border-l-2 before:border-dashed before:border-slate-300">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <ChevronRight className="h-4 w-4" />
             下级代理
           </div>
           <div className="space-y-3">
             {node.children.map((child) => (
-              <DistributionGraphTreeNode key={child.profileId} node={child} />
+              <DistributionGraphTreeNode
+                key={child.profileId}
+                node={child}
+              />
             ))}
           </div>
         </div>
@@ -555,17 +568,26 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
             <CardHeader>
               <CardTitle>分销关系图</CardTitle>
               <CardDescription>
-                直接展示代理层级、下级人数、成交订单、累计销售额和佣金余额，方便核对分销和分佣关系。
+                以树状关系展示代理上下级。每个节点都带成交订单、销售额、佣金和最近成交，方便直接核对关系链。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <Badge variant="secondary">根节点</Badge>
+                <Badge variant="outline">层级</Badge>
+                <span>虚线表示父子代理关系</span>
+              </div>
               {!data.graph || data.graph.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                   暂无分销关系图数据。
                 </div>
               ) : (
                 data.graph.map((node) => (
-                  <DistributionGraphTreeNode key={node.profileId} node={node} />
+                  <DistributionGraphTreeNode
+                    key={node.profileId}
+                    node={node}
+                    isRoot
+                  />
                 ))
               )}
             </CardContent>
