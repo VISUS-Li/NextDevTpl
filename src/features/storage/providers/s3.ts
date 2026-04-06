@@ -7,6 +7,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -221,6 +222,44 @@ export const s3Provider: StorageProvider = {
     }
 
     return Buffer.concat(chunks);
+  },
+
+  /**
+   * 列出对象
+   *
+   * @param prefix - 键名前缀
+   * @param bucket - 存储桶名称
+   * @param maxKeys - 最大返回数量
+   * @returns 对象列表
+   */
+  async listObjects(
+    prefix: string,
+    bucket: string,
+    maxKeys: number = 20
+  ): Promise<Array<{ key: string; lastModified?: Date; size?: number }>> {
+    const client = getS3Client();
+
+    const command = new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      MaxKeys: maxKeys,
+    });
+
+    const response = await client.send(command);
+    return (response.Contents ?? [])
+      .filter((item) => !!item.Key)
+      .map((item) => {
+        const result: { key: string; lastModified?: Date; size?: number } = {
+          key: item.Key!,
+        };
+        if (item.LastModified) {
+          result.lastModified = item.LastModified;
+        }
+        if (typeof item.Size === "number") {
+          result.size = item.Size;
+        }
+        return result;
+      });
   },
 };
 

@@ -8,6 +8,7 @@
 - 首页 mobile 端已按参考稿完成第一版改造
 - 当前已落地区域：顶部导航、Hero、工具矩阵、订阅入口、页脚、首页 metadata、移动端底部导航
 - 已补给 `RedInk` 使用的 platform API，当前已支持会话读取、积分校验、积分消费、图片上传地址、结果保存
+- 已补平台结果查询能力，当前支持结果列表和结果详情读取
 - 改造原则：保留现有登录、订阅、文档、语言切换、dashboard 跳转等真实功能，不做纯静态替换
 - 当前首页主入口文件：
   - `src/app/[locale]/(marketing)/page.tsx`
@@ -273,6 +274,8 @@ pnpm dev
 - `src/app/api/platform/credits/consume/route.ts`：工具侧按次消费积分
 - `src/app/api/platform/storage/presigned-image/route.ts`：工具侧申请图片上传地址
 - `src/app/api/platform/results/save/route.ts`：工具侧把 JSON 结果写入对象存储
+- `src/app/api/platform/results/route.ts`：工具侧读取结果列表
+- `src/app/api/platform/results/detail/route.ts`：工具侧读取单条结果详情
 - `src/app/api/jobs/credits/expire/route.ts`：积分过期任务
 - `src/app/api/inngest/route.ts`：Inngest 入口
 - `src/app/api/search/route.ts`：搜索接口
@@ -294,6 +297,10 @@ pnpm dev
   - 给工具申请图片上传地址，文件落到平台对象存储
 - `POST /api/platform/results/save`
   - 给工具把生成结果保存为 JSON，目前 `RedInk` 的商品文案结果会写到 `redink/results/<userId>/`
+- `GET /api/platform/results`
+  - 给工具读取当前用户自己的结果列表
+- `GET /api/platform/results/detail`
+  - 给工具按 key 读取单条结果详情
 
 当前分工：
 
@@ -316,6 +323,7 @@ pnpm test:run
 - 改动涉及的主路径可手动访问
 - 涉及 schema 改动时，数据库能正常 `push`
 - platform API 改动后，至少跑 `src/test/platform/api.test.ts` 与 `src/test/platform/result-save.test.ts`
+- 结果查询改动后，补跑 `src/test/platform/result-query.test.ts`
 
 ## 11. 后续开发建议
 

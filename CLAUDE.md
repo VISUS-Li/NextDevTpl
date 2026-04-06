@@ -67,6 +67,8 @@ All routes are under `[locale]` for i18n:
 - `platform/credits/consume/route.ts` — Tool-side credits consumption
 - `platform/storage/presigned-image/route.ts` — Tool-side image upload URL
 - `platform/results/save/route.ts` — Tool-side JSON result save
+- `platform/results/route.ts` — Tool-side result list
+- `platform/results/detail/route.ts` — Tool-side result detail
 - `webhooks/creem/route.ts` — Creem payment webhook
 - `auth/[...all]/route.ts` — Better Auth catch-all
 - `search/route.ts` — Search API

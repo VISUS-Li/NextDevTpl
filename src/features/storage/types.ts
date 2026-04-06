@@ -75,6 +75,20 @@ export interface StorageProvider {
    * @returns 文件内容 Buffer
    */
   getObject(key: string, bucket: string): Promise<Buffer>;
+
+  /**
+   * 列出对象
+   *
+   * @param prefix - 键名前缀
+   * @param bucket - 存储桶名称
+   * @param maxKeys - 最大返回数量
+   * @returns 对象列表
+   */
+  listObjects(
+    prefix: string,
+    bucket: string,
+    maxKeys?: number
+  ): Promise<Array<{ key: string; lastModified?: Date; size?: number }>>;
 }
 
 // ============================================
