@@ -44,6 +44,7 @@ export function formatDistributionDate(value: Date | string | null | undefined) 
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Shanghai",
   }).format(new Date(value));
 }
 

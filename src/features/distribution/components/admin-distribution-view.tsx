@@ -193,7 +193,7 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">归因订单</CardTitle>
+            <CardTitle className="text-sm font-medium">推广成交订单</CardTitle>
             <ReceiptText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -421,7 +421,7 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
         <TabsContent value="orders">
           <Card>
             <CardHeader>
-              <CardTitle>归因订单</CardTitle>
+              <CardTitle>推广成交订单</CardTitle>
               <CardDescription>
                 展示最近进入分销链路的订单。
               </CardDescription>
@@ -429,7 +429,7 @@ export function AdminDistributionView({ data }: AdminDistributionViewProps) {
             <CardContent className="space-y-3">
               {data.recentOrders.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  暂无归因订单。
+                  暂无推广成交订单。
                 </div>
               ) : (
                 data.recentOrders.map((item) => (

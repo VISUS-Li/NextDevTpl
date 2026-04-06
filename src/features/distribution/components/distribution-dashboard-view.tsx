@@ -37,10 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  createDistributionWithdrawalAction,
-  createDistributionWithdrawalSchema,
-} from "@/features/distribution/actions";
+import { createDistributionWithdrawalAction } from "@/features/distribution/actions";
 import {
   buildReferralLink,
   formatDistributionAmount,
@@ -52,6 +49,7 @@ import {
   getOrderTypeLabel,
   getWithdrawalStatusMeta,
 } from "@/features/distribution/presentation";
+import { createDistributionWithdrawalSchema } from "@/features/distribution/schema";
 
 /**
  * 代理端分销中心数据类型
@@ -206,7 +204,7 @@ export function DistributionDashboardView({
                 {data.profile?.displayName || "推广与佣金看板"}
               </h1>
               <p className="max-w-2xl text-sm text-slate-300">
-                在这里查看推广链接、归因订单、佣金变动和提现处理进度。当前账号继续复用主站用户体系，不需要额外注册代理账户。
+                在这里查看推广链接、推广成交订单、佣金变动和提现处理进度。当前账号继续复用主站用户体系，不需要额外注册代理账户。
               </p>
             </div>
             <div className="flex flex-wrap gap-3 text-sm text-slate-200">
@@ -262,7 +260,7 @@ export function DistributionDashboardView({
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">归因订单</CardTitle>
+            <CardTitle className="text-sm font-medium">推广成交订单</CardTitle>
             <ReceiptText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -397,7 +395,7 @@ export function DistributionDashboardView({
         <TabsContent value="orders">
           <Card>
             <CardHeader>
-              <CardTitle>最近归因订单</CardTitle>
+              <CardTitle>最近推广成交订单</CardTitle>
               <CardDescription>
                 当前展示最近 8 条已归因到你的订单。
               </CardDescription>
@@ -405,7 +403,7 @@ export function DistributionDashboardView({
             <CardContent className="space-y-3">
               {data.orders.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  还没有归因订单。支付完成后，订单会自动进入统一订单中心并显示在这里。
+                  还没有推广成交订单。支付完成后，订单会自动进入统一订单中心并显示在这里。
                 </div>
               ) : (
                 data.orders.map((order) => (
@@ -453,7 +451,7 @@ export function DistributionDashboardView({
             <CardContent className="space-y-3">
               {data.commissionRecords.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  暂无佣金记录。只要有有效归因订单并命中分佣规则，就会自动写入这里。
+                  暂无佣金记录。只要有有效推广成交订单并命中分佣规则，就会自动写入这里。
                 </div>
               ) : (
                 data.commissionRecords.map((record) => {

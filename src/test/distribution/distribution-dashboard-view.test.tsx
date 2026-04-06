@@ -78,7 +78,7 @@ describe("DistributionDashboardView", () => {
     expect(screen.getByText("分销中心")).toBeInTheDocument();
     expect(screen.getAllByText("北区代理")).toHaveLength(2);
     expect(screen.getByText("TRIP-AGENT")).toBeInTheDocument();
-    expect(screen.getByText("归因订单")).toBeInTheDocument();
+    expect(screen.getByText("推广成交订单")).toBeInTheDocument();
   });
 
   it("submits withdrawal form", async () => {

@@ -63,7 +63,7 @@ describe("AdminDistributionView", () => {
 
     expect(screen.getByText("分销、佣金与提现后台")).toBeInTheDocument();
     expect(screen.getByText("活跃代理")).toBeInTheDocument();
-    expect(screen.getByText("归因订单")).toBeInTheDocument();
+    expect(screen.getByText("推广成交订单")).toBeInTheDocument();
     expect(screen.getByText("累计佣金")).toBeInTheDocument();
   });
 
