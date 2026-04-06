@@ -7,6 +7,7 @@
 - 首页 web 端已按 `Trip 旅行者 AI` 方向完成第一版改造
 - 首页 mobile 端已按参考稿完成第一版改造
 - 当前已落地区域：顶部导航、Hero、工具矩阵、订阅入口、页脚、首页 metadata、移动端底部导航
+- 已补给 `RedInk` 使用的 platform API，当前已支持会话读取、积分校验、积分消费、图片上传地址、结果保存
 - 改造原则：保留现有登录、订阅、文档、语言切换、dashboard 跳转等真实功能，不做纯静态替换
 - 当前首页主入口文件：
   - `src/app/[locale]/(marketing)/page.tsx`
@@ -267,10 +268,37 @@ pnpm dev
 - `src/app/api/auth/[...all]/route.ts`：认证 API
 - `src/app/api/webhooks/creem/route.ts`：支付回调
 - `src/app/api/upload/presigned/route.ts`：文件上传签名
+- `src/app/api/platform/session/route.ts`：工具侧读取当前用户、套餐、积分
+- `src/app/api/platform/credits/check/route.ts`：工具侧校验积分余额
+- `src/app/api/platform/credits/consume/route.ts`：工具侧按次消费积分
+- `src/app/api/platform/storage/presigned-image/route.ts`：工具侧申请图片上传地址
+- `src/app/api/platform/results/save/route.ts`：工具侧把 JSON 结果写入对象存储
 - `src/app/api/jobs/credits/expire/route.ts`：积分过期任务
 - `src/app/api/inngest/route.ts`：Inngest 入口
 - `src/app/api/search/route.ts`：搜索接口
 - `src/app/api/image-proxy/[...path]/route.ts`：图片代理
+
+### 9.1 RedInk 平台接口说明
+
+当前 `NextDevTpl` 除了自身 SaaS 页面和后台，也承担 `RedInk` 的平台底座职责。
+
+接口职责如下：
+
+- `GET /api/platform/session`
+  - 返回当前登录用户、当前套餐、积分余额
+- `POST /api/platform/credits/check`
+  - 给工具在调用 AI 前做积分校验
+- `POST /api/platform/credits/consume`
+  - 给工具在单次 AI 调用成功后记一笔积分消费
+- `POST /api/platform/storage/presigned-image`
+  - 给工具申请图片上传地址，文件落到平台对象存储
+- `POST /api/platform/results/save`
+  - 给工具把生成结果保存为 JSON，目前 `RedInk` 的商品文案结果会写到 `redink/results/<userId>/`
+
+当前分工：
+
+- `NextDevTpl` 负责登录、积分、存储、结果落盘
+- `RedInk` 负责图片理解、文案生成和工具交互流程
 
 ## 10. 测试与检查
 
@@ -287,6 +315,7 @@ pnpm test:run
 - 类型检查通过
 - 改动涉及的主路径可手动访问
 - 涉及 schema 改动时，数据库能正常 `push`
+- platform API 改动后，至少跑 `src/test/platform/api.test.ts` 与 `src/test/platform/result-save.test.ts`
 
 ## 11. 后续开发建议
 

@@ -62,6 +62,11 @@ All routes are under `[locale]` for i18n:
 
 - `inngest/route.ts` — Inngest webhook (GET/POST/PUT)
 - `upload/presigned/route.ts` — Presigned S3/R2 upload URLs
+- `platform/session/route.ts` — Tool-side session, plan, credits
+- `platform/credits/check/route.ts` — Tool-side credits check
+- `platform/credits/consume/route.ts` — Tool-side credits consumption
+- `platform/storage/presigned-image/route.ts` — Tool-side image upload URL
+- `platform/results/save/route.ts` — Tool-side JSON result save
 - `webhooks/creem/route.ts` — Creem payment webhook
 - `auth/[...all]/route.ts` — Better Auth catch-all
 - `search/route.ts` — Search API
@@ -108,6 +113,10 @@ Double-entry bookkeeping with FIFO batch expiration:
 - Every credit movement creates a transaction with debit/credit accounts
 - `grantCredits()` — Creates batch + transaction + updates balance
 - `consumeCredits()` — FIFO consumption (earliest-expiring batch first)
+
+Current RedInk integration rule:
+- Every real AI call in RedInk must call platform credits APIs separately
+- Commission settlement is still tied to paid orders and subscription renewals, not to credit consumption
 
 ### Subscription Plans (`src/config/subscription-plan.ts`)
 
