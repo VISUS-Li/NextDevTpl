@@ -75,6 +75,7 @@ const demoRuleIds = {
   credit: "demo_dist_rule_credit_v1",
   subscription: "demo_dist_rule_subscription_v1",
 } as const;
+const demoCurrency = "CNY";
 
 type DemoDistributionReferralCode = typeof distributionReferralCode.$inferSelect;
 
@@ -196,7 +197,7 @@ function createCreditPurchaseCheckout(params: {
       customer: `customer_${params.userId}`,
       product: `credits_${params.packageId}`,
       amount: params.amount,
-      currency: "USD",
+      currency: demoCurrency,
       status: "paid" as const,
       type: "onetime" as const,
       transaction: paymentId,
@@ -209,7 +210,7 @@ function createCreditPurchaseCheckout(params: {
       id: `credits_${params.packageId}`,
       name: `Credits ${params.packageId}`,
       price: params.amount,
-      currency: "USD",
+      currency: demoCurrency,
       billing_type: "onetime" as const,
       billing_period: "",
     },
@@ -254,7 +255,7 @@ function createSubscriptionCheckout(params: {
       customer: `customer_${params.userId}`,
       product: params.priceId,
       amount: params.amount,
-      currency: "USD",
+      currency: demoCurrency,
       status: "paid" as const,
       type: "subscription" as const,
       transaction: paymentId,
@@ -267,7 +268,7 @@ function createSubscriptionCheckout(params: {
       id: params.priceId,
       name: "Subscription Plan",
       price: params.amount,
-      currency: "USD",
+      currency: demoCurrency,
       billing_type: "recurring" as const,
       billing_period: "month" as const,
     },
@@ -866,7 +867,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       eventType: "partial_refund",
       eventIdempotencyKey: demoId("after_sales_partial"),
       amount: 6_000,
-      currency: "USD",
+      currency: demoCurrency,
       reason: "demo_partial_refund",
     });
 
@@ -882,7 +883,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       eventType: "chargeback",
       eventIdempotencyKey: demoId("after_sales_chargeback"),
       amount: 20_000,
-      currency: "USD",
+      currency: demoCurrency,
       reason: "demo_chargeback",
     });
 
@@ -907,7 +908,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       eventType: "refunded",
       eventIdempotencyKey: demoId("after_sales_refunded"),
       amount: 12_000,
-      currency: "USD",
+      currency: demoCurrency,
       reason: "demo_full_refund",
     });
 
@@ -949,7 +950,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       userId: alphaUserId,
       amount: 1_500,
       feeAmount: 50,
-      currency: "USD",
+      currency: demoCurrency,
       payeeSnapshot: {
         channel: "bank_transfer",
         accountName: "Agent Alpha",
@@ -967,7 +968,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       userId: alphaUserId,
       amount: 700,
       feeAmount: 20,
-      currency: "USD",
+      currency: demoCurrency,
       payeeSnapshot: {
         channel: "alipay",
         accountName: "Agent Alpha",
@@ -985,7 +986,7 @@ describeIfDemo("Distribution Demo Simulation", () => {
       userId: alphaUserId,
       amount: 1_000,
       feeAmount: 50,
-      currency: "USD",
+      currency: demoCurrency,
       payeeSnapshot: {
         channel: "wechat",
         accountName: "Agent Alpha",

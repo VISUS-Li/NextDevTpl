@@ -45,6 +45,7 @@ import {
   buildReferralLink,
   formatDistributionAmount,
   formatDistributionDate,
+  getDefaultDistributionCurrency,
   getAfterSalesLabel,
   getAvailableCommissionRatio,
   getCommissionStatusMeta,
@@ -130,7 +131,7 @@ export function DistributionDashboardView({
   data,
 }: DistributionDashboardViewProps) {
   const balance = data.balance ?? {
-    currency: "USD",
+    currency: getDefaultDistributionCurrency(),
     totalEarned: 0,
     availableAmount: 0,
     frozenAmount: 0,

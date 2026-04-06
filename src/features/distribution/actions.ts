@@ -11,6 +11,7 @@ import {
   markWithdrawalRequestPaid,
   rejectWithdrawalRequest,
 } from "@/features/distribution/withdrawal";
+import { getDefaultDistributionCurrency } from "@/features/distribution/presentation";
 import { adminAction, protectedAction } from "@/lib/safe-action";
 
 const withDistributionAction = (name: string) =>
@@ -56,7 +57,7 @@ export const createDistributionWithdrawalAction = withDistributionAction("create
       userId: ctx.userId,
       amount: data.amount,
       feeAmount: data.feeAmount,
-      currency: balance?.currency ?? "USD",
+      currency: balance?.currency ?? getDefaultDistributionCurrency(),
       payeeSnapshot: {
         channel: data.channel,
         accountName: data.accountName,

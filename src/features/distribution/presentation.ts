@@ -1,12 +1,31 @@
 import { siteConfig } from "@/config";
 
 /**
+ * 读取分销默认币种
+ */
+export function getDefaultDistributionCurrency() {
+  return (
+    process.env.NEXT_PUBLIC_DISTRIBUTION_DEFAULT_CURRENCY ??
+    process.env.DISTRIBUTION_DEFAULT_CURRENCY ??
+    "CNY"
+  ).toUpperCase();
+}
+
+/**
+ * 统一币种值
+ */
+export function normalizeDistributionCurrency(currency?: string | null) {
+  const value = currency?.trim().toUpperCase();
+  return value || getDefaultDistributionCurrency();
+}
+
+/**
  * 格式化金额
  */
-export function formatDistributionAmount(amount: number, currency = "USD") {
+export function formatDistributionAmount(amount: number, currency?: string | null) {
   return new Intl.NumberFormat("zh-CN", {
     style: "currency",
-    currency,
+    currency: normalizeDistributionCurrency(currency),
     maximumFractionDigits: 0,
   }).format(amount / 100);
 }

@@ -1,6 +1,9 @@
 import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  normalizeDistributionCurrency,
+} from "@/features/distribution/presentation";
+import {
   distributionAttribution,
   salesAfterSalesEvent,
   salesOrder,
@@ -205,7 +208,9 @@ async function buildPaymentOrderPayloadFromCheckoutCompleted(
   const orderAmount = normalizeOrderAmount(
     data.order?.amount ?? data.product?.price
   );
-  const currency = data.order?.currency ?? data.product?.currency ?? "USD";
+  const currency = normalizeDistributionCurrency(
+    data.order?.currency ?? data.product?.currency
+  );
   const paidAt = new Date();
   const attribution = await getPaymentOrderAttribution(data.metadata);
 
@@ -286,6 +291,9 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
     sub,
     eventType
   );
+  const currency = normalizeDistributionCurrency(
+    typeof sub.product === "string" ? null : sub.product?.currency
+  );
 
   return {
     order: {
@@ -297,7 +305,7 @@ function buildPaymentOrderPayloadFromSubscriptionEvent(
       orderType: "subscription",
       status: eventType === "subscription.active" ? "confirmed" : "paid",
       afterSalesStatus: "none",
-      currency: "USD",
+      currency,
       grossAmount: 0,
       paidAt: eventTime,
       eventTime,
