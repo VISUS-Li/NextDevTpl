@@ -1,4 +1,7 @@
 import {
+  sql,
+} from "drizzle-orm";
+import {
   boolean,
   integer,
   json,
@@ -6,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -146,6 +150,171 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 项目工具配置枚举
+// ============================================
+
+/**
+ * 工具配置字段类型枚举
+ */
+export const toolConfigFieldTypeEnum = pgEnum("tool_config_field_type", [
+  "string",
+  "textarea",
+  "number",
+  "boolean",
+  "select",
+  "json",
+  "secret",
+]);
+
+/**
+ * 工具配置值作用域枚举
+ */
+export const toolConfigScopeEnum = pgEnum("tool_config_scope", [
+  "project_admin",
+  "user",
+]);
+
+/**
+ * 工具配置审计动作枚举
+ */
+export const toolConfigAuditActionEnum = pgEnum("tool_config_audit_action", [
+  "create",
+  "update",
+  "clear",
+]);
+
+// ============================================
+// 项目工具配置表
+// ============================================
+
+/**
+ * 项目表 - 存储可接入工具配置的业务项目
+ */
+export const project = pgTable("project", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  enabled: boolean("enabled").notNull().default(true),
+  configRevision: integer("config_revision").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 工具注册表 - 记录项目可使用的工具
+ */
+export const toolRegistry = pgTable(
+  "tool_registry",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    enabled: boolean("enabled").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_registry_project_tool_key_idx").on(
+      table.projectId,
+      table.toolKey
+    ),
+  ]
+);
+
+/**
+ * 工具配置字段定义表 - 存储工具可配置字段
+ */
+export const toolConfigField = pgTable(
+  "tool_config_field",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    fieldKey: text("field_key").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    group: text("group").notNull().default("tool"),
+    type: toolConfigFieldTypeEnum("type").notNull(),
+    required: boolean("required").notNull().default(false),
+    adminOnly: boolean("admin_only").notNull().default(false),
+    userOverridable: boolean("user_overridable").notNull().default(false),
+    defaultValueJson: json("default_value_json").$type<unknown>(),
+    optionsJson: json("options_json").$type<unknown>(),
+    validationJson: json("validation_json").$type<Record<string, unknown>>(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_config_field_project_tool_field_idx").on(
+      table.projectId,
+      table.toolKey,
+      table.fieldKey
+    ),
+  ]
+);
+
+/**
+ * 工具配置值表 - 存储管理员配置和用户配置
+ */
+export const toolConfigValue = pgTable(
+  "tool_config_value",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    fieldKey: text("field_key").notNull(),
+    scope: toolConfigScopeEnum("scope").notNull(),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    valueJson: json("value_json").$type<unknown>(),
+    encryptedValue: text("encrypted_value"),
+    secretSet: boolean("secret_set").notNull().default(false),
+    revision: integer("revision").notNull().default(1),
+    updatedBy: text("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_config_value_project_admin_idx")
+      .on(table.projectId, table.toolKey, table.fieldKey, table.scope)
+      .where(sql`${table.scope} = 'project_admin'`),
+    uniqueIndex("tool_config_value_user_idx")
+      .on(table.projectId, table.toolKey, table.fieldKey, table.scope, table.userId)
+      .where(sql`${table.scope} = 'user'`),
+  ]
+);
+
+/**
+ * 工具配置审计表 - 记录配置字段变更行为
+ */
+export const toolConfigAuditLog = pgTable("tool_config_audit_log", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => project.id, { onDelete: "cascade" }),
+  toolKey: text("tool_key").notNull(),
+  fieldKey: text("field_key").notNull(),
+  scope: toolConfigScopeEnum("scope").notNull(),
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+  action: toolConfigAuditActionEnum("action").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // ============================================
@@ -708,6 +877,29 @@ export type NewAccount = typeof account.$inferInsert;
 
 export type Verification = typeof verification.$inferSelect;
 export type NewVerification = typeof verification.$inferInsert;
+
+export type Project = typeof project.$inferSelect;
+export type NewProject = typeof project.$inferInsert;
+
+export type ToolRegistry = typeof toolRegistry.$inferSelect;
+export type NewToolRegistry = typeof toolRegistry.$inferInsert;
+
+export type ToolConfigField = typeof toolConfigField.$inferSelect;
+export type NewToolConfigField = typeof toolConfigField.$inferInsert;
+
+export type ToolConfigValue = typeof toolConfigValue.$inferSelect;
+export type NewToolConfigValue = typeof toolConfigValue.$inferInsert;
+
+export type ToolConfigAuditLog = typeof toolConfigAuditLog.$inferSelect;
+export type NewToolConfigAuditLog = typeof toolConfigAuditLog.$inferInsert;
+
+export type ToolConfigFieldType =
+  (typeof toolConfigFieldTypeEnum.enumValues)[number];
+
+export type ToolConfigScope = (typeof toolConfigScopeEnum.enumValues)[number];
+
+export type ToolConfigAuditAction =
+  (typeof toolConfigAuditActionEnum.enumValues)[number];
 
 export type Subscription = typeof subscription.$inferSelect;
 export type NewSubscription = typeof subscription.$inferInsert;
