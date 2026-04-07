@@ -42,6 +42,18 @@ export function SignInForm() {
   const [error, setError] = useState<string | null>(null);
   const [showResend, setShowResend] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+
+  /**
+   * 登录成功后跳回来源页面。
+   */
+  const goToCallbackUrl = () => {
+    if (callbackUrl.startsWith("http://") || callbackUrl.startsWith("https://")) {
+      window.location.assign(callbackUrl);
+      return;
+    }
+    router.push(callbackUrl);
+  };
 
   /**
    * 判断是否为服务端异常，避免误报成密码错误
@@ -89,7 +101,7 @@ export function SignInForm() {
     try {
       setIsLoading(true);
       setError(null);
-      await signInWithGoogle();
+      await signInWithGoogle(callbackUrl);
     } catch {
       setError(t("errors.google"));
     } finally {
@@ -111,7 +123,7 @@ export function SignInForm() {
     try {
       setIsLoading(true);
       setError(null);
-      const result = await signInWithEmail(email, password);
+      const result = await signInWithEmail(email, password, callbackUrl);
 
       if (result.error) {
         if (isServerFailure(result.error)) {
@@ -133,7 +145,7 @@ export function SignInForm() {
 
       // 登录成功，提示并跳转
       toast.success(t("success"));
-      router.push("/dashboard");
+      goToCallbackUrl();
     } catch (error) {
       setError(
         isServerFailure(error)

@@ -141,6 +141,13 @@ export async function middleware(request: NextRequest) {
 
 	// 如果已登录用户访问认证页面，重定向到 Dashboard
 	if (isAuthRoute && sessionToken) {
+		const callbackUrl = request.nextUrl.searchParams.get("callbackUrl");
+		if (callbackUrl) {
+			return withAttributionCookies(
+				NextResponse.redirect(new URL(callbackUrl, request.url))
+			);
+		}
+
 		return withAttributionCookies(
 			NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url))
 		);
