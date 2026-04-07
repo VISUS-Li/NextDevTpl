@@ -454,6 +454,24 @@ export async function getResolvedToolConfig(params: {
   };
 }
 
+/**
+ * 解析工具 AI 运行配置
+ */
+export async function getResolvedAIConfig(params: {
+  projectKey?: string;
+  toolKey: string;
+  userId?: string;
+}) {
+  const resolved = await getResolvedToolConfig(params);
+
+  return {
+    projectKey: resolved.projectKey,
+    tool: resolved.tool,
+    revision: resolved.revision,
+    ai: (resolved.config.ai ?? {}) as Record<string, unknown>,
+  };
+}
+
 async function saveToolConfigValues(
   params: SaveConfigParams & { scope: ToolConfigScope }
 ) {

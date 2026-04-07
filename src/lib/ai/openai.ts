@@ -6,17 +6,30 @@ import OpenAI from "openai";
 export type AIProvider = "openai" | "deepseek" | "mimo";
 
 /**
+ * AI 调用配置
+ */
+export interface AIConfig {
+  provider?: AIProvider;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+/**
  * 获取当前配置的 AI 提供商
  */
-export function getAIProvider(): AIProvider {
-  return (process.env.AI_PROVIDER as AIProvider) || "openai";
+export function getAIProvider(config?: AIConfig): AIProvider {
+  return config?.provider || (process.env.AI_PROVIDER as AIProvider) || "openai";
 }
 
 /**
  * 获取 AI 模型名称
  */
-export function getAIModel(): string {
-  const provider = getAIProvider();
+export function getAIModel(config?: AIConfig): string {
+  if (config?.model) {
+    return config.model;
+  }
+  const provider = getAIProvider(config);
   if (provider === "deepseek") {
     return process.env.DEEPSEEK_MODEL || "deepseek-chat";
   }
@@ -77,11 +90,48 @@ const mimo = new OpenAI({
 /**
  * 获取当前活跃的 AI 客户端
  */
-function getAIClient(): OpenAI {
+function getAIClient(config?: AIConfig): OpenAI {
+  if (config) {
+    return createAIClient(config);
+  }
+
   const provider = getAIProvider();
   if (provider === "deepseek") return deepseek;
   if (provider === "mimo") return mimo;
   return openai;
+}
+
+/**
+ * 按传入配置创建 AI 客户端
+ */
+export function createAIClient(config: AIConfig): OpenAI {
+  const provider = getAIProvider(config);
+  if (provider === "deepseek") {
+    return new OpenAI({
+      apiKey: config.apiKey ?? process.env.DEEPSEEK_API_KEY,
+      baseURL: config.baseUrl ?? "https://api.deepseek.com/v1",
+    });
+  }
+  if (provider === "mimo") {
+    return new OpenAI({
+      apiKey: config.apiKey ?? process.env.MIMO_API_KEY,
+      baseURL:
+        config.baseUrl ??
+        (useOpenAIGateway
+          ? openaiGatewayConfig.baseURL
+          : "https://api.xiaomimimo.com/v1"),
+      ...(useOpenAIGateway && !config.baseUrl
+        ? { defaultHeaders: openaiGatewayConfig.defaultHeaders }
+        : {}),
+    });
+  }
+
+  return new OpenAI({
+    apiKey: config.apiKey ?? process.env.OPENAI_API_KEY,
+    ...(config.baseUrl
+      ? { baseURL: config.baseUrl }
+      : getOpenAIGatewayConfig()),
+  });
 }
 
 /**
@@ -99,10 +149,11 @@ export async function chatCompletion(
     temperature?: number;
     maxTokens?: number;
     jsonMode?: boolean;
-  },
+    aiConfig?: AIConfig;
+  }
 ): Promise<string> {
-  const client = getAIClient();
-  const model = getAIModel();
+  const client = getAIClient(options?.aiConfig);
+  const model = getAIModel(options?.aiConfig);
 
   const response = await client.chat.completions.create({
     model,
@@ -119,7 +170,9 @@ export async function chatCompletion(
       deepseek: "DeepSeek",
       mimo: "MiMo",
     };
-    throw new Error(`No response from ${providerNames[getAIProvider()]}`);
+    throw new Error(
+      `No response from ${providerNames[getAIProvider(options?.aiConfig)]}`
+    );
   }
 
   return content;
