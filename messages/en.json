@@ -492,7 +492,8 @@
       "account": "Account",
       "security": "Security",
       "billing": "Billing",
-      "usage": "Usage"
+      "usage": "Usage",
+      "tools": "Tools"
     },
     "general": {
       "title": "General",

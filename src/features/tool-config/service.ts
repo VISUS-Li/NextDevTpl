@@ -359,6 +359,42 @@ export async function getAdminToolConfigPageData(projectKey = DEFAULT_PROJECT_KE
 }
 
 /**
+ * 读取用户工具配置页面数据
+ */
+export async function getUserToolConfigPageData(params: {
+  userId: string;
+  projectKey?: string;
+}) {
+  const projectKey = params.projectKey ?? DEFAULT_PROJECT_KEY;
+  const currentProject = await seedDefaultToolConfigProject({ projectKey });
+  const tools = await db
+    .select()
+    .from(toolRegistry)
+    .where(
+      and(eq(toolRegistry.projectId, currentProject.id), eq(toolRegistry.enabled, true))
+    )
+    .orderBy(asc(toolRegistry.sortOrder), asc(toolRegistry.toolKey));
+  const toolConfigs = (
+    await Promise.all(
+      tools.map(async (tool) => ({
+        tool,
+        editor: await getToolConfigEditorData({
+          projectKey,
+          toolKey: tool.toolKey,
+          userId: params.userId,
+          mode: "user",
+        }),
+      }))
+    )
+  ).filter((item) => item.editor.fields.length > 0);
+
+  return {
+    project: currentProject,
+    toolConfigs,
+  };
+}
+
+/**
  * 读取工具配置版本
  */
 export async function getToolConfigRevision(projectKey = DEFAULT_PROJECT_KEY) {

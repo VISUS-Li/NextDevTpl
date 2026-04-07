@@ -488,7 +488,8 @@
       "account": "账户",
       "security": "安全",
       "billing": "账单",
-      "usage": "用量"
+      "usage": "用量",
+      "tools": "工具"
     },
     "general": {
       "title": "基本信息",

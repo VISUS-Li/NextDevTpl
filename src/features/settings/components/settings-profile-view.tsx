@@ -5,6 +5,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
+import type { ComponentProps } from "react";
 import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -41,6 +42,7 @@ import {
   getSignedUploadUrlAction,
   MAX_FILE_SIZE,
 } from "@/features/storage";
+import { UserToolConfigSection } from "@/features/tool-config/components/user-tool-config-section";
 import { usePathname, useRouter } from "@/i18n/routing";
 import { BillingSection } from "./billing-section";
 import { SecuritySection } from "./security-section";
@@ -57,7 +59,9 @@ interface SettingsProfileViewProps {
     image?: string | null | undefined;
   };
   /** 初始标签页 */
-  initialTab: "account" | "security" | "billing" | "usage";
+  initialTab: "account" | "security" | "billing" | "usage" | "tools";
+  /** 用户工具配置数据 */
+  toolConfigData: ComponentProps<typeof UserToolConfigSection>["data"];
 }
 
 /**
@@ -78,6 +82,7 @@ type FormValues = z.infer<typeof updateProfileSchema>;
 export function SettingsProfileView({
   user,
   initialTab,
+  toolConfigData,
 }: SettingsProfileViewProps) {
   // 文件上传 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,6 +308,12 @@ export function SettingsProfileView({
             >
               {tTabs("usage")}
             </TabsTrigger>
+            <TabsTrigger
+              value="tools"
+              className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-primary/20 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              {tTabs("tools")}
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -504,6 +515,11 @@ export function SettingsProfileView({
         {/* Usage Tab - 积分使用情况 */}
         <TabsContent value="usage" className="mt-8 pl-4">
           <CreditUsageSection />
+        </TabsContent>
+
+        {/* Tools Tab - 用户工具配置 */}
+        <TabsContent value="tools" className="mt-8 pl-4">
+          <UserToolConfigSection data={toolConfigData} />
         </TabsContent>
       </Tabs>
     </div>
