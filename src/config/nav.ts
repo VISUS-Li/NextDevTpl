@@ -234,6 +234,11 @@ export const adminNav: NavGroup[] = [
         href: "/admin/distribution",
         icon: Network,
       },
+      {
+        title: "工具配置",
+        href: "/admin/tool-config",
+        icon: Bot,
+      },
     ],
   },
 ];

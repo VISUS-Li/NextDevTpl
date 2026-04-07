@@ -321,13 +321,40 @@ export async function getToolConfigEditorData(params: {
         group: field.group,
         type: field.type,
         ...(field.type === "secret" ? {} : { value: resolved.value }),
-        secretSet: field.type === "secret" ? resolved.secretSet : undefined,
+        ...(field.type === "secret" ? { secretSet: resolved.secretSet } : {}),
         source: resolved.source,
         options: field.optionsJson,
         required: field.required,
         editable: params.mode === "admin" || field.userOverridable,
       };
     }),
+  };
+}
+
+/**
+ * 读取管理员工具配置页面数据
+ */
+export async function getAdminToolConfigPageData(projectKey = DEFAULT_PROJECT_KEY) {
+  const currentProject = await seedDefaultToolConfigProject({ projectKey });
+  const tools = await db
+    .select()
+    .from(toolRegistry)
+    .where(eq(toolRegistry.projectId, currentProject.id))
+    .orderBy(asc(toolRegistry.sortOrder), asc(toolRegistry.toolKey));
+  const toolConfigs = await Promise.all(
+    tools.map(async (tool) => ({
+      tool,
+      editor: await getToolConfigEditorData({
+        projectKey,
+        toolKey: tool.toolKey,
+        mode: "admin",
+      }),
+    }))
+  );
+
+  return {
+    project: currentProject,
+    toolConfigs,
   };
 }
 
