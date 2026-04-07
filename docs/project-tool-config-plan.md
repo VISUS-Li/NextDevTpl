@@ -1,52 +1,142 @@
 # 项目工具配置方案
 
-## 背景
+## 当前结论
 
-当前项目里 AI 配置主要来自环境变量，`src/lib/ai/openai.ts` 会读取
-`AI_PROVIDER`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`MIMO_API_KEY` 等配置，
-再决定使用哪个 AI 客户端。平台工具接口已经有 `tool` 字段，例如
-`src/app/api/platform/results/save/route.ts` 会接收工具标识，但数据库中还没有
-项目、工具、字段定义、配置值这几类通用配置表。
+本文档已按最新决策更新，后续 `NextDevTpl` 的工具配置能力按下面这套简单方案推进：
 
-本方案的目标是让不同项目、不同工具共用一套配置能力，并支持两类配置：
+- `NextDevTpl` 只负责统一存储、统一展示、统一权限、统一运行时读取。
+- `NextDevTpl` 不再长期维护每个工具的语义化字段清单。
+- 平台侧只提供固定数量的通用槽位字段，例如 `config1`、`secret1`、`json1`、`text1`。
+- 每个工具自己在代码里维护“槽位 -> 业务配置”的映射关系。
+- 删除配置值时直接删除，不做软删除。
+- 工具如果缺少自己需要的配置，运行时直接报错，不在平台层做额外兜底。
 
-- 管理员配置：只允许管理员查看和修改，例如平台统一的 AI Key、AI 网关地址、
-  第三方服务地址、工具默认提示词。
-- 用户配置：允许普通用户按工具设置自己的值，例如自己的 API Key、模型、个人提示词。
+这套方案的目标不是做复杂的动态字段平台，而是用最少的实现满足：
+
+- 后续工具增删配置项时，尽量不改 `NextDevTpl` 代码。
+- 不同工具之间的配置严格隔离。
+- 平台不理解工具业务含义，工具自己负责解释配置。
+
+## 当前实现状态
+
+当前仓库已经有以下基础能力：
+
+- 已有配置表：`project`、`toolRegistry`、`toolConfigField`、`toolConfigValue`、`toolConfigAuditLog`
+- 已有默认项目：`nextdevtpl`
+- 已有默认工具：`redink`、`jingfang-ai`
+- 已有管理员页面：`/[locale]/admin/tool-config`
+- 已有用户页面入口：`/[locale]/dashboard/settings?tab=tools`
+- 已有接口：
+  - `GET /api/platform/tool-config/editor`
+  - `POST /api/platform/tool-config/user`
+  - `POST /api/platform/tool-config/runtime`
+  - `POST /api/platform/tool-config/runtime-save`
+  - `GET /api/platform/tool-config/revision`
+- 已有运行时解析顺序：字段默认值 -> 管理员配置 -> 用户配置
+- 已有密钥加密逻辑：优先使用 `CONFIG_SECRET_KEY`，未设置时退回 `BETTER_AUTH_SECRET`
+
+当前还需要调整的重点：
+
+- 现有默认字段仍偏向工具语义字段，不适合长期沿用
+- 现有文档里“动态字段后台”的方向过重，不符合当前要的简单实现
+- `NextDevTpl` 需要收敛成固定通用槽位，不再继续为每个工具写专属字段
+
+## 目标
+
+最终平台只做四件事：
+
+1. 管理项目和工具
+2. 管理每个工具下的通用槽位值
+3. 对外返回当前工具解析后的最终配置对象
+4. 保证管理员配置、用户配置、密钥加密和权限控制
+
+平台不做这些事：
+
+- 不负责理解 `jingfang-ai`、`redink` 的业务字段语义
+- 不负责维护每个工具各自的字段命名体系
+- 不做复杂字段定义后台
+- 不做软删除
 
 ## 设计原则
 
-- 一套配置表支撑所有工具，工具差异通过字段定义表达。
-- 配置定义只由管理员维护，普通用户只填写允许自己填写的字段。
-- 敏感值不返回明文给前端，页面只显示是否已设置和脱敏提示。
+- 一套配置表支撑所有工具，工具之间仅通过 `projectKey + toolKey` 隔离。
+- 字段集合固定为通用槽位，避免每次接入新工具都改模板代码。
+- 平台页面只负责展示槽位，不负责解释业务含义。
+- 敏感值不返回前端明文。
 - 工具调用只能通过服务端解析配置，客户端不能直接读取管理员密钥。
-- 先覆盖 AI 通用配置和工具专属配置，再按实际工具逐步接入。
-- 页面操作尽量简单：管理员先选项目，再选工具，再填写分组表单；用户只看到自己可改的字段。
-- 工具自己的页面也可以调用 NextDevTpl 后端读取和保存配置，但浏览器接口只返回可展示字段。
-- 工具运行时如果需要密钥，必须由服务端调用服务端接口或直接调用配置解析器。
+- 工具自己维护槽位映射；缺值时报错，不在平台做额外兜底。
+- 删除值直接删记录，不保留“停用但继续存在”的状态。
+
+## 通用槽位方案
+
+### 槽位分类
+
+推荐固定四类槽位：
+
+- `config1 ~ config20`
+  - 普通短文本
+  - 适合 URL、provider、model、bucket、region 这类值
+- `secret1 ~ secret10`
+  - 敏感字符串
+  - 适合 API Key、Access Key、Token
+- `json1 ~ json10`
+  - JSON 对象
+  - 适合结构化配置
+- `text1 ~ text10`
+  - 长文本
+  - 适合提示词、命令模板、说明文本
+
+这四类已经足够覆盖大多数工具场景。除非后续确有必要，否则不继续增加 `cmd1`、`param1` 这类新分类。
+
+### 工具映射示例
+
+以 `jingfang-ai` 为例，平台只存：
+
+- `secret1`
+- `secret2`
+- `config1`
+- `config2`
+
+真正业务含义由工具自己解释，例如：
+
+```ts
+const JINGFANG_SLOT_MAP = {
+  gpt: "secret1",
+  yunwu_api_key: "secret2",
+  chat_api_platform: "config1",
+  space_name: "config2",
+  access_key_id: "secret3",
+  secret_access_key: "secret4",
+  asr_app_id: "config3",
+  asr_app_type: "config4",
+  asr_access_token: "secret5",
+  doubao_vision_endpoint: "config5",
+  region: "config6",
+} as const;
+```
+
+`NextDevTpl` 不需要知道这些业务名，只返回槽位值。`jingfang-ai` 自己把这些槽位拼成自己的运行时结构。
 
 ## 推荐数据模型
 
 ### 项目表
 
-新增 `project` 表，用于区分不同业务项目。当前模板也可以先写入一个默认项目，
-后续再扩展到多项目。
+`project` 表继续保留，职责不变。
 
 建议字段：
 
 - `id`
-- `key`：项目标识，例如 `nextdevtpl`。
-- `name`：项目名称。
+- `key`
+- `name`
 - `description`
 - `enabled`
-- `configRevision`：配置版本号，配置写入后递增，供工具判断缓存是否过期。
+- `configRevision`
 - `createdAt`
 - `updatedAt`
 
 ### 工具注册表
 
-新增 `toolRegistry` 表，记录项目可接入的工具。`toolKey` 与平台接口中的
-`tool` 字段保持一致，例如 `redink`、`jingfang-ai`。
+`toolRegistry` 表继续保留，职责不变。
 
 建议字段：
 
@@ -62,19 +152,18 @@
 
 ### 配置字段定义表
 
-新增 `toolConfigField` 表，用字段定义表达每个工具需要哪些配置。管理员可以动态
-为工具增加字段，但字段类型、校验规则和可见性必须受控。
+`toolConfigField` 表继续保留，但用途要收缩为“固定槽位定义”，而不是“工具语义字段定义”。
 
 建议字段：
 
 - `id`
 - `projectId`
 - `toolKey`
-- `fieldKey`：建议用点分命名，例如 `ai.provider`、`redink.systemPrompt`。
+- `fieldKey`
 - `label`
 - `description`
-- `group`：例如 `ai`、`tool`、`advanced`。
-- `type`：`string`、`textarea`、`number`、`boolean`、`select`、`json`、`secret`。
+- `group`
+- `type`
 - `required`
 - `adminOnly`
 - `userOverridable`
@@ -86,57 +175,69 @@
 - `createdAt`
 - `updatedAt`
 
+这里的 `fieldKey` 不再使用 `ai.provider`、`jingfangAi.videoDownloadBaseUrl` 这类语义化名字，而是固定为：
+
+- `config1`
+- `config2`
+- ...
+- `secret1`
+- `secret2`
+- ...
+- `json1`
+- ...
+- `text1`
+- ...
+
 字段定义示例：
 
 ```json
 [
   {
-    "toolKey": "redink",
-    "fieldKey": "ai.provider",
-    "label": "AI 服务商",
-    "group": "ai",
-    "type": "select",
-    "required": true,
-    "adminOnly": false,
-    "userOverridable": true,
-    "optionsJson": ["openai", "deepseek", "mimo"]
-  },
-  {
-    "toolKey": "redink",
-    "fieldKey": "ai.apiKey",
-    "label": "AI API Key",
-    "group": "ai",
-    "type": "secret",
-    "required": true,
-    "adminOnly": false,
-    "userOverridable": true
-  },
-  {
-    "toolKey": "redink",
-    "fieldKey": "redink.systemPrompt",
-    "label": "系统提示词",
-    "group": "tool",
-    "type": "textarea",
+    "toolKey": "jingfang-ai",
+    "fieldKey": "config1",
+    "label": "config1",
+    "group": "config",
+    "type": "string",
     "required": false,
     "adminOnly": false,
     "userOverridable": true
   },
   {
     "toolKey": "jingfang-ai",
-    "fieldKey": "jingfangAi.videoDownloadBaseUrl",
-    "label": "第三方视频下载地址",
-    "group": "tool",
-    "type": "string",
+    "fieldKey": "secret1",
+    "label": "secret1",
+    "group": "secret",
+    "type": "secret",
+    "required": false,
+    "adminOnly": false,
+    "userOverridable": true
+  },
+  {
+    "toolKey": "jingfang-ai",
+    "fieldKey": "json1",
+    "label": "json1",
+    "group": "json",
+    "type": "json",
     "required": false,
     "adminOnly": true,
     "userOverridable": false
+  },
+  {
+    "toolKey": "jingfang-ai",
+    "fieldKey": "text1",
+    "label": "text1",
+    "group": "text",
+    "type": "textarea",
+    "required": false,
+    "adminOnly": false,
+    "userOverridable": true
   }
 ]
 ```
 
 ### 配置值表
 
-新增 `toolConfigValue` 表，用同一张表保存管理员配置和用户配置。
+`toolConfigValue` 表继续保留，职责不变。
 
 建议字段：
 
@@ -144,12 +245,12 @@
 - `projectId`
 - `toolKey`
 - `fieldKey`
-- `scope`：`project_admin` 或 `user`。
-- `userId`：用户配置时必填，管理员配置时为空。
-- `valueJson`：非敏感值。
-- `encryptedValue`：敏感值密文。
-- `secretSet`：敏感值是否已设置，用于前端状态展示。
-- `revision`：当前配置值版本号。
+- `scope`
+- `userId`
+- `valueJson`
+- `encryptedValue`
+- `secretSet`
+- `revision`
 - `updatedBy`
 - `createdAt`
 - `updatedAt`
@@ -161,8 +262,7 @@
 
 ### 变更记录表
 
-建议新增 `toolConfigAuditLog` 表记录管理员和用户修改动作。敏感字段只记录字段名，
-不记录明文或密文。
+`toolConfigAuditLog` 表继续保留，但只记录最小动作信息，不记录明文。
 
 建议字段：
 
@@ -183,231 +283,144 @@
 ```ts
 getResolvedToolConfig({
   projectKey: "nextdevtpl",
-  toolKey: "redink",
+  toolKey: "jingfang-ai",
   userId,
 })
 ```
 
-解析顺序建议如下：
+解析顺序保持简单：
 
-1. 工具字段定义中的默认值。
-2. 项目级管理员配置。
-3. 用户配置，仅合并 `userOverridable = true` 的字段。
-4. 环境变量兜底，仅用于迁移期，例如当前 `OPENAI_API_KEY`、`AI_PROVIDER`。
+1. 字段默认值
+2. 项目管理员配置
+3. 用户配置
 
-最终返回给服务端工具调用的对象示例：
+不在平台层追加额外的业务兜底规则。
+
+最终返回给工具服务端的是“槽位对象”，例如：
 
 ```ts
 {
-  ai: {
-    provider: "deepseek",
-    baseUrl: "https://api.deepseek.com/v1",
-    apiKey: "decrypted-secret",
-    model: "deepseek-chat",
-    temperature: 0.7
+  config1: "yunwu",
+  config2: "space-demo",
+  config3: "123456",
+  config4: "volc.bigasr.sauc.duration",
+  config5: "tos-cn-beijing.ivolces.com",
+  config6: "cn-north-1",
+  secret1: "sk-geekai",
+  secret2: "sk-yunwu",
+  secret3: "ak-demo",
+  secret4: "sk-demo",
+  secret5: "asr-token",
+  json1: {
+    enabled: true
   },
-  redink: {
-    systemPrompt: "..."
-  }
+  text1: "自定义提示词"
 }
 ```
 
-返回给前端编辑页的对象不能包含密钥明文：
-
-```ts
-{
-  fields: [
-    {
-      fieldKey: "ai.apiKey",
-      label: "AI API Key",
-      type: "secret",
-      secretSet: true,
-      maskedValue: "已设置"
-    }
-  ]
-}
-```
+工具服务端再自己映射成内部配置结构，例如 `setting_json`、`aiConfig` 或其他业务对象。
 
 ## 权限与安全
 
 管理员能力：
 
-- 使用 `adminAction` 保护所有管理员配置读写动作。
-- 可以创建项目、启用工具、编辑字段定义、填写管理员配置。
-- 可以查看敏感字段是否已设置，但不能从页面读取明文。
-- 可以清空或替换密钥。
+- 使用 `adminAction` 保护所有管理员配置读写动作
+- 可以启用和停用工具
+- 可以填写管理员默认槽位值
+- 可以查看敏感字段是否已设置
+- 可以替换或清空密钥
 
 用户能力：
 
-- 使用 `protectedAction` 保护所有用户配置读写动作。
-- 只能查看和修改 `userOverridable = true` 且 `adminOnly = false` 的字段。
-- 只能查看自己的配置。
-- 提交敏感字段时采用写入式输入，不填表示保留旧值，点击清空才删除旧值。
+- 使用 `protectedAction` 保护所有用户配置读写动作
+- 只能查看和修改允许用户覆盖的槽位
+- 只能查看自己的配置
+- 提交敏感字段时，不填表示保留旧值；显式清空时才删除
 
 密钥处理：
 
-- `secret` 类型字段写入 `encryptedValue`，不要写入 `valueJson`。
-- 加密密钥优先来自 `CONFIG_SECRET_KEY`，本地开发可复用 `BETTER_AUTH_SECRET`。
-- 前端、日志、审计表都不记录明文。
-- 工具调用拿到明文后只在当前请求内使用，不写入对象存储或业务结果。
+- `secret` 类型写入 `encryptedValue`
+- 明文不写日志、不写审计表、不返回浏览器
+- 工具运行时拿到明文后只在当前请求内使用
 
 ## 前端操作设计
 
 ### 管理员页面
 
-建议新增入口：
+管理员页面继续保留一个简单入口：
 
-- `/admin/projects`
-- `/admin/projects/[projectId]/tools`
-- `/admin/projects/[projectId]/tools/[toolKey]/config`
+- `/admin/tool-config`
 
-也可以先做更小版本：在管理后台增加“工具配置”菜单，默认项目固定为
-`nextdevtpl`，页面只展示工具列表和配置表单。
+页面结构：
 
-管理员页面结构：
+- 工具列表：`redink`、`jingfang-ai` 等
+- 配置表单：按 `config`、`secret`、`json`、`text` 分组展示
+- 每个工具默认展示同一套固定槽位
+- 页面不解释槽位业务含义，只展示槽位名
 
-- 项目选择：默认项目、启用状态、项目描述。
-- 工具列表：`redink`、`jingfang-ai` 等，支持启用和停用。
-- 配置表单：按 `AI 配置`、`工具配置`、`高级配置` 分组。
-- 字段定义编辑：只给管理员使用，支持新增字段、停用字段、调整排序。
-- 预览区：展示当前服务端解析后的配置摘要，不展示密钥明文。
+第一版不做这些能力：
 
-为降低操作成本，第一版建议内置常用字段模板：
-
-- AI 服务商。
-- AI 接口地址。
-- AI API Key。
-- AI 模型。
-- AI 温度。
-- AI 最大输出长度。
-- 工具专属提示词。
-- 工具专属第三方服务地址。
+- 不做字段定义 CRUD
+- 不做拖拽排序后台
+- 不做语义字段后台
 
 ### 用户页面
 
-建议把用户配置放在现有设置页，新增一个 `tools` 标签：
+建议继续使用：
 
 - `/dashboard/settings?tab=tools`
 
 页面结构：
 
-- 工具选择器：只展示当前项目已启用、且允许用户配置的工具。
-- AI 配置卡片：用户自己的 API Key、模型、接口地址。
-- 工具配置卡片：用户自己的提示词、偏好参数。
-- 恢复默认按钮：删除该用户在该工具下的某个字段值，回到管理员默认值。
-- 保存按钮：只提交当前工具当前分组的配置，避免一次表单过长。
+- 工具选择器
+- 当前工具的用户可编辑槽位表单
+- 保存按钮
+- 清空按钮
 
-如果后续工具很多，可以再独立成：
-
-- `/dashboard/tools/settings`
+仍然只展示槽位，不展示平台侧业务语义。
 
 ## 后端接口与服务
 
-建议按功能新建 `src/features/tool-config` 模块：
+建议继续使用当前 `src/features/tool-config` 模块，职责收敛为：
 
-- `actions.ts`：管理员和用户配置写入动作。
-- `queries.ts`：配置页面读取。
-- `resolver.ts`：工具运行时解析配置。
-- `schema.ts`：表单和字段定义校验。
-- `crypto.ts`：密钥加解密。
-- `types.ts`：字段类型和解析结果类型。
+- `actions.ts`
+  - 管理员和用户配置写入
+- `service.ts`
+  - 页面读取
+  - 运行时配置解析
+  - 固定槽位种子写入
+- `schema.ts`
+  - 接口参数校验
 
 核心动作：
 
-- `getAdminToolConfigAction`
 - `saveAdminToolConfigAction`
-- `saveToolConfigFieldAction`
-- `getUserToolConfigAction`
 - `saveUserToolConfigAction`
-- `resetUserToolConfigFieldAction`
 
 核心查询：
 
-- `getToolRegistry(projectId)`
-- `getToolConfigFields(projectId, toolKey)`
-- `getToolConfigEditorData(projectId, toolKey, userId?)`
+- `getAdminToolConfigPageData(projectKey)`
+- `getUserToolConfigPageData({ userId, projectKey })`
+- `getToolConfigEditorData({ projectKey, toolKey, userId, mode })`
 
 核心解析：
 
 - `getResolvedToolConfig({ projectKey, toolKey, userId })`
-- `getResolvedAIConfig({ projectKey, toolKey, userId })`
+- `getToolConfigRevision(projectKey)`
 
 ## 工具侧接口协议
 
 工具有两种接入方式：
 
-- 工具页面接入：例如用户在 redink 自己的页面里修改 redink 配置。
-- 工具运行时接入：例如 redink 后端运行任务前需要获取最终 AI 配置，或发现缓存过期后刷新配置。
-
-这两种场景必须使用不同返回值，避免把管理员密钥暴露给浏览器。
-
-### 自定义域名与隧道
-
-当前本机通过 Cloudflare named tunnel 使用 `tripai.icu` 下的固定域名，不再依赖随机
-`trycloudflare.com` 域名。工具页面和工具服务端调用 NextDevTpl 配置接口时，优先使用
-固定平台域名：
-
-```text
-https://platform.tripai.icu
-```
-
-当前隧道配置位于 `/home/visus/.cloudflared/config.yml`，现有映射如下：
-
-```yaml
-ingress:
-  - hostname: redink.tripai.icu
-    service: http://localhost:5173
-  - hostname: platform.tripai.icu
-    service: http://localhost:3000
-  - hostname: jingfang.tripai.icu
-    service: http://localhost:8083
-  - service: http_status:404
-```
-
-对应服务：
-
-- NextDevTpl：`https://platform.tripai.icu` -> `http://localhost:3000`
-- redink：`https://redink.tripai.icu` -> `http://localhost:5173`
-- jingfang-ai：`https://jingfang.tripai.icu` -> `http://localhost:8083`
-
-运行时需要保持以下进程存在：
-
-```bash
-pnpm dev:lan
-cloudflared tunnel --config /home/visus/.cloudflared/config.yml --protocol http2 run redink-tripai
-```
-
-NextDevTpl 环境变量应与固定域名一致：
-
-```text
-NEXT_PUBLIC_APP_URL=https://platform.tripai.icu
-BETTER_AUTH_URL=https://platform.tripai.icu
-REDINK_PUBLIC_URL=https://redink.tripai.icu
-```
-
-redink 或 jingfang-ai 的服务端要读取配置时，应调用：
-
-```text
-POST https://platform.tripai.icu/api/platform/tool-config/runtime
-GET https://platform.tripai.icu/api/platform/tool-config/revision?projectKey=nextdevtpl&tool=redink
-```
-
-浏览器内的工具配置页应调用：
-
-```text
-GET https://platform.tripai.icu/api/platform/tool-config/editor?projectKey=nextdevtpl&tool=redink
-POST https://platform.tripai.icu/api/platform/tool-config/user
-```
+- 工具前端读取当前工具的槽位配置
+- 工具服务端读取最终槽位配置并做本地映射
 
 ### 工具页面读取配置
 
-用于工具自己的前端页面渲染配置表单。接口只返回字段定义、用户可见值、密钥设置状态，
-不返回密钥明文。
-
-建议接口：
+接口：
 
 ```http
-GET /api/platform/tool-config/editor?projectKey=nextdevtpl&tool=redink
+GET /api/platform/tool-config/editor?projectKey=nextdevtpl&tool=jingfang-ai
 ```
 
 返回示例：
@@ -416,44 +429,34 @@ GET /api/platform/tool-config/editor?projectKey=nextdevtpl&tool=redink
 {
   "success": true,
   "projectKey": "nextdevtpl",
-  "tool": "redink",
+  "tool": "jingfang-ai",
   "revision": 12,
   "fields": [
     {
-      "fieldKey": "ai.provider",
-      "label": "AI 服务商",
-      "group": "ai",
-      "type": "select",
-      "value": "deepseek",
+      "fieldKey": "config1",
+      "label": "config1",
+      "group": "config",
+      "type": "string",
+      "value": "yunwu",
       "source": "user",
-      "options": ["openai", "deepseek", "mimo"],
       "editable": true
     },
     {
-      "fieldKey": "ai.apiKey",
-      "label": "AI API Key",
-      "group": "ai",
+      "fieldKey": "secret1",
+      "label": "secret1",
+      "group": "secret",
       "type": "secret",
       "secretSet": true,
-      "source": "user",
+      "source": "project_admin",
       "editable": true
     }
   ]
 }
 ```
 
-权限要求：
-
-- 必须登录。
-- 只能返回当前用户可见字段。
-- `adminOnly = true` 的字段不返回给普通用户。
-- `secret` 字段只返回 `secretSet` 和来源，不返回明文。
-
 ### 工具页面保存配置
 
-用于工具自己的前端页面保存用户配置。接口只允许写入用户配置，不能写入管理员配置。
-
-建议接口：
+接口：
 
 ```http
 POST /api/platform/tool-config/user
@@ -464,37 +467,25 @@ POST /api/platform/tool-config/user
 ```json
 {
   "projectKey": "nextdevtpl",
-  "tool": "redink",
+  "tool": "jingfang-ai",
   "values": {
-    "ai.provider": "deepseek",
-    "ai.apiKey": "sk-user-key",
-    "redink.systemPrompt": "..."
-  }
+    "config1": "yunwu",
+    "config2": "space-demo",
+    "secret1": "sk-demo"
+  },
+  "clearSecrets": ["secret2"]
 }
 ```
 
-保存规则：
+规则：
 
-- 只保存 `userOverridable = true` 且 `adminOnly = false` 的字段。
-- `secret` 字段为空时保留旧值。
-- `secret` 字段需要清空时使用显式字段，例如 `clearSecrets: ["ai.apiKey"]`。
-- 保存成功后递增 `configRevision`，并返回新的 `revision`。
-
-返回示例：
-
-```json
-{
-  "success": true,
-  "revision": 13
-}
-```
+- `secret` 为空字符串时保留旧值
+- `clearSecrets` 中的字段直接删除原值
+- 保存成功后递增 `configRevision`
 
 ### 工具运行时读取配置
 
-用于服务端任务运行前获取最终配置。这个接口可以返回解密后的密钥，但只能给可信服务端使用，
-不能给浏览器直接调用。
-
-建议接口：
+接口：
 
 ```http
 POST /api/platform/tool-config/runtime
@@ -505,7 +496,7 @@ POST /api/platform/tool-config/runtime
 ```json
 {
   "projectKey": "nextdevtpl",
-  "tool": "redink",
+  "tool": "jingfang-ai",
   "userId": "user_123",
   "knownRevision": 12
 }
@@ -519,212 +510,166 @@ POST /api/platform/tool-config/runtime
   "revision": 13,
   "changed": true,
   "config": {
-    "ai": {
-      "provider": "deepseek",
-      "baseUrl": "https://api.deepseek.com/v1",
-      "apiKey": "decrypted-secret",
-      "model": "deepseek-chat"
-    },
-    "redink": {
-      "systemPrompt": "..."
-    }
+    "config1": "yunwu",
+    "config2": "space-demo",
+    "secret1": "sk-demo",
+    "secret2": "sk-yunwu"
   }
 }
 ```
 
-权限要求：
+工具服务端拿到这份结果后，自己做映射。如果它依赖的槽位缺失，直接抛错。
 
-- 同仓库内的 Next.js 服务端代码优先直接调用 `getResolvedToolConfig`，不绕 HTTP。
-- 外部工具服务端调用时必须使用服务端凭证，例如工具访问令牌或签名请求。
-- 服务端凭证只允许读取指定项目和指定工具，不能读全量配置。
-- 响应头使用 `Cache-Control: no-store`，避免密钥被代理缓存。
-- 每次调用都写入最小访问日志，只记录项目、工具、用户、调用方和时间，不记录配置值。
+### 外部工具服务端写入配置
 
-如果工具只是要判断缓存是否过期，可以先请求轻量接口：
+接口：
 
 ```http
-GET /api/platform/tool-config/revision?projectKey=nextdevtpl&tool=redink
+POST /api/platform/tool-config/runtime-save
 ```
 
-返回示例：
+请求示例：
 
 ```json
 {
-  "success": true,
-  "revision": 13
+  "projectKey": "nextdevtpl",
+  "tool": "jingfang-ai",
+  "userId": "user_123",
+  "values": {
+    "config1": "yunwu",
+    "secret1": "sk-demo"
+  },
+  "clearSecrets": ["secret2"]
 }
 ```
 
-工具发现版本号变化后，再调用运行时接口刷新本地缓存。
+这个接口用于像 `jingfang-ai` 这样的外部工具后端，把自己页面上的系统设置写回 `NextDevTpl`。平台只负责保存槽位值，不负责理解这些槽位的业务含义。
+
+## 删除策略
+
+本方案不做软删除。
+
+### 删除配置值
+
+删除某个槽位值时：
+
+- 直接删除 `toolConfigValue` 对应记录
+- 若有默认值，则回退到默认值
+- 若没有默认值，则运行时读取不到该值
+
+### 删除字段定义
+
+第一版不建议在页面做“字段定义删除”能力，因为字段集合是固定通用槽位。
+
+如果后续确实要裁掉某个槽位，例如不再需要 `text10`：
+
+- 直接从固定种子里移除
+- 同时从数据库删除对应 `toolConfigField`
+- 同时删除该槽位下历史 `toolConfigValue`
+
+这属于平台结构变更，不属于日常工具配置操作。
 
 ## 缓存与失效
 
-建议对配置缓存做明确约束：
+保持简单约束：
 
-- 浏览器编辑页不缓存密钥状态，页面打开时读取最新 `editor` 数据。
-- 服务端工具运行可以按 `projectKey + toolKey + userId` 缓存短时间配置。
-- 管理员配置或用户配置保存后递增 `configRevision`。
-- 工具本地缓存必须绑定 `revision`，版本变化后丢弃旧配置。
-- 含密钥的运行时响应不能被 HTTP 缓存。
-- 如果工具任务排队时间较长，任务真正执行前再检查一次 `revision`。
-- 如果解析结果缺少必填字段，返回明确错误，例如“redink 缺少用户 AI API Key”。
+- 浏览器编辑页不缓存敏感值状态
+- 服务端可以按 `projectKey + toolKey + userId + revision` 做短缓存
+- 管理员或用户保存后递增 `configRevision`
+- 含密钥的运行时响应不做 HTTP 缓存
+- 工具发现 `revision` 变化后刷新本地缓存
 
-## AI 客户端接入方式
+## 工具接入方式
 
-当前 `src/lib/ai/openai.ts` 在模块加载时创建多个客户端，这不适合按工具和用户切换
-API Key。建议迁移为请求级客户端：
+工具接入时不再要求 `NextDevTpl` 为它增加语义字段，只需要两步：
 
-```ts
-createAIClient({
-  provider,
-  apiKey,
-  baseUrl,
-})
+1. 在 `toolRegistry` 中注册工具
+2. 在工具代码里维护槽位映射
+
+### jingfang-ai 示例
+
+平台返回：
+
+```json
+{
+  "config1": "yunwu",
+  "config2": "space-demo",
+  "config3": "123456",
+  "config4": "volc.bigasr.sauc.duration",
+  "config5": "tos-cn-beijing.ivolces.com",
+  "config6": "cn-north-1",
+  "secret1": "sk-geekai",
+  "secret2": "sk-yunwu",
+  "secret3": "ak-demo",
+  "secret4": "sk-demo",
+  "secret5": "asr-token"
+}
 ```
 
-工具调用时先解析配置，再创建客户端：
+`jingfang-ai` 本地映射后得到：
 
-```ts
-const config = await getResolvedToolConfig({
-  projectKey: "nextdevtpl",
-  toolKey: "redink",
-  userId,
-});
-
-const ai = createAIClient(config.ai);
+```json
+{
+  "gpt": "sk-geekai",
+  "yunwu_api_key": "sk-yunwu",
+  "chat_api_platform": "yunwu",
+  "access_key_id": "ak-demo",
+  "secret_access_key": "sk-demo",
+  "space_name": "space-demo",
+  "asr": {
+    "app_id": "123456",
+    "app_type": "volc.bigasr.sauc.duration",
+    "access_token": "asr-token"
+  },
+  "ai": {
+    "doubao_vision_endpoint": "tos-cn-beijing.ivolces.com",
+    "region": "cn-north-1"
+  }
+}
 ```
-
-迁移期间保留当前环境变量作为兜底，避免一次性影响已有功能。
-
-## 动态字段校验
-
-字段定义是动态的，但校验规则不能完全放开。建议只允许以下校验项：
-
-- `required`
-- `minLength`
-- `maxLength`
-- `min`
-- `max`
-- `url`
-- `enum`
-- `jsonObject`
-
-服务端保存配置时按字段定义生成 Zod 校验。管理员新增字段时也要校验
-`fieldKey`，建议只允许小写字母、数字、点号和连字符，避免字段名污染解析对象。
-
-## 示例工具配置
-
-### redink
-
-通用 AI 字段：
-
-- `ai.provider`
-- `ai.baseUrl`
-- `ai.apiKey`
-- `ai.model`
-- `ai.temperature`
-- `ai.maxTokens`
-
-工具字段：
-
-- `redink.systemPrompt`
-- `redink.titlePrompt`
-- `redink.copyPrompt`
-- `redink.imagePrompt`
-- `redink.outputLanguage`
-
-### jingfang-ai
-
-通用 AI 字段：
-
-- `ai.provider`
-- `ai.baseUrl`
-- `ai.apiKey`
-- `ai.model`
-- `ai.temperature`
-- `ai.maxTokens`
-
-工具字段：
-
-- `jingfangAi.videoDownloadBaseUrl`
-- `jingfangAi.videoDownloadApiKey`
-- `jingfangAi.analysisPrompt`
-- `jingfangAi.summaryPrompt`
 
 ## 需要注意的问题
 
-- 配置来源过多会让用户困惑，所以页面必须明确标识“使用管理员默认值”或“使用我的设置”。
-- 用户自填 API Key 会带来计费归属问题，需要在说明文案里提示由用户自行承担第三方费用。
-- 管理员密钥被用户配置覆盖后，工具运行失败时要能在错误信息中提示当前使用的是用户配置还是管理员默认值。
-- 动态字段删除不能直接删历史值，建议先停用字段，确认无工具依赖后再清理数据。
-- 密钥轮换需要支持“替换”和“清空”，不能用空字符串意外覆盖旧密钥。
-- 配置缓存必须在保存后失效，否则工具调用可能继续使用旧配置。
-- `json` 类型字段只建议管理员使用，普通用户优先使用结构化表单字段。
-- 工具结果归档不能写入解析后的密钥或完整配置。
-- 工具自己的页面保存配置时，也必须走 NextDevTpl 的权限和字段定义校验，不能直接写表。
-- 外部工具服务端读取运行时配置时，要限制访问范围，避免一个工具读到另一个工具的密钥。
-- 长时间任务不能只依赖启动时缓存，执行前需要检查配置版本。
+- 平台页面里的 `config1`、`secret1` 本身不自解释，维护者必须知道各工具自己的槽位映射。
+- 如果一个工具需要的槽位值被删掉，运行时应直接报错，不在平台层补默认业务逻辑。
+- 槽位数量要一次性预留够用，避免频繁改平台代码增加 `config21`、`secret11`。
+- 工具结果归档不能写入平台返回的密钥明文。
+- 外部工具服务端读取配置时，仍要限制只允许读取指定工具。
 
 ## 分阶段落地计划
 
-第一阶段：数据层和解析器
+第一阶段：平台收敛到固定槽位
 
-- 新增配置相关表和 Drizzle schema。
-- 写入默认项目 `nextdevtpl`。
-- 写入 `redink` 和 `jingfang-ai` 的工具注册数据。
-- 写入 AI 通用字段和工具字段定义。
-- 实现配置解析器和密钥加解密。
-- 实现 `revision` 递增和运行时缓存判断。
-- 增加解析顺序、用户覆盖、密钥脱敏的测试。
+- 把现有工具语义字段种子改为固定槽位种子
+- 保留 `project`、`toolRegistry`、`toolConfigField`、`toolConfigValue`、`toolConfigAuditLog`
+- 保留现有管理员页、用户页、运行时接口
+- 补充固定槽位解析测试
 
-第二阶段：管理员配置页面
+第二阶段：工具侧映射接入
 
-- 在 `src/config/nav.ts` 的管理端导航增加“工具配置”。
-- 新增管理员配置页。
-- 支持工具启用、字段定义、管理员配置保存。
-- 使用 `adminAction` 做权限保护。
-- 保存后刷新 `/admin/tool-config`。
+- `redink` 维护自己的槽位映射
+- `jingfang-ai` 维护自己的槽位映射
+- 平台只返回槽位对象
+- 工具侧缺少必要值时直接报错
 
-第三阶段：用户配置页面
+第三阶段：清理旧文档和旧字段
 
-- 在设置页增加 `tools` 标签。
-- 只展示允许用户修改的字段。
-- 支持用户保存、清空、恢复默认。
-- 使用 `protectedAction` 做权限保护。
-- 保存后刷新 `/dashboard/settings?tab=tools`。
-
-第四阶段：工具侧接口
-
-- 增加工具页面读取接口。
-- 增加工具页面保存接口。
-- 增加工具运行时读取接口。
-- 增加配置版本查询接口。
-- 补充浏览器不泄漏密钥、服务端可读取最终配置的测试。
-
-第五阶段：AI 调用迁移
-
-- 把 `src/lib/ai/openai.ts` 改为支持传入解析后的 AI 配置。
-- 保留环境变量兜底。
-- 逐个工具接入 `getResolvedToolConfig`。
-- 对 redink 和 jingfang-ai 分别补充最小业务测试。
-
-第六阶段：可观测性和运维
-
-- 增加配置变更审计记录。
-- 增加配置缺失和密钥失效的错误提示。
-- 增加管理员配置预览，只展示摘要。
-- 增加缓存失效测试。
+- 清理文档中的语义字段示例
+- 清理旧种子中的 `ai.provider`、`jingfangAi.xxx` 等字段
+- 清理已不再使用的旧配置说明
 
 ## 推荐第一版范围
 
-第一版不建议做复杂的多项目管理页面。建议先固定默认项目 `nextdevtpl`，
-把核心能力做通：
+第一版就做下面这些，不再往复杂方向扩：
 
-- 管理员可以在 `/admin/tool-config` 配置每个工具。
-- 用户可以在 `/dashboard/settings?tab=tools` 配置自己的工具参数。
-- redink 等工具自己的页面可以调用工具页面接口读取和保存用户配置。
-- 服务端工具调用通过 `getResolvedToolConfig` 读取最终配置。
-- 外部工具服务端通过运行时接口读取最终配置，并用 `revision` 刷新缓存。
-- 密钥只在服务端解密，前端只显示“已设置”。
+- 默认项目固定为 `nextdevtpl`
+- 工具通过 `toolKey` 隔离
+- 每个工具有同一套固定槽位字段
+- 管理员可以配置默认槽位值
+- 用户可以配置自己的槽位值
+- 运行时接口返回最终槽位配置
+- 工具自己做槽位映射
+- 删除值时直接删除
+- 缺配置时工具直接报错
 
-这能先满足 redink、jingfang-ai 和后续工具接入，同时控制实现规模。
+这已经足够支持 `redink`、`jingfang-ai` 和后续工具接入，同时保持实现简单。

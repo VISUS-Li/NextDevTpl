@@ -4,22 +4,26 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
   project,
-  toolConfigAuditLog,
-  toolConfigField,
   type ToolConfigField,
   type ToolConfigFieldType,
   type ToolConfigScope,
+  toolConfigAuditLog,
+  toolConfigField,
   toolConfigValue,
   toolRegistry,
 } from "@/db/schema";
 import type { ToolConfigValueInput } from "./schema";
 
 export const DEFAULT_PROJECT_KEY = "nextdevtpl";
+const SLOT_CONFIG_COUNT = 10;
+const SLOT_SECRET_COUNT = 10;
+const SLOT_JSON_COUNT = 4;
+const SLOT_TEXT_COUNT = 4;
 
 const defaultTools = [
   {
@@ -48,120 +52,7 @@ const defaultFieldDefinitions: Array<{
   optionsJson?: string[];
   validationJson?: Record<string, unknown>;
   sortOrder: number;
-}> = [
-  {
-    toolKey: "redink",
-    fieldKey: "ai.provider",
-    label: "AI 服务商",
-    group: "ai",
-    type: "select",
-    required: true,
-    userOverridable: true,
-    defaultValueJson: "openai",
-    optionsJson: ["openai", "deepseek", "mimo"],
-    sortOrder: 10,
-  },
-  {
-    toolKey: "redink",
-    fieldKey: "ai.baseUrl",
-    label: "AI 接口地址",
-    group: "ai",
-    type: "string",
-    userOverridable: true,
-    validationJson: { url: true },
-    sortOrder: 20,
-  },
-  {
-    toolKey: "redink",
-    fieldKey: "ai.apiKey",
-    label: "AI API Key",
-    group: "ai",
-    type: "secret",
-    required: true,
-    userOverridable: true,
-    sortOrder: 30,
-  },
-  {
-    toolKey: "redink",
-    fieldKey: "ai.model",
-    label: "AI 模型",
-    group: "ai",
-    type: "string",
-    userOverridable: true,
-    defaultValueJson: "gpt-4o-mini",
-    sortOrder: 40,
-  },
-  {
-    toolKey: "redink",
-    fieldKey: "redink.systemPrompt",
-    label: "系统提示词",
-    group: "tool",
-    type: "textarea",
-    userOverridable: true,
-    sortOrder: 100,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "ai.provider",
-    label: "AI 服务商",
-    group: "ai",
-    type: "select",
-    required: true,
-    userOverridable: true,
-    defaultValueJson: "openai",
-    optionsJson: ["openai", "deepseek", "mimo"],
-    sortOrder: 10,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "ai.baseUrl",
-    label: "AI 接口地址",
-    group: "ai",
-    type: "string",
-    userOverridable: true,
-    validationJson: { url: true },
-    sortOrder: 20,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "ai.apiKey",
-    label: "AI API Key",
-    group: "ai",
-    type: "secret",
-    required: true,
-    userOverridable: true,
-    sortOrder: 30,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "ai.model",
-    label: "AI 模型",
-    group: "ai",
-    type: "string",
-    userOverridable: true,
-    defaultValueJson: "gpt-4o-mini",
-    sortOrder: 40,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "jingfangAi.videoDownloadBaseUrl",
-    label: "第三方视频下载地址",
-    group: "tool",
-    type: "string",
-    adminOnly: true,
-    validationJson: { url: true },
-    sortOrder: 100,
-  },
-  {
-    toolKey: "jingfang-ai",
-    fieldKey: "jingfangAi.analysisPrompt",
-    label: "分析提示词",
-    group: "tool",
-    type: "textarea",
-    userOverridable: true,
-    sortOrder: 110,
-  },
-];
+}> = defaultTools.flatMap((tool) => buildDefaultSlotFields(tool.toolKey));
 
 type ConfigValueRow = typeof toolConfigValue.$inferSelect;
 
@@ -255,7 +146,69 @@ export async function seedDefaultToolConfigProject(params?: {
     }
   }
 
+  for (const tool of defaultTools) {
+    const expectedFieldKeys = defaultFieldDefinitions
+      .filter((field) => field.toolKey === tool.toolKey)
+      .map((field) => field.fieldKey);
+
+    if (expectedFieldKeys.length === 0) {
+      continue;
+    }
+
+    await db
+      .delete(toolConfigValue)
+      .where(
+        and(
+          eq(toolConfigValue.projectId, currentProject.id),
+          eq(toolConfigValue.toolKey, tool.toolKey),
+          notInArray(toolConfigValue.fieldKey, expectedFieldKeys)
+        )
+      );
+    await db
+      .delete(toolConfigField)
+      .where(
+        and(
+          eq(toolConfigField.projectId, currentProject.id),
+          eq(toolConfigField.toolKey, tool.toolKey),
+          notInArray(toolConfigField.fieldKey, expectedFieldKeys)
+        )
+      );
+  }
+
   return currentProject;
+}
+
+function buildDefaultSlotFields(toolKey: string) {
+  return [
+    ...buildFieldSeries(toolKey, "config", "string", SLOT_CONFIG_COUNT, 10),
+    ...buildFieldSeries(toolKey, "secret", "secret", SLOT_SECRET_COUNT, 200),
+    ...buildFieldSeries(toolKey, "json", "json", SLOT_JSON_COUNT, 400),
+    ...buildFieldSeries(toolKey, "text", "textarea", SLOT_TEXT_COUNT, 500),
+  ];
+}
+
+function buildFieldSeries(
+  toolKey: string,
+  prefix: "config" | "secret" | "json" | "text",
+  type: ToolConfigFieldType,
+  count: number,
+  startSortOrder: number
+) {
+  return Array.from({ length: count }, (_, index) => {
+    const fieldNumber = index + 1;
+    const fieldKey = `${prefix}${fieldNumber}`;
+
+    return {
+      toolKey,
+      fieldKey,
+      label: fieldKey,
+      description: `${toolKey} 的 ${fieldKey} 通用槽位`,
+      group: prefix,
+      type,
+      userOverridable: true,
+      sortOrder: startSortOrder + fieldNumber,
+    };
+  });
 }
 
 /**
@@ -334,7 +287,9 @@ export async function getToolConfigEditorData(params: {
 /**
  * 读取管理员工具配置页面数据
  */
-export async function getAdminToolConfigPageData(projectKey = DEFAULT_PROJECT_KEY) {
+export async function getAdminToolConfigPageData(
+  projectKey = DEFAULT_PROJECT_KEY
+) {
   const currentProject = await seedDefaultToolConfigProject({ projectKey });
   const tools = await db
     .select()
@@ -371,7 +326,10 @@ export async function getUserToolConfigPageData(params: {
     .select()
     .from(toolRegistry)
     .where(
-      and(eq(toolRegistry.projectId, currentProject.id), eq(toolRegistry.enabled, true))
+      and(
+        eq(toolRegistry.projectId, currentProject.id),
+        eq(toolRegistry.enabled, true)
+      )
     )
     .orderBy(asc(toolRegistry.sortOrder), asc(toolRegistry.toolKey));
   const toolConfigs = (
@@ -476,7 +434,10 @@ async function saveToolConfigValues(
   params: SaveConfigParams & { scope: ToolConfigScope }
 ) {
   const projectKey = params.projectKey ?? DEFAULT_PROJECT_KEY;
-  const { currentProject, fields } = await getProjectFields(projectKey, params.toolKey);
+  const { currentProject, fields } = await getProjectFields(
+    projectKey,
+    params.toolKey
+  );
   const fieldMap = new Map(fields.map((field) => [field.fieldKey, field]));
   const now = new Date();
 
@@ -738,13 +699,21 @@ function assertFieldValue(field: ToolConfigField, value: ToolConfigValueInput) {
   if (field.type === "string" && typeof value !== "string" && value !== null) {
     throw new Error("文本配置必须是字符串");
   }
-  if (field.type === "textarea" && typeof value !== "string" && value !== null) {
+  if (
+    field.type === "textarea" &&
+    typeof value !== "string" &&
+    value !== null
+  ) {
     throw new Error("长文本配置必须是字符串");
   }
   if (field.type === "number" && typeof value !== "number" && value !== null) {
     throw new Error("数字配置必须是数字");
   }
-  if (field.type === "boolean" && typeof value !== "boolean" && value !== null) {
+  if (
+    field.type === "boolean" &&
+    typeof value !== "boolean" &&
+    value !== null
+  ) {
     throw new Error("开关配置必须是布尔值");
   }
   if (field.type === "select") {
@@ -787,10 +756,17 @@ function setNestedConfigValue(
     }
     target = target[part] as Record<string, unknown>;
   }
-  target[parts[parts.length - 1]!] = value;
+  const lastPart = parts.at(-1);
+  if (!lastPart) {
+    throw new Error("配置字段不能为空");
+  }
+  target[lastPart] = value;
 }
 
-function getNestedConfigValue(config: Record<string, unknown>, fieldKey: string) {
+function getNestedConfigValue(
+  config: Record<string, unknown>,
+  fieldKey: string
+) {
   let target: unknown = config;
   for (const part of fieldKey.split(".")) {
     if (!target || typeof target !== "object" || Array.isArray(target)) {
@@ -804,7 +780,10 @@ function getNestedConfigValue(config: Record<string, unknown>, fieldKey: string)
 function encryptToolConfigSecret(value: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", getToolConfigSecretKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
   return [
     iv.toString("base64"),
     cipher.getAuthTag().toString("base64"),
@@ -814,14 +793,17 @@ function encryptToolConfigSecret(value: string) {
 
 function decryptToolConfigSecret(value: string) {
   const [iv, tag, encrypted] = value.split(":");
+  if (!iv || !tag || !encrypted) {
+    throw new Error("密钥配置密文格式错误");
+  }
   const decipher = createDecipheriv(
     "aes-256-gcm",
     getToolConfigSecretKey(),
-    Buffer.from(iv!, "base64")
+    Buffer.from(iv, "base64")
   );
-  decipher.setAuthTag(Buffer.from(tag!, "base64"));
+  decipher.setAuthTag(Buffer.from(tag, "base64"));
   return Buffer.concat([
-    decipher.update(Buffer.from(encrypted!, "base64")),
+    decipher.update(Buffer.from(encrypted, "base64")),
     decipher.final(),
   ]).toString("utf8");
 }

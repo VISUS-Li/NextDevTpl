@@ -10,7 +10,12 @@ import {
   saveUserToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config";
-import { cleanupTestUsers, createTestUser, generateTestId, testDb } from "../utils";
+import {
+  cleanupTestUsers,
+  createTestUser,
+  generateTestId,
+  testDb,
+} from "../utils";
 
 describe("Tool config service", () => {
   const projectKey = generateTestId("tool_config_project");
@@ -26,7 +31,10 @@ describe("Tool config service", () => {
     const user = await createTestUser();
     createdUserIds.push(admin.id, user.id);
 
-    await seedDefaultToolConfigProject({ projectKey, name: "Tool Config Test" });
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
     const firstRevision = await getToolConfigRevision(projectKey);
 
     const adminRevision = await saveAdminToolConfig({
@@ -34,10 +42,10 @@ describe("Tool config service", () => {
       toolKey: "redink",
       actorId: admin.id,
       values: {
-        "ai.provider": "deepseek",
-        "ai.apiKey": "admin-secret",
-        "ai.model": "deepseek-chat",
-        "redink.systemPrompt": "管理员默认提示词",
+        config1: "deepseek",
+        secret1: "admin-secret",
+        config2: "deepseek-chat",
+        text1: "管理员默认提示词",
       },
     });
 
@@ -48,14 +56,10 @@ describe("Tool config service", () => {
 
     expect(adminRevision).toBe(firstRevision + 1);
     expect(adminResolved.config).toMatchObject({
-      ai: {
-        provider: "deepseek",
-        apiKey: "admin-secret",
-        model: "deepseek-chat",
-      },
-      redink: {
-        systemPrompt: "管理员默认提示词",
-      },
+      config1: "deepseek",
+      secret1: "admin-secret",
+      config2: "deepseek-chat",
+      text1: "管理员默认提示词",
     });
 
     const userEditor = await getToolConfigEditorData({
@@ -65,7 +69,7 @@ describe("Tool config service", () => {
       mode: "user",
     });
     const apiKeyField = userEditor.fields.find(
-      (field) => field.fieldKey === "ai.apiKey"
+      (field) => field.fieldKey === "secret1"
     );
 
     expect(apiKeyField).toMatchObject({
@@ -80,9 +84,9 @@ describe("Tool config service", () => {
       toolKey: "redink",
       actorId: user.id,
       values: {
-        "ai.apiKey": "user-secret",
-        "ai.model": "gpt-user",
-        "redink.systemPrompt": "用户自己的提示词",
+        secret1: "user-secret",
+        config2: "gpt-user",
+        text1: "用户自己的提示词",
       },
     });
     const userResolved = await getResolvedToolConfig({
@@ -93,14 +97,10 @@ describe("Tool config service", () => {
 
     expect(userRevision).toBe(adminRevision + 1);
     expect(userResolved.config).toMatchObject({
-      ai: {
-        provider: "deepseek",
-        apiKey: "user-secret",
-        model: "gpt-user",
-      },
-      redink: {
-        systemPrompt: "用户自己的提示词",
-      },
+      config1: "deepseek",
+      secret1: "user-secret",
+      config2: "gpt-user",
+      text1: "用户自己的提示词",
     });
 
     await saveUserToolConfig({
@@ -108,7 +108,7 @@ describe("Tool config service", () => {
       toolKey: "redink",
       actorId: user.id,
       values: {},
-      clearSecrets: ["ai.apiKey"],
+      clearSecrets: ["secret1"],
     });
     const fallbackResolved = await getResolvedToolConfig({
       projectKey,
@@ -117,13 +117,11 @@ describe("Tool config service", () => {
     });
 
     expect(fallbackResolved.config).toMatchObject({
-      ai: {
-        apiKey: "admin-secret",
-      },
+      secret1: "admin-secret",
     });
   });
 
-  it("应该拒绝用户修改管理员专属字段并记录配置审计", async () => {
+  it("应该保存 jingfang-ai 的通用槽位并记录配置审计", async () => {
     const admin = await createTestUser({ role: "admin" });
     const user = await createTestUser();
     createdUserIds.push(admin.id, user.id);
@@ -133,21 +131,19 @@ describe("Tool config service", () => {
       toolKey: "jingfang-ai",
       actorId: admin.id,
       values: {
-        "ai.apiKey": "admin-jingfang-secret",
-        "jingfangAi.videoDownloadBaseUrl": "https://download.test",
+        secret1: "admin-jingfang-secret",
+        config1: "https://download.test",
       },
     });
 
-    await expect(
-      saveUserToolConfig({
-        projectKey,
-        toolKey: "jingfang-ai",
-        actorId: user.id,
-        values: {
-          "jingfangAi.videoDownloadBaseUrl": "https://user-download.test",
-        },
-      })
-    ).rejects.toThrow("当前用户不能修改该配置字段");
+    await saveUserToolConfig({
+      projectKey,
+      toolKey: "jingfang-ai",
+      actorId: user.id,
+      values: {
+        config1: "https://user-download.test",
+      },
+    });
 
     const values = await testDb
       .select()
@@ -161,8 +157,9 @@ describe("Tool config service", () => {
     expect(
       values.some(
         (value) =>
-          value.fieldKey === "jingfangAi.videoDownloadBaseUrl" &&
-          value.scope === "project_admin"
+          value.fieldKey === "config1" &&
+          value.scope === "user" &&
+          value.userId === user.id
       )
     ).toBe(true);
     expect(auditLogs.length).toBeGreaterThan(0);

@@ -55,10 +55,10 @@ describe("AdminToolConfigView", () => {
                 revision: 8,
                 fields: [
                   {
-                    fieldKey: "ai.model",
-                    label: "AI 模型",
+                    fieldKey: "config1",
+                    label: "config1",
                     description: null,
-                    group: "ai",
+                    group: "config",
                     type: "string",
                     value: "gpt-4o-mini",
                     source: "default",
@@ -67,10 +67,10 @@ describe("AdminToolConfigView", () => {
                     editable: true,
                   },
                   {
-                    fieldKey: "ai.apiKey",
-                    label: "AI API Key",
+                    fieldKey: "secret1",
+                    label: "secret1",
                     description: null,
-                    group: "ai",
+                    group: "secret",
                     type: "secret",
                     secretSet: true,
                     source: "project_admin",
@@ -79,10 +79,10 @@ describe("AdminToolConfigView", () => {
                     editable: true,
                   },
                   {
-                    fieldKey: "redink.systemPrompt",
-                    label: "系统提示词",
+                    fieldKey: "text1",
+                    label: "text1",
                     description: null,
-                    group: "tool",
+                    group: "text",
                     type: "textarea",
                     value: "默认提示词",
                     source: "project_admin",
@@ -98,13 +98,17 @@ describe("AdminToolConfigView", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "工具配置" })).toBeInTheDocument();
-    expect(screen.getByText("已设置密钥，留空不会覆盖旧值。")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "工具配置" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("已设置密钥，留空不会覆盖旧值。")
+    ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("AI 模型"), {
+    fireEvent.change(screen.getByLabelText("config1"), {
       target: { value: "deepseek-chat" },
     });
-    fireEvent.change(screen.getByLabelText("系统提示词"), {
+    fireEvent.change(screen.getByLabelText("text1"), {
       target: { value: "新的管理员提示词" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存 RedInk 配置" }));
@@ -114,8 +118,8 @@ describe("AdminToolConfigView", () => {
         projectKey: "nextdevtpl",
         tool: "redink",
         values: {
-          "ai.model": "deepseek-chat",
-          "redink.systemPrompt": "新的管理员提示词",
+          config1: "deepseek-chat",
+          text1: "新的管理员提示词",
         },
         clearSecrets: [],
       });

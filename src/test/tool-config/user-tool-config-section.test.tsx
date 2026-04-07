@@ -52,10 +52,10 @@ describe("UserToolConfigSection", () => {
                 revision: 5,
                 fields: [
                   {
-                    fieldKey: "ai.model",
-                    label: "AI 模型",
+                    fieldKey: "config1",
+                    label: "config1",
                     description: null,
-                    group: "ai",
+                    group: "config",
                     type: "string",
                     value: "gpt-4o-mini",
                     source: "project_admin",
@@ -64,10 +64,10 @@ describe("UserToolConfigSection", () => {
                     editable: true,
                   },
                   {
-                    fieldKey: "ai.apiKey",
-                    label: "AI API Key",
+                    fieldKey: "secret1",
+                    label: "secret1",
                     description: null,
-                    group: "ai",
+                    group: "secret",
                     type: "secret",
                     secretSet: true,
                     source: "project_admin",
@@ -76,10 +76,10 @@ describe("UserToolConfigSection", () => {
                     editable: true,
                   },
                   {
-                    fieldKey: "redink.systemPrompt",
-                    label: "系统提示词",
+                    fieldKey: "text1",
+                    label: "text1",
                     description: "个人提示词",
-                    group: "tool",
+                    group: "text",
                     type: "textarea",
                     value: "",
                     source: "empty",
@@ -95,24 +95,28 @@ describe("UserToolConfigSection", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 2, name: "工具配置" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "工具配置" })
+    ).toBeInTheDocument();
     expect(screen.getByText("当前使用管理员默认值。")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("AI 模型"), {
+    fireEvent.change(screen.getByLabelText("config1"), {
       target: { value: "user-model" },
     });
-    fireEvent.change(screen.getByLabelText("系统提示词"), {
+    fireEvent.change(screen.getByLabelText("text1"), {
       target: { value: "用户提示词" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存我的 RedInk 配置" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "保存我的 RedInk 配置" })
+    );
 
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith({
         projectKey: "nextdevtpl",
         tool: "redink",
         values: {
-          "ai.model": "user-model",
-          "redink.systemPrompt": "用户提示词",
+          config1: "user-model",
+          text1: "用户提示词",
         },
         clearSecrets: [],
       });

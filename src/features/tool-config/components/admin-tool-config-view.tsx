@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { useAction } from "next-safe-action/hooks";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -25,7 +31,14 @@ type AdminToolConfigField = {
   label: string;
   description: string | null;
   group: string;
-  type: "string" | "textarea" | "number" | "boolean" | "select" | "json" | "secret";
+  type:
+    | "string"
+    | "textarea"
+    | "number"
+    | "boolean"
+    | "select"
+    | "json"
+    | "secret";
   value?: unknown;
   secretSet?: boolean;
   source: string;
@@ -78,7 +91,11 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
   /**
    * 更新当前工具字段值
    */
-  const updateFieldValue = (toolKey: string, fieldKey: string, value: string) => {
+  const updateFieldValue = (
+    toolKey: string,
+    fieldKey: string,
+    value: string
+  ) => {
     setFormValues((current) => ({
       ...current,
       [toolKey]: {
@@ -95,7 +112,8 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
     const values = Object.fromEntries(
       toolConfig.editor.fields
         .map((field) => {
-          const rawValue = formValues[toolConfig.tool.toolKey]?.[field.fieldKey] ?? "";
+          const rawValue =
+            formValues[toolConfig.tool.toolKey]?.[field.fieldKey] ?? "";
           if (field.type === "secret" && rawValue === "") {
             return null;
           }
@@ -117,7 +135,9 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <p className="text-sm text-muted-foreground">项目：{data.project.name}</p>
+        <p className="text-sm text-muted-foreground">
+          项目：{data.project.name}
+        </p>
         <h1 className="text-2xl font-semibold tracking-tight">工具配置</h1>
         <p className="text-sm text-muted-foreground">
           为每个工具设置管理员默认配置，用户只会看到允许个人覆盖的字段。
@@ -134,22 +154,29 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
         </TabsList>
 
         {data.toolConfigs.map((toolConfig) => (
-          <TabsContent key={toolConfig.tool.toolKey} value={toolConfig.tool.toolKey}>
+          <TabsContent
+            key={toolConfig.tool.toolKey}
+            value={toolConfig.tool.toolKey}
+          >
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle>{toolConfig.tool.name}</CardTitle>
-                  <Badge variant={toolConfig.tool.enabled ? "default" : "secondary"}>
+                  <Badge
+                    variant={toolConfig.tool.enabled ? "default" : "secondary"}
+                  >
                     {toolConfig.tool.enabled ? "已启用" : "已停用"}
                   </Badge>
-                  <Badge variant="outline">版本 {toolConfig.editor.revision}</Badge>
+                  <Badge variant="outline">
+                    版本 {toolConfig.editor.revision}
+                  </Badge>
                 </div>
                 <CardDescription>
                   {toolConfig.tool.description ?? "配置该工具的默认运行参数"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {["ai", "tool", "advanced"].map((group) => {
+                {getGroupOrder(toolConfig.editor.fields).map((group) => {
                   const fields = toolConfig.editor.fields.filter(
                     (field) => field.group === group
                   );
@@ -157,11 +184,15 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
 
                   return (
                     <div key={group} className="space-y-4">
-                      <h2 className="text-base font-medium">{getGroupLabel(group)}</h2>
+                      <h2 className="text-base font-medium">
+                        {getGroupLabel(group)}
+                      </h2>
                       <div className="grid gap-4 md:grid-cols-2">
                         {fields.map((field) => (
                           <div key={field.fieldKey} className="space-y-2">
-                            <Label htmlFor={`${toolConfig.tool.toolKey}-${field.fieldKey}`}>
+                            <Label
+                              htmlFor={`${toolConfig.tool.toolKey}-${field.fieldKey}`}
+                            >
                               {field.label}
                               {field.required ? " *" : ""}
                             </Label>
@@ -169,7 +200,9 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
                               field,
                               toolKey: toolConfig.tool.toolKey,
                               value:
-                                formValues[toolConfig.tool.toolKey]?.[field.fieldKey] ?? "",
+                                formValues[toolConfig.tool.toolKey]?.[
+                                  field.fieldKey
+                                ] ?? "",
                               updateFieldValue,
                             })}
                             {field.description ? (
@@ -229,14 +262,23 @@ function parseFieldValue(field: AdminToolConfigField, value: string) {
   if (value === "") return null;
   if (field.type === "number") return Number(value);
   if (field.type === "boolean") return value === "true";
-  if (field.type === "json") return JSON.parse(value) as Record<string, unknown>;
+  if (field.type === "json")
+    return JSON.parse(value) as Record<string, unknown>;
   return value;
 }
 
 function getGroupLabel(group: string) {
-  if (group === "ai") return "AI 配置";
-  if (group === "advanced") return "高级配置";
-  return "工具配置";
+  if (group === "config") return "通用配置";
+  if (group === "secret") return "密钥配置";
+  if (group === "json") return "JSON 配置";
+  if (group === "text") return "文本配置";
+  return group;
+}
+
+function getGroupOrder(fields: AdminToolConfigField[]) {
+  const groupOrder = ["config", "secret", "json", "text"];
+  const availableGroups = new Set(fields.map((field) => field.group));
+  return groupOrder.filter((group) => availableGroups.has(group));
 }
 
 function renderFieldInput(params: {

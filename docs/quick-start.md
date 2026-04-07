@@ -76,6 +76,37 @@ EMAIL_FROM="NextDevTpl <noreply@your-domain.com>"
 | **Axiom 日志** | `AXIOM_TOKEN`, `AXIOM_DATASET` | 云端结构化日志 |
 | **Sentry 监控** | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | 错误追踪 |
 | **Inngest** | 开发模式自动连接 | 后台任务队列 |
+| **Tool Config 加密** | `CONFIG_SECRET_KEY` | 工具配置中的密钥字段加密 |
+| **Tool Config 运行时接口** | `TOOL_CONFIG_RUNTIME_TOKEN` | 工具服务端读取运行配置时的鉴权令牌 |
+
+### Tool Config 补充说明
+
+当前项目已经内置工具配置系统，供 `redink`、`jingfang-ai` 这类工具复用。
+
+- 管理员页面入口：`/[locale]/admin/tool-config`
+- 用户页面入口：`/[locale]/dashboard/settings?tab=tools`
+- 用户前端可通过 `/api/platform/tool-config/editor` 和
+  `/api/platform/tool-config/user` 读取、保存自己的工具配置
+- 工具服务端可通过 `/api/platform/tool-config/runtime` 和
+  `/api/platform/tool-config/revision` 读取最终配置与版本号
+- 外部工具服务端可通过 `/api/platform/tool-config/runtime-save`
+  按 `userId` 写入用户配置
+
+当前配置解析顺序：
+
+1. 字段默认值
+2. 管理员项目配置
+3. 用户个人配置
+
+说明：
+
+- 当前推荐使用固定槽位字段，例如 `config1`、`secret1`、`json1`、`text1`
+- 平台只负责存储和展示槽位；每个工具自己维护“槽位 -> 业务配置”的映射
+- 密钥类字段不会明文返回给前端
+- 如果你的工具服务端要接入运行时配置，建议同时设置
+  `CONFIG_SECRET_KEY` 和 `TOOL_CONFIG_RUNTIME_TOKEN`
+- 如果业务代码没有传入工具级 `aiConfig`，AI 调用仍会继续使用
+  `.env` 中的 `AI_PROVIDER`、`OPENAI_API_KEY` 等环境变量
 
 ## 第三步：初始化数据库
 

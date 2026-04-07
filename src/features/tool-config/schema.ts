@@ -51,4 +51,12 @@ export const runtimeToolConfigSchema = z.object({
   knownRevision: z.number().int().positive().optional(),
 });
 
+export const runtimeSaveToolConfigSchema = z.object({
+  projectKey: toolConfigProjectKeySchema.default("nextdevtpl"),
+  tool: toolConfigToolKeySchema,
+  userId: z.string().trim().min(1),
+  values: toolConfigValuesSchema,
+  clearSecrets: z.array(toolConfigFieldKeySchema).default([]),
+});
+
 export type ToolConfigValueInput = z.infer<typeof toolConfigValueSchema>;

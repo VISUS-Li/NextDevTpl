@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { GET as getEditor } from "@/app/api/platform/tool-config/editor/route";
 import { GET as getRevision } from "@/app/api/platform/tool-config/revision/route";
 import { POST as postRuntime } from "@/app/api/platform/tool-config/runtime/route";
+import { POST as postRuntimeSave } from "@/app/api/platform/tool-config/runtime-save/route";
 import { POST as postUserConfig } from "@/app/api/platform/tool-config/user/route";
 import { project } from "@/db/schema";
 import {
@@ -11,7 +12,12 @@ import {
   seedDefaultToolConfigProject,
 } from "@/features/tool-config";
 import { auth } from "@/lib/auth";
-import { cleanupTestUsers, createTestUser, generateTestId, testDb } from "../utils";
+import {
+  cleanupTestUsers,
+  createTestUser,
+  generateTestId,
+  testDb,
+} from "../utils";
 
 const createdUserIds: string[] = [];
 const projectKey = generateTestId("tool_config_api_project");
@@ -54,9 +60,9 @@ describe("Tool config platform API", () => {
       toolKey: "redink",
       actorId: admin.id,
       values: {
-        "ai.provider": "deepseek",
-        "ai.apiKey": "admin-runtime-secret",
-        "ai.model": "deepseek-chat",
+        config1: "deepseek",
+        secret1: "admin-runtime-secret",
+        config2: "deepseek-chat",
       },
     });
     mockSession({
@@ -76,7 +82,9 @@ describe("Tool config platform API", () => {
     expect(editorResponse.status).toBe(200);
     expect(editor.success).toBe(true);
     expect(
-      editor.fields.find((field: { fieldKey: string }) => field.fieldKey === "ai.apiKey")
+      editor.fields.find(
+        (field: { fieldKey: string }) => field.fieldKey === "secret1"
+      )
     ).toMatchObject({
       secretSet: true,
       source: "project_admin",
@@ -91,8 +99,8 @@ describe("Tool config platform API", () => {
           projectKey,
           tool: "redink",
           values: {
-            "ai.apiKey": "user-runtime-secret",
-            "ai.model": "user-runtime-model",
+            secret1: "user-runtime-secret",
+            config2: "user-runtime-model",
           },
         }),
       })
@@ -123,11 +131,9 @@ describe("Tool config platform API", () => {
     expect(runtimeResponse.headers.get("Cache-Control")).toBe("no-store");
     expect(runtime.changed).toBe(true);
     expect(runtime.config).toMatchObject({
-      ai: {
-        provider: "deepseek",
-        apiKey: "user-runtime-secret",
-        model: "user-runtime-model",
-      },
+      config1: "deepseek",
+      secret1: "user-runtime-secret",
+      config2: "user-runtime-model",
     });
 
     const revisionResponse = await getRevision(
@@ -167,5 +173,57 @@ describe("Tool config platform API", () => {
 
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
+  });
+
+  it("运行时保存接口应该支持外部工具按 userId 写入配置", async () => {
+    process.env.TOOL_CONFIG_RUNTIME_TOKEN = "runtime-test-token";
+
+    const response = await postRuntimeSave(
+      new Request(
+        "http://localhost:3000/api/platform/tool-config/runtime-save",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer runtime-test-token",
+          },
+          body: JSON.stringify({
+            projectKey,
+            tool: "jingfang-ai",
+            userId: "external-user",
+            values: {
+              config1: "yunwu",
+              secret1: "external-secret",
+            },
+          }),
+        }
+      )
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const runtimeResponse = await postRuntime(
+      new Request("http://localhost:3000/api/platform/tool-config/runtime", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer runtime-test-token",
+        },
+        body: JSON.stringify({
+          projectKey,
+          tool: "jingfang-ai",
+          userId: "external-user",
+        }),
+      })
+    );
+    const runtime = await runtimeResponse.json();
+
+    expect(runtimeResponse.status).toBe(200);
+    expect(runtime.config).toMatchObject({
+      config1: "yunwu",
+      secret1: "external-secret",
+    });
   });
 });
