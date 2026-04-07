@@ -829,9 +829,10 @@ function decryptToolConfigSecret(value: string) {
 function getToolConfigSecretKey() {
   const secret =
     process.env.CONFIG_SECRET_KEY ??
+    process.env.BETTER_AUTH_SECRET ??
     (process.env.NODE_ENV === "test" ? "nextdevtpl-test-config-secret" : "");
   if (!secret) {
-    throw new Error("CONFIG_SECRET_KEY 环境变量未设置");
+    throw new Error("CONFIG_SECRET_KEY 或 BETTER_AUTH_SECRET 环境变量未设置");
   }
   return createHash("sha256").update(secret).digest();
 }

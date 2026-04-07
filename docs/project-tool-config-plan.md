@@ -247,7 +247,7 @@ getResolvedToolConfig({
 密钥处理：
 
 - `secret` 类型字段写入 `encryptedValue`，不要写入 `valueJson`。
-- 加密密钥来自服务端环境变量，例如 `CONFIG_SECRET_KEY`。
+- 加密密钥优先来自 `CONFIG_SECRET_KEY`，本地开发可复用 `BETTER_AUTH_SECRET`。
 - 前端、日志、审计表都不记录明文。
 - 工具调用拿到明文后只在当前请求内使用，不写入对象存储或业务结果。
 
