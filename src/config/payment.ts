@@ -5,10 +5,10 @@
  */
 
 import {
-  PaymentType,
-  PlanInterval,
   type PaymentConfig,
+  PaymentType,
   type Plan,
+  PlanInterval,
   type PriceConfig,
   type PricingConfig,
 } from "@/features/payment/types";
@@ -135,9 +135,7 @@ export const paymentConfig: PaymentConfig = {
  *
  * 返回用于定价页面展示的完整计划信息
  */
-export function getPricingPlans(
-  _t?: (key: string) => string
-): Plan[] {
+export function getPricingPlans(_t?: (key: string) => string): Plan[] {
   const plans: Plan[] = [];
   const config = paymentConfig;
 
@@ -227,7 +225,8 @@ export function getPricingPlans(
 export function getPricingConfig(): PricingConfig {
   return {
     title: "Simple, transparent pricing",
-    subtitle: "Start free, upgrade when you need more. Save 40% with yearly billing.",
+    subtitle:
+      "Start free, upgrade when you need more. Save 40% with yearly billing.",
     frequencies: ["Monthly", "Yearly"],
     yearlyDiscount: paymentConfig.yearlyDiscount,
     plans: getPricingPlans(),
@@ -289,4 +288,33 @@ export function getBaseUrl(): string {
     return `https://${process.env.VERCEL_URL}`;
   }
   return "http://localhost:3000";
+}
+
+/**
+ * 优先按当前请求推导回跳地址，保持 IP 和域名入口一致。
+ */
+export async function getRequestBaseUrl(): Promise<string> {
+  try {
+    const { headers } = await import("next/headers");
+    const headerList = await headers();
+    const forwardedProto = headerList
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim();
+    const forwardedHost = headerList
+      .get("x-forwarded-host")
+      ?.split(",")[0]
+      ?.trim();
+    const host = forwardedHost || headerList.get("host")?.split(",")[0]?.trim();
+    if (forwardedProto && host) {
+      return `${forwardedProto}://${host}`;
+    }
+    const origin = headerList.get("origin");
+    if (origin) {
+      return new URL(origin).origin;
+    }
+  } catch {
+    // 非请求上下文继续使用静态配置。
+  }
+  return getBaseUrl();
 }

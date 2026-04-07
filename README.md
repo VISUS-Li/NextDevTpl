@@ -172,6 +172,7 @@ pnpm dev
 - `/[locale]/admin/users`
 - `/[locale]/admin/tickets`
 - `/[locale]/admin/tickets/[id]`
+- `/[locale]/admin/tool-config`
 
 对应目录：
 
@@ -255,12 +256,46 @@ pnpm dev
 | `src/config/nav.ts` | Header、Footer、Dashboard、Admin 导航 |
 | `src/config/payment.ts` | 定价页展示、支付跳转配置、价格 ID |
 | `src/config/subscription-plan.ts` | 各订阅计划的权限边界 |
+| `src/features/tool-config/service.ts` | 工具配置的默认字段、读写与解析顺序 |
+| `src/features/tool-config/schema.ts` | 工具配置接口入参校验 |
 | `src/db/schema.ts` | 全部表结构 |
 | `src/db/index.ts` | 数据库连接策略 |
 | `src/lib/auth/index.ts` | Better Auth 主配置 |
+| `src/lib/ai/openai.ts` | AI 客户端创建逻辑，支持工具配置覆盖环境变量 |
 | `src/middleware.ts` | i18n、受保护路由、限流白名单 |
 | `messages/*` | 国际化文案 |
 | `src/content/**/*` | 文档、博客、法律内容 |
+
+### 8.1 Tool Config 当前逻辑
+
+当前仓库已经落地一套项目级工具配置系统，服务 `RedInk`、`Jingfang AI`
+这类外部工具。
+
+- 统一入口在 `src/features/tool-config/*`
+- 数据表在 `project`、`toolRegistry`、`toolConfigField`、`toolConfigValue`、
+  `toolConfigAuditLog`
+- 默认项目 key 是 `nextdevtpl`
+- 当前默认工具有 `redink`、`jingfang-ai`
+- 当前默认字段分两类：
+  - 通用 AI 字段：`ai.provider`、`ai.baseUrl`、`ai.apiKey`、`ai.model`
+  - 工具专属字段：如 `redink.systemPrompt`、
+    `jingfangAi.videoDownloadBaseUrl`、`jingfangAi.analysisPrompt`
+
+配置解析顺序如下：
+
+1. 字段默认值
+2. 管理员项目配置
+3. 用户个人配置
+
+说明：
+
+- `secret` 类型字段会加密存库
+- 加密密钥优先读取 `CONFIG_SECRET_KEY`，未设置时退回
+  `BETTER_AUTH_SECRET`
+- 工具运行时接口使用 `TOOL_CONFIG_RUNTIME_TOKEN` 保护
+- `src/lib/ai/openai.ts` 支持传入 `aiConfig`，传入时优先使用工具配置；
+  未传入时继续使用 `.env` 中的 `AI_PROVIDER`、`OPENAI_API_KEY` 等环境变量
+- 这意味着当前 AI 配置是“双轨制”：平台工具可走 tool-config，普通业务代码仍可只走环境变量
 
 ## 9. API 与后台任务入口
 
@@ -276,6 +311,10 @@ pnpm dev
 - `src/app/api/platform/results/save/route.ts`：工具侧把 JSON 结果写入对象存储
 - `src/app/api/platform/results/route.ts`：工具侧读取结果列表
 - `src/app/api/platform/results/detail/route.ts`：工具侧读取单条结果详情
+- `src/app/api/platform/tool-config/editor/route.ts`：工具前端读取当前用户可编辑字段
+- `src/app/api/platform/tool-config/user/route.ts`：工具前端保存当前用户配置
+- `src/app/api/platform/tool-config/runtime/route.ts`：工具服务端读取最终运行配置
+- `src/app/api/platform/tool-config/revision/route.ts`：工具服务端读取配置版本号
 - `src/app/api/jobs/credits/expire/route.ts`：积分过期任务
 - `src/app/api/inngest/route.ts`：Inngest 入口
 - `src/app/api/search/route.ts`：搜索接口
@@ -301,6 +340,14 @@ pnpm dev
   - 给工具读取当前用户自己的结果列表
 - `GET /api/platform/results/detail`
   - 给工具按 key 读取单条结果详情
+- `GET /api/platform/tool-config/editor`
+  - 给工具自己的前端页面读取当前用户可见、可编辑的配置字段
+- `POST /api/platform/tool-config/user`
+  - 给工具自己的前端页面保存当前用户配置
+- `POST /api/platform/tool-config/runtime`
+  - 给工具自己的服务端读取某个用户在某个工具下的最终运行配置
+- `GET /api/platform/tool-config/revision`
+  - 给工具自己的服务端轮询配置版本号，判断缓存是否过期
 
 当前分工：
 

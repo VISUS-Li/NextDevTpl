@@ -3,13 +3,17 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { findPlanByPriceId, getBaseUrl, paymentConfig } from "@/config/payment";
+import {
+  findPlanByPriceId,
+  getRequestBaseUrl,
+  paymentConfig,
+} from "@/config/payment";
 import { db } from "@/db";
 import { subscription } from "@/db/schema";
-import { protectedAction } from "@/lib/safe-action";
-import { logEvent } from "@/lib/logger";
-import { PaymentType } from "@/features/payment/types";
 import { buildCheckoutAttributionMetadata } from "@/features/distribution/attribution";
+import { PaymentType } from "@/features/payment/types";
+import { logEvent } from "@/lib/logger";
+import { protectedAction } from "@/lib/safe-action";
 
 import { creem } from "./creem";
 
@@ -39,14 +43,17 @@ export const createCheckoutSession = protectedAction
       .where(eq(subscription.userId, userId))
       .limit(1);
 
-    if (existingSub && ["active", "trialing", "lifetime"].includes(existingSub.status)) {
+    if (
+      existingSub &&
+      ["active", "trialing", "lifetime"].includes(existingSub.status)
+    ) {
       throw new Error("您已有活跃订阅，请先取消当前订阅后再订阅新计划");
     }
 
     // 查找计划和价格信息
     const { plan } = findPlanByPriceId(priceId);
 
-    const baseUrl = getBaseUrl();
+    const baseUrl = await getRequestBaseUrl();
     const attributionMetadata = await buildCheckoutAttributionMetadata(userId);
     const clientOrderKey = `checkout_${userId}_${Date.now()}`;
 
@@ -60,7 +67,9 @@ export const createCheckoutSession = protectedAction
     // 创建 Creem Checkout
     const checkout = await creem.createCheckout({
       product_id: priceId,
-      success_url: successUrl ?? `${baseUrl}${paymentConfig.redirectAfterCheckout}?success=true`,
+      success_url:
+        successUrl ??
+        `${baseUrl}${paymentConfig.redirectAfterCheckout}?success=true`,
       request_id: clientOrderKey,
       metadata: {
         userId,
@@ -85,9 +94,11 @@ export const createCheckoutSession = protectedAction
 export const createCustomerPortal = protectedAction
   .metadata({ action: "payment.createCustomerPortal" })
   .schema(
-    z.object({
-      returnUrl: z.string().optional(),
-    }).optional()
+    z
+      .object({
+        returnUrl: z.string().optional(),
+      })
+      .optional()
   )
   .action(async ({ ctx }) => {
     const { userId } = ctx;
@@ -115,8 +126,7 @@ export const createCustomerPortal = protectedAction
  */
 export const cancelSubscription = protectedAction
   .metadata({ action: "payment.cancelSubscription" })
-  .action(
-  async ({ ctx }) => {
+  .action(async ({ ctx }) => {
     const { userId } = ctx;
 
     // 查询用户的订阅
@@ -148,8 +158,7 @@ export const cancelSubscription = protectedAction
     });
 
     return { success: true };
-  }
-);
+  });
 
 /**
  * 获取用户当前订阅状态
@@ -158,8 +167,7 @@ export const cancelSubscription = protectedAction
  */
 export const getUserSubscription = protectedAction
   .metadata({ action: "payment.getUserSubscription" })
-  .action(
-  async ({ ctx }) => {
+  .action(async ({ ctx }) => {
     const { userId } = ctx;
 
     // 查询用户的订阅信息
@@ -189,16 +197,14 @@ export const getUserSubscription = protectedAction
         isTrialing,
       },
     };
-  }
-);
+  });
 
 /**
  * 检查用户是否有有效订阅
  */
 export const hasActiveSubscription = protectedAction
   .metadata({ action: "payment.hasActiveSubscription" })
-  .action(
-  async ({ ctx }) => {
+  .action(async ({ ctx }) => {
     const { userId } = ctx;
 
     const [userSubscription] = await db
@@ -211,11 +217,12 @@ export const hasActiveSubscription = protectedAction
       return { hasSubscription: false, status: null };
     }
 
-    const isActive = ["active", "trialing", "lifetime"].includes(userSubscription.status);
+    const isActive = ["active", "trialing", "lifetime"].includes(
+      userSubscription.status
+    );
 
     return {
       hasSubscription: isActive,
       status: userSubscription.status,
     };
-  }
-);
+  });

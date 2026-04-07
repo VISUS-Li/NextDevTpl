@@ -2,6 +2,8 @@
  * 本地文件存储提供者。
  */
 
+import { headers } from "next/headers";
+
 import type { StorageProvider } from "../types";
 
 const localStorageRoot = process.env.LOCAL_STORAGE_DIR || ".local-storage";
@@ -23,8 +25,29 @@ async function resolveLocalPath(bucket: string, key: string) {
   return filePath;
 }
 
-// 生成当前开发环境可访问的本地存储 API 地址。
-function getLocalBaseUrl() {
+// 按当前请求头推导外部访问地址，保证 IP 和域名入口返回一致的 URL。
+async function getLocalBaseUrl() {
+  try {
+    const headerList = await headers();
+    const forwardedProto = headerList
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim();
+    const forwardedHost = headerList
+      .get("x-forwarded-host")
+      ?.split(",")[0]
+      ?.trim();
+    const host = forwardedHost || headerList.get("host")?.split(",")[0]?.trim();
+    if (forwardedProto && host) {
+      return `${forwardedProto}://${host}`;
+    }
+    const origin = headerList.get("origin");
+    if (origin) {
+      return new URL(origin).origin;
+    }
+  } catch {
+    // 非请求上下文直接回退到静态配置，兼容脚本和测试调用。
+  }
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
@@ -51,7 +74,8 @@ async function walkFiles(
 
 export const localProvider: StorageProvider = {
   async getSignedUrl(key: string, bucket: string): Promise<string> {
-    return `${getLocalBaseUrl()}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+    const baseUrl = await getLocalBaseUrl();
+    return `${baseUrl}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
   },
 
   async getSignedUploadUrl(
@@ -59,7 +83,8 @@ export const localProvider: StorageProvider = {
     bucket: string,
     contentType: string
   ): Promise<string> {
-    return `${getLocalBaseUrl()}/api/platform/storage/local-upload?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}&contentType=${encodeURIComponent(contentType)}`;
+    const baseUrl = await getLocalBaseUrl();
+    return `${baseUrl}/api/platform/storage/local-upload?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}&contentType=${encodeURIComponent(contentType)}`;
   },
 
   async deleteObject(key: string, bucket: string): Promise<void> {
