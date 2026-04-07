@@ -22,6 +22,8 @@
 - 工具调用只能通过服务端解析配置，客户端不能直接读取管理员密钥。
 - 先覆盖 AI 通用配置和工具专属配置，再按实际工具逐步接入。
 - 页面操作尽量简单：管理员先选项目，再选工具，再填写分组表单；用户只看到自己可改的字段。
+- 工具自己的页面也可以调用 NextDevTpl 后端读取和保存配置，但浏览器接口只返回可展示字段。
+- 工具运行时如果需要密钥，必须由服务端调用服务端接口或直接调用配置解析器。
 
 ## 推荐数据模型
 
@@ -37,6 +39,7 @@
 - `name`：项目名称。
 - `description`
 - `enabled`
+- `configRevision`：配置版本号，配置写入后递增，供工具判断缓存是否过期。
 - `createdAt`
 - `updatedAt`
 
@@ -146,6 +149,7 @@
 - `valueJson`：非敏感值。
 - `encryptedValue`：敏感值密文。
 - `secretSet`：敏感值是否已设置，用于前端状态展示。
+- `revision`：当前配置值版本号。
 - `updatedBy`
 - `createdAt`
 - `updatedAt`
@@ -328,6 +332,185 @@ getResolvedToolConfig({
 - `getResolvedToolConfig({ projectKey, toolKey, userId })`
 - `getResolvedAIConfig({ projectKey, toolKey, userId })`
 
+## 工具侧接口协议
+
+工具有两种接入方式：
+
+- 工具页面接入：例如用户在 redink 自己的页面里修改 redink 配置。
+- 工具运行时接入：例如 redink 后端运行任务前需要获取最终 AI 配置，或发现缓存过期后刷新配置。
+
+这两种场景必须使用不同返回值，避免把管理员密钥暴露给浏览器。
+
+### 工具页面读取配置
+
+用于工具自己的前端页面渲染配置表单。接口只返回字段定义、用户可见值、密钥设置状态，
+不返回密钥明文。
+
+建议接口：
+
+```http
+GET /api/platform/tool-config/editor?projectKey=nextdevtpl&tool=redink
+```
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "projectKey": "nextdevtpl",
+  "tool": "redink",
+  "revision": 12,
+  "fields": [
+    {
+      "fieldKey": "ai.provider",
+      "label": "AI 服务商",
+      "group": "ai",
+      "type": "select",
+      "value": "deepseek",
+      "source": "user",
+      "options": ["openai", "deepseek", "mimo"],
+      "editable": true
+    },
+    {
+      "fieldKey": "ai.apiKey",
+      "label": "AI API Key",
+      "group": "ai",
+      "type": "secret",
+      "secretSet": true,
+      "source": "user",
+      "editable": true
+    }
+  ]
+}
+```
+
+权限要求：
+
+- 必须登录。
+- 只能返回当前用户可见字段。
+- `adminOnly = true` 的字段不返回给普通用户。
+- `secret` 字段只返回 `secretSet` 和来源，不返回明文。
+
+### 工具页面保存配置
+
+用于工具自己的前端页面保存用户配置。接口只允许写入用户配置，不能写入管理员配置。
+
+建议接口：
+
+```http
+POST /api/platform/tool-config/user
+```
+
+请求示例：
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "redink",
+  "values": {
+    "ai.provider": "deepseek",
+    "ai.apiKey": "sk-user-key",
+    "redink.systemPrompt": "..."
+  }
+}
+```
+
+保存规则：
+
+- 只保存 `userOverridable = true` 且 `adminOnly = false` 的字段。
+- `secret` 字段为空时保留旧值。
+- `secret` 字段需要清空时使用显式字段，例如 `clearSecrets: ["ai.apiKey"]`。
+- 保存成功后递增 `configRevision`，并返回新的 `revision`。
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "revision": 13
+}
+```
+
+### 工具运行时读取配置
+
+用于服务端任务运行前获取最终配置。这个接口可以返回解密后的密钥，但只能给可信服务端使用，
+不能给浏览器直接调用。
+
+建议接口：
+
+```http
+POST /api/platform/tool-config/runtime
+```
+
+请求示例：
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "redink",
+  "userId": "user_123",
+  "knownRevision": 12
+}
+```
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "revision": 13,
+  "changed": true,
+  "config": {
+    "ai": {
+      "provider": "deepseek",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "decrypted-secret",
+      "model": "deepseek-chat"
+    },
+    "redink": {
+      "systemPrompt": "..."
+    }
+  }
+}
+```
+
+权限要求：
+
+- 同仓库内的 Next.js 服务端代码优先直接调用 `getResolvedToolConfig`，不绕 HTTP。
+- 外部工具服务端调用时必须使用服务端凭证，例如工具访问令牌或签名请求。
+- 服务端凭证只允许读取指定项目和指定工具，不能读全量配置。
+- 响应头使用 `Cache-Control: no-store`，避免密钥被代理缓存。
+- 每次调用都写入最小访问日志，只记录项目、工具、用户、调用方和时间，不记录配置值。
+
+如果工具只是要判断缓存是否过期，可以先请求轻量接口：
+
+```http
+GET /api/platform/tool-config/revision?projectKey=nextdevtpl&tool=redink
+```
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "revision": 13
+}
+```
+
+工具发现版本号变化后，再调用运行时接口刷新本地缓存。
+
+## 缓存与失效
+
+建议对配置缓存做明确约束：
+
+- 浏览器编辑页不缓存密钥状态，页面打开时读取最新 `editor` 数据。
+- 服务端工具运行可以按 `projectKey + toolKey + userId` 缓存短时间配置。
+- 管理员配置或用户配置保存后递增 `configRevision`。
+- 工具本地缓存必须绑定 `revision`，版本变化后丢弃旧配置。
+- 含密钥的运行时响应不能被 HTTP 缓存。
+- 如果工具任务排队时间较长，任务真正执行前再检查一次 `revision`。
+- 如果解析结果缺少必填字段，返回明确错误，例如“redink 缺少用户 AI API Key”。
+
 ## AI 客户端接入方式
 
 当前 `src/lib/ai/openai.ts` 在模块加载时创建多个客户端，这不适合按工具和用户切换
@@ -420,6 +603,9 @@ const ai = createAIClient(config.ai);
 - 配置缓存必须在保存后失效，否则工具调用可能继续使用旧配置。
 - `json` 类型字段只建议管理员使用，普通用户优先使用结构化表单字段。
 - 工具结果归档不能写入解析后的密钥或完整配置。
+- 工具自己的页面保存配置时，也必须走 NextDevTpl 的权限和字段定义校验，不能直接写表。
+- 外部工具服务端读取运行时配置时，要限制访问范围，避免一个工具读到另一个工具的密钥。
+- 长时间任务不能只依赖启动时缓存，执行前需要检查配置版本。
 
 ## 分阶段落地计划
 
@@ -430,6 +616,7 @@ const ai = createAIClient(config.ai);
 - 写入 `redink` 和 `jingfang-ai` 的工具注册数据。
 - 写入 AI 通用字段和工具字段定义。
 - 实现配置解析器和密钥加解密。
+- 实现 `revision` 递增和运行时缓存判断。
 - 增加解析顺序、用户覆盖、密钥脱敏的测试。
 
 第二阶段：管理员配置页面
@@ -448,14 +635,22 @@ const ai = createAIClient(config.ai);
 - 使用 `protectedAction` 做权限保护。
 - 保存后刷新 `/dashboard/settings?tab=tools`。
 
-第四阶段：AI 调用迁移
+第四阶段：工具侧接口
+
+- 增加工具页面读取接口。
+- 增加工具页面保存接口。
+- 增加工具运行时读取接口。
+- 增加配置版本查询接口。
+- 补充浏览器不泄漏密钥、服务端可读取最终配置的测试。
+
+第五阶段：AI 调用迁移
 
 - 把 `src/lib/ai/openai.ts` 改为支持传入解析后的 AI 配置。
 - 保留环境变量兜底。
 - 逐个工具接入 `getResolvedToolConfig`。
 - 对 redink 和 jingfang-ai 分别补充最小业务测试。
 
-第五阶段：可观测性和运维
+第六阶段：可观测性和运维
 
 - 增加配置变更审计记录。
 - 增加配置缺失和密钥失效的错误提示。
@@ -469,7 +664,9 @@ const ai = createAIClient(config.ai);
 
 - 管理员可以在 `/admin/tool-config` 配置每个工具。
 - 用户可以在 `/dashboard/settings?tab=tools` 配置自己的工具参数。
+- redink 等工具自己的页面可以调用工具页面接口读取和保存用户配置。
 - 服务端工具调用通过 `getResolvedToolConfig` 读取最终配置。
+- 外部工具服务端通过运行时接口读取最终配置，并用 `revision` 刷新缓存。
 - 密钥只在服务端解密，前端只显示“已设置”。
 
 这能先满足 redink、jingfang-ai 和后续工具接入，同时控制实现规模。
