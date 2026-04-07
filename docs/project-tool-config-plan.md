@@ -341,6 +341,64 @@ getResolvedToolConfig({
 
 这两种场景必须使用不同返回值，避免把管理员密钥暴露给浏览器。
 
+### 自定义域名与隧道
+
+当前本机通过 Cloudflare named tunnel 使用 `tripai.icu` 下的固定域名，不再依赖随机
+`trycloudflare.com` 域名。工具页面和工具服务端调用 NextDevTpl 配置接口时，优先使用
+固定平台域名：
+
+```text
+https://platform.tripai.icu
+```
+
+当前隧道配置位于 `/home/visus/.cloudflared/config.yml`，现有映射如下：
+
+```yaml
+ingress:
+  - hostname: redink.tripai.icu
+    service: http://localhost:5173
+  - hostname: platform.tripai.icu
+    service: http://localhost:3000
+  - hostname: jingfang.tripai.icu
+    service: http://localhost:8083
+  - service: http_status:404
+```
+
+对应服务：
+
+- NextDevTpl：`https://platform.tripai.icu` -> `http://localhost:3000`
+- redink：`https://redink.tripai.icu` -> `http://localhost:5173`
+- jingfang-ai：`https://jingfang.tripai.icu` -> `http://localhost:8083`
+
+运行时需要保持以下进程存在：
+
+```bash
+pnpm dev:lan
+cloudflared tunnel --config /home/visus/.cloudflared/config.yml --protocol http2 run redink-tripai
+```
+
+NextDevTpl 环境变量应与固定域名一致：
+
+```text
+NEXT_PUBLIC_APP_URL=https://platform.tripai.icu
+BETTER_AUTH_URL=https://platform.tripai.icu
+REDINK_PUBLIC_URL=https://redink.tripai.icu
+```
+
+redink 或 jingfang-ai 的服务端要读取配置时，应调用：
+
+```text
+POST https://platform.tripai.icu/api/platform/tool-config/runtime
+GET https://platform.tripai.icu/api/platform/tool-config/revision?projectKey=nextdevtpl&tool=redink
+```
+
+浏览器内的工具配置页应调用：
+
+```text
+GET https://platform.tripai.icu/api/platform/tool-config/editor?projectKey=nextdevtpl&tool=redink
+POST https://platform.tripai.icu/api/platform/tool-config/user
+```
+
 ### 工具页面读取配置
 
 用于工具自己的前端页面渲染配置表单。接口只返回字段定义、用户可见值、密钥设置状态，

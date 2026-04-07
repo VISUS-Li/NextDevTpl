@@ -209,10 +209,10 @@
 
 ### 4. 手机预览方式
 
-如需在手机端验收，当前通过 Cloudflare Quick Tunnel 访问：
+如需在手机端验收，当前通过 Cloudflare named tunnel 的固定域名访问：
 
 ```text
-https://pull-dispatched-greensboro-drivers.trycloudflare.com
+https://platform.tripai.icu
 ```
 
 验收路径：
@@ -220,6 +220,14 @@ https://pull-dispatched-greensboro-drivers.trycloudflare.com
 - 管理端分销：`/en/admin/distribution`
 - 演示管理员账号：`dist-demo-admin@example.com`
 - 密码：`DemoPass123!`
+
+当前隧道使用 `/home/visus/.cloudflared/config.yml`：
+
+```text
+platform.tripai.icu -> http://localhost:3000
+redink.tripai.icu -> http://localhost:5173
+jingfang.tripai.icu -> http://localhost:8083
+```
 
 ## 验证结果
 
