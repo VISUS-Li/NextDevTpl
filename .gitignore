@@ -53,3 +53,6 @@ nul
 
 # deploy artifacts
 deploy.tgz
+
+# local storage provider data
+.local-storage/
