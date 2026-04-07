@@ -14,6 +14,7 @@ async function getTrustedOrigins(request?: Request) {
   const origins = [
     process.env.NEXT_PUBLIC_APP_URL,
     process.env.BETTER_AUTH_URL,
+    process.env.REDINK_PUBLIC_URL,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://*.trycloudflare.com",
