@@ -149,6 +149,32 @@ export const verification = pgTable("verification", {
 });
 
 // ============================================
+// RedInk 发布草稿表
+// ============================================
+/**
+ * RedInk 发布草稿表 - 存储用户选择的标题、文案、标签和图片元数据
+ */
+export const redinkDraft = pgTable("redink_draft", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  productInfo: json("product_info").$type<Record<string, unknown>>().notNull(),
+  sourceAsset: json("source_asset").$type<Record<string, unknown>>(),
+  selectedTitle: text("selected_title").notNull(),
+  selectedCopywriting: text("selected_copywriting").notNull(),
+  tags: json("tags").$type<string[]>().notNull(),
+  imagePrompt: text("image_prompt").notNull(),
+  selectedImages: json("selected_images")
+    .$type<Array<Record<string, unknown>>>()
+    .notNull(),
+  status: text("status").notNull().default("draft"),
+  publishResult: json("publish_result").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // 订阅表 (Subscription)
 // ============================================
 /**
@@ -293,10 +319,13 @@ export const commissionLedgerDirectionEnum = pgEnum(
 /**
  * 提现申请状态枚举
  */
-export const withdrawalRequestStatusEnum = pgEnum(
-  "withdrawal_request_status",
-  ["pending", "approved", "rejected", "paid", "failed"]
-);
+export const withdrawalRequestStatusEnum = pgEnum("withdrawal_request_status", [
+  "pending",
+  "approved",
+  "rejected",
+  "paid",
+  "failed",
+]);
 
 /**
  * 订单项商品类型枚举
@@ -454,7 +483,9 @@ export const commissionEvent = pgTable("commission_event", {
   commissionBaseAmount: integer("commission_base_amount").notNull().default(0),
   settlementBasis: text("settlement_basis"),
   ruleSnapshot: json("rule_snapshot").$type<Record<string, unknown>>(),
-  attributionSnapshot: json("attribution_snapshot").$type<Record<string, unknown>>(),
+  attributionSnapshot: json("attribution_snapshot").$type<
+    Record<string, unknown>
+  >(),
   errorMessage: text("error_message"),
   executedAt: timestamp("executed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
