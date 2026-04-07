@@ -1,0 +1,17 @@
+{
+  "name": "Trip AI",
+  "short_name": "Trip AI",
+  "description": "Trip AI workspace for content and workflow tools",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
