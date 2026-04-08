@@ -28,6 +28,8 @@ const createdUserIds: string[] = [];
 const createdProviderIds: string[] = [];
 const createdBindingIds: string[] = [];
 const createdRuleIds: string[] = [];
+const phase1ProviderKey = "geek-phase1";
+const phase1FeatureKey = "rewrite-mm-phase1";
 
 const { chatCompletionWithUsageMock } = vi.hoisted(() => ({
   chatCompletionWithUsageMock: vi.fn(),
@@ -95,8 +97,8 @@ async function seedPhase1Data() {
 
     await db.insert(aiRelayProvider).values({
       id: providerId,
-      key: "geek-default",
-      name: "Geek Default",
+      key: phase1ProviderKey,
+      name: "Geek Phase1",
       baseUrl: "https://mock.geek.test/v1",
       apiKeyEncrypted: encryptRelayApiKey("geek-test-key"),
       enabled: true,
@@ -136,7 +138,7 @@ async function seedPhase1Data() {
     await db.insert(aiPricingRule).values({
       id: ruleId,
       toolKey: "redink",
-      featureKey: "rewrite",
+      featureKey: phase1FeatureKey,
       requestType: "chat",
       billingMode: "fixed_credits",
       modelScope: "any",
@@ -157,17 +159,17 @@ async function seedToolConfig(actorId: string) {
     values: {
       config1: "gpt-4o-mini",
       config2: "primary_only",
-      config3: "geek-default",
+      config3: phase1ProviderKey,
       json1: ["gpt-4o-mini"],
       json2: {
-        rewrite: {
+        [phase1FeatureKey]: {
           enabled: true,
           billingMode: "fixed_credits",
           defaultCredits: 3,
           minimumCredits: 3,
         },
       },
-      json3: ["geek-default"],
+      json3: [phase1ProviderKey],
     },
   });
 }
@@ -226,7 +228,7 @@ describe("Platform AI Chat API Phase 1", () => {
         },
         body: JSON.stringify({
           tool: "redink",
-          feature: "rewrite",
+          feature: phase1FeatureKey,
           messages: [
             {
               role: "user",
@@ -322,7 +324,7 @@ describe("Platform AI Chat API Phase 1", () => {
         },
         body: JSON.stringify({
           tool: "redink",
-          feature: "rewrite",
+          feature: phase1FeatureKey,
           input: [
             {
               role: "user",

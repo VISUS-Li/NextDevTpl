@@ -27,6 +27,8 @@ const createdUserIds: string[] = [];
 const createdProviderIds: string[] = [];
 const createdBindingIds: string[] = [];
 const createdRuleIds: string[] = [];
+const phase2ProviderKey = "geek-phase2";
+const phase2FeatureKey = "rewrite-mm-phase2";
 
 const { chatCompletionWithUsageMock } = vi.hoisted(() => ({
   chatCompletionWithUsageMock: vi.fn(),
@@ -92,17 +94,17 @@ async function seedToolConfig(actorId: string) {
     values: {
       config1: "gpt-4o-mini",
       config2: "primary_only",
-      config3: "geek-default",
+      config3: phase2ProviderKey,
       json1: ["gpt-4o-mini"],
       json2: {
-        rewrite: {
+        [phase2FeatureKey]: {
           enabled: true,
           billingMode: "fixed_credits",
           defaultCredits: 3,
           minimumCredits: 3,
         },
       },
-      json3: ["geek-default"],
+      json3: [phase2ProviderKey],
     },
   });
 }
@@ -119,8 +121,8 @@ async function seedPhase2Data() {
 
     await db.insert(aiRelayProvider).values({
       id: providerId,
-      key: "geek-default",
-      name: "Geek Default",
+      key: phase2ProviderKey,
+      name: "Geek Phase2",
       baseUrl: "https://mock.geek.test/v1",
       apiKeyEncrypted: encryptRelayApiKey("geek-test-key"),
       enabled: true,
@@ -160,7 +162,7 @@ async function seedPhase2Data() {
     await db.insert(aiPricingRule).values({
       id: ruleId,
       toolKey: "redink",
-      featureKey: "rewrite",
+      featureKey: phase2FeatureKey,
       requestType: "chat",
       billingMode: "fixed_credits",
       modelScope: "any",
@@ -249,7 +251,7 @@ describe("Platform AI Chat API Phase 2", () => {
         },
         body: JSON.stringify({
           tool: "redink",
-          feature: "rewrite",
+          feature: phase2FeatureKey,
           input: [
             {
               role: "user",
@@ -357,7 +359,7 @@ describe("Platform AI Chat API Phase 2", () => {
         },
         body: JSON.stringify({
           tool: "redink",
-          feature: "rewrite",
+          feature: phase2FeatureKey,
           input: "请把这段话读成自然语气并给出文字版",
         }),
       })

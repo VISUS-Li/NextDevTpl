@@ -404,6 +404,48 @@ export async function chatCompletionWithUsage(
   };
 }
 
+/**
+ * 查询任务型对话结果。
+ */
+export async function retrieveChatCompletionWithUsage(
+  taskId: string,
+  options?: Pick<AIChatOptions, "aiConfig">
+): Promise<AIChatResult> {
+  const requestConfig = getResolvedRequestConfig(options?.aiConfig);
+  const response = await fetch(
+    `${requestConfig.baseUrl}/chat/completions/${encodeURIComponent(taskId)}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(requestConfig.apiKey
+          ? { Authorization: `Bearer ${requestConfig.apiKey}` }
+          : {}),
+        ...(requestConfig.defaultHeaders ?? {}),
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`AI 任务结果查询失败: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as
+    | OpenAI.Chat.Completions.ChatCompletion
+    | Record<string, unknown>;
+
+  return {
+    content: getResponseText(payload),
+    model: asOptionalString(payload.model) ?? requestConfig.model,
+    responseId: asOptionalString(payload.id),
+    status: getResponseStatus(payload),
+    usage: getUsage(payload),
+    output: getResponseOutput(payload),
+    task: getTaskState(payload),
+    raw: payload,
+  };
+}
+
 export { openai, deepseek, mimo, getAIClient };
 
 /**
@@ -552,4 +594,60 @@ function asOptionalString(value: unknown) {
  */
 function asOptionalNumber(value: unknown) {
   return typeof value === "number" ? value : null;
+}
+
+/**
+ * 解析对上游 HTTP 请求所需的配置。
+ */
+function getResolvedRequestConfig(config?: AIConfig) {
+  const provider = getAIProvider(config);
+
+  if (provider === "deepseek") {
+    return {
+      apiKey: config?.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "",
+      baseUrl: trimTrailingSlash(
+        config?.baseUrl ?? "https://api.deepseek.com/v1"
+      ),
+      defaultHeaders: undefined,
+      model: getAIModel(config),
+    };
+  }
+
+  if (provider === "mimo") {
+    const baseUrl =
+      config?.baseUrl ??
+      (useOpenAIGateway
+        ? openaiGatewayConfig.baseURL
+        : "https://api.xiaomimimo.com/v1");
+
+    return {
+      apiKey: config?.apiKey ?? process.env.MIMO_API_KEY ?? "",
+      baseUrl: trimTrailingSlash(baseUrl ?? ""),
+      defaultHeaders:
+        useOpenAIGateway && !config?.baseUrl
+          ? openaiGatewayConfig.defaultHeaders
+          : undefined,
+      model: getAIModel(config),
+    };
+  }
+
+  const baseUrl =
+    config?.baseUrl ??
+    openaiGatewayConfig.baseURL ??
+    "https://api.openai.com/v1";
+  return {
+    apiKey: config?.apiKey ?? process.env.OPENAI_API_KEY ?? "",
+    baseUrl: trimTrailingSlash(baseUrl),
+    defaultHeaders: config?.baseUrl
+      ? undefined
+      : openaiGatewayConfig.defaultHeaders,
+    model: getAIModel(config),
+  };
+}
+
+/**
+ * 去掉末尾斜杠，避免路径重复。
+ */
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
 }

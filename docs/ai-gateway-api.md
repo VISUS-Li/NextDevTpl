@@ -113,12 +113,23 @@ Cookie: <当前登录用户会话 Cookie>
   "messages": [
     {
       "role": "user",
-      "content": "请把这段文案改写得更口语化"
+      "content": [
+        {
+          "type": "text",
+          "text": "请结合图片改写这段文案"
+        },
+        {
+          "type": "image_url",
+          "imageUrl": "https://example.com/demo.png",
+          "detail": "high"
+        }
+      ]
     }
   ],
-  "stream": false,
+  "modalities": ["text"],
   "model": "gpt-4o-mini",
   "temperature": 0.7,
+  "background": false,
   "metadata": {
     "scene": "editor",
     "taskId": "task_123"
@@ -132,13 +143,25 @@ Cookie: <当前登录用户会话 Cookie>
 |------|------|------|------|
 | `tool` | `string` | 是 | 工具标识，长度 `1-100` |
 | `feature` | `string` | 是 | 功能标识，长度 `1-120` |
-| `messages` | `array` | 是 | Chat 消息数组，至少 1 条 |
+| `messages` | `array` | 否 | Chat 消息数组，至少 1 条 |
+| `input` | `string \| array` | 否 | `responses` 风格兼容输入，和 `messages` 二选一即可 |
 | `messages[].role` | `system \| user \| assistant` | 是 | 消息角色 |
-| `messages[].content` | `string` | 是 | 消息内容 |
+| `messages[].content` | `string \| array` | 是 | 纯文本字符串，或多模态 part 数组 |
+| `messages[].content[].type` | `text \| image_url \| image_asset \| audio_url \| audio_asset \| video_url \| video_asset \| file_asset` | 否 | 多模态片段类型 |
 | `stream` | `boolean` | 否 | 是否返回 SSE |
 | `model` | `string` | 否 | 指定平台模型名 |
 | `temperature` | `number` | 否 | 范围 `0-2` |
+| `modalities` | `array` | 否 | 希望上游返回的模态，如 `text`、`audio`、`image`、`video` |
+| `audio` | `object` | 否 | 音频输出配置，常见字段如 `voice`、`format` |
+| `image` | `object` | 否 | 图片输出配置，常见字段如 `aspect_ratio` |
+| `background` | `boolean` | 否 | 是否允许任务型挂起返回 |
 | `metadata` | `object` | 否 | 业务透传信息，平台仅记录 |
+
+补充说明：
+
+- `image_asset` / `audio_asset` / `video_asset` / `file_asset` 用于引用平台存储中的受控文件
+- 平台会在内部把这些资产转换为上游可访问的受控 URL
+- 如果 `background=true` 且上游返回任务型结果，接口会先返回 `pending`，再通过轮询接口获取完成态
 
 ### 同步成功响应
 
@@ -149,10 +172,16 @@ Cookie: <当前登录用户会话 Cookie>
   "provider": "geek-default",
   "model": "gpt-4o-mini",
   "content": "这是改写后的内容",
+  "status": "completed",
+  "output": {
+    "text": "这是改写后的内容"
+  },
+  "task": null,
   "usage": {
     "promptTokens": 120,
     "completionTokens": 80,
-    "totalTokens": 200
+    "totalTokens": 200,
+    "imageInputTokens": 96
   },
   "billing": {
     "chargedCredits": 3,
@@ -171,10 +200,47 @@ Cookie: <当前登录用户会话 Cookie>
 | `provider` | `string` | 最终命中的 provider key |
 | `model` | `string` | 最终命中的模型 |
 | `content` | `string` | AI 返回文本 |
+| `status` | `string` | 当前请求状态，常见值为 `completed` 或 `pending` |
+| `output` | `object` | 平台统一输出结构，可包含 `text`、`audio`、`image`、`video` |
+| `task` | `object \| null` | 任务型请求的任务信息，包含 `id` 和 `status` |
 | `usage` | `object` | token 使用量 |
+| `usage.imageInputTokens` | `number` | 图片输入 token 数量，存在时返回 |
+| `usage.audioInputTokens` | `number` | 音频输入 token 数量，存在时返回 |
+| `usage.videoInputTokens` | `number` | 视频输入 token 数量，存在时返回 |
+| `usage.reasoningTokens` | `number` | 推理 token 数量，存在时返回 |
 | `billing.chargedCredits` | `number` | 本次实际扣费积分 |
 | `billing.billingMode` | `fixed_credits \| token_based \| cost_plus` | 计费模式 |
 | `billing.remainingBalance` | `number` | 用户剩余积分 |
+
+### 任务型挂起响应
+
+当 `background=true` 且上游返回任务型结果时，平台会先返回：
+
+```json
+{
+  "success": true,
+  "requestId": "air_task_123",
+  "provider": "geek-default",
+  "model": "gpt-4o-mini",
+  "content": "",
+  "status": "pending",
+  "output": {},
+  "task": {
+    "id": "task_123",
+    "status": "pending"
+  },
+  "usage": {
+    "promptTokens": 90,
+    "completionTokens": 0,
+    "totalTokens": 90
+  },
+  "billing": {
+    "chargedCredits": 0,
+    "billingMode": "fixed_credits",
+    "remainingBalance": 100
+  }
+}
+```
 
 ### SSE 响应
 
@@ -306,6 +372,47 @@ data: [DONE]
 | `upstream_error` | `400/502/503` | 上游调用失败 |
 | `billing_failed` | `400/500` | 结算失败 |
 | `pricing_rule_missing` | `500` | 缺少计费规则 |
+| `request_not_found` | `404` | 请求不存在 |
+
+## 4.2 查询任务结果
+
+`GET /api/platform/ai/chat/result?requestId=<平台请求ID>`
+
+用于查询 `POST /api/platform/ai/chat` 返回 `pending` 的任务型请求结果。
+
+### 成功响应
+
+```json
+{
+  "success": true,
+  "requestId": "air_task_123",
+  "provider": "geek-default",
+  "model": "gpt-4o-mini",
+  "content": "图像已生成",
+  "status": "completed",
+  "output": {
+    "text": "图像已生成",
+    "image": "https://example.com/generated-image.png"
+  },
+  "task": null,
+  "usage": {
+    "promptTokens": 90,
+    "completionTokens": 40,
+    "totalTokens": 130
+  },
+  "billing": {
+    "chargedCredits": 3,
+    "billingMode": "fixed_credits",
+    "remainingBalance": 97
+  }
+}
+```
+
+说明：
+
+- 如果任务仍未完成，`status` 会继续返回 `pending`
+- 平台会在轮询到完成态时执行最终结算和积分扣费
+- 已完成或失败的请求也可通过这个接口回查当前平台视角结果
 
 ## 5. 管理员接口
 

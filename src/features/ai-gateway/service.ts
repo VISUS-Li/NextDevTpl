@@ -38,6 +38,7 @@ import {
   type AIProviderMessage,
   type AITaskState,
   chatCompletionWithUsage,
+  retrieveChatCompletionWithUsage,
 } from "@/lib/ai";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
@@ -50,7 +51,8 @@ export class AIGatewayError extends Error {
       | "provider_unavailable"
       | "model_not_allowed"
       | "upstream_error"
-      | "billing_failed",
+      | "billing_failed"
+      | "request_not_found",
     message: string,
     public status = 400
   ) {
@@ -396,10 +398,10 @@ export async function executeAIChat(
         },
       });
       const latencyMs = Date.now() - attemptStartedAt;
-      const providerCostMicros = calculateProviderCostMicros(
-        candidate.binding,
-        result
-      );
+      const pendingTask = isPendingTaskResult(result, params.background);
+      const providerCostMicros = pendingTask
+        ? 0
+        : calculateProviderCostMicros(candidate.binding, result);
 
       await db.insert(aiRequestAttempt).values({
         id: crypto.randomUUID(),
@@ -430,6 +432,18 @@ export async function executeAIChat(
         latencyMs,
         providerCostMicros,
       });
+
+      if (pendingTask) {
+        return await finalizePendingRequest({
+          requestId,
+          userId: params.userId,
+          pricingRule,
+          modelKey: settings.requestedModel,
+          startedAt,
+          attempts,
+          balance: balance.balance,
+        });
+      }
 
       return await finalizeSuccessfulRequest({
         requestId,
@@ -488,6 +502,373 @@ export async function executeAIChat(
     .where(eq(aiRequestLog.requestId, requestId));
 
   throw new AIGatewayError("upstream_error", "AI 上游请求失败", 502);
+}
+
+/**
+ * 查询任务型 AI 结果。
+ */
+export async function getAIChatResult(params: {
+  requestId: string;
+  userId: string;
+}): Promise<ExecuteAIChatResult> {
+  const [requestLog] = await db
+    .select()
+    .from(aiRequestLog)
+    .where(
+      and(
+        eq(aiRequestLog.requestId, params.requestId),
+        eq(aiRequestLog.userId, params.userId)
+      )
+    )
+    .limit(1);
+
+  if (!requestLog) {
+    throw new AIGatewayError("request_not_found", "AI 请求不存在", 404);
+  }
+
+  if (requestLog.status !== "pending") {
+    return buildStoredRequestResult(requestLog);
+  }
+
+  const [winningAttempt] = await db
+    .select()
+    .from(aiRequestAttempt)
+    .where(
+      and(
+        eq(aiRequestAttempt.requestId, params.requestId),
+        eq(aiRequestAttempt.attemptNo, requestLog.winningAttemptNo ?? 1)
+      )
+    )
+    .limit(1);
+
+  if (!winningAttempt?.providerId) {
+    return buildStoredRequestResult(requestLog);
+  }
+
+  const [providerBinding] = await db
+    .select({
+      binding: aiRelayModelBinding,
+      provider: aiRelayProvider,
+    })
+    .from(aiRelayModelBinding)
+    .innerJoin(
+      aiRelayProvider,
+      eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
+    )
+    .where(
+      and(
+        eq(aiRelayModelBinding.providerId, winningAttempt.providerId),
+        eq(aiRelayModelBinding.modelAlias, winningAttempt.modelAlias),
+        eq(aiRelayModelBinding.modelKey, winningAttempt.modelKey)
+      )
+    )
+    .limit(1);
+
+  if (!providerBinding) {
+    return buildStoredRequestResult(requestLog);
+  }
+
+  const responseMeta = asRecord(requestLog.responseMeta);
+  const taskId =
+    asString(responseMeta?.responseId) ??
+    asString(asRecord(responseMeta?.task)?.id);
+  if (!taskId) {
+    return buildStoredRequestResult(requestLog);
+  }
+
+  const result = await retrieveChatCompletionWithUsage(taskId, {
+    aiConfig: {
+      provider: "openai",
+      apiKey: decryptRelayApiKey(providerBinding.provider.apiKeyEncrypted),
+      baseUrl: providerBinding.provider.baseUrl,
+      model: providerBinding.binding.modelAlias,
+    },
+  });
+
+  if (isPendingTaskResult(result)) {
+    await db
+      .update(aiRequestLog)
+      .set({
+        responseMeta: {
+          ...responseMeta,
+          status: result.status ?? "pending",
+          output: result.output ?? { text: result.content },
+          task: result.task ?? null,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(aiRequestLog.requestId, params.requestId));
+
+    const [updatedRequestLog] = await db
+      .select()
+      .from(aiRequestLog)
+      .where(eq(aiRequestLog.requestId, params.requestId))
+      .limit(1);
+
+    if (!updatedRequestLog) {
+      throw new AIGatewayError("request_not_found", "AI 请求不存在", 404);
+    }
+
+    return buildStoredRequestResult(updatedRequestLog);
+  }
+
+  const pricingRule = await getPricingRule(
+    requestLog.toolKey,
+    requestLog.featureKey,
+    requestLog.requestedModel ?? winningAttempt.modelKey
+  );
+  return finalizePolledPendingRequest({
+    requestId: params.requestId,
+    userId: params.userId,
+    toolKey: requestLog.toolKey,
+    featureKey: requestLog.featureKey,
+    pricingRule,
+    modelKey: requestLog.requestedModel ?? winningAttempt.modelKey,
+    startedAt: requestLog.createdAt.getTime(),
+    attemptNo: requestLog.winningAttemptNo ?? 1,
+    candidate: providerBinding,
+    result,
+  });
+}
+
+async function finalizePendingRequest(params: {
+  requestId: string;
+  userId: string;
+  pricingRule: typeof aiPricingRule.$inferSelect;
+  modelKey: string;
+  startedAt: number;
+  attempts: Array<{
+    candidate: CandidateBinding;
+    result?: AIChatResult;
+    latencyMs: number;
+    providerCostMicros: number;
+  }>;
+  balance: number;
+}): Promise<ExecuteAIChatResult> {
+  const successfulAttempt = params.attempts.find((attempt) => attempt.result);
+  if (!successfulAttempt?.result) {
+    throw new Error("缺少任务创建结果");
+  }
+
+  await db
+    .update(aiRequestLog)
+    .set({
+      resolvedModel: successfulAttempt.candidate.binding.modelAlias,
+      status: "pending",
+      promptTokens: successfulAttempt.result.usage.promptTokens,
+      completionTokens: successfulAttempt.result.usage.completionTokens,
+      totalTokens: successfulAttempt.result.usage.totalTokens,
+      providerCostUsd: 0,
+      chargedCredits: 0,
+      attemptCount: params.attempts.length,
+      winningAttemptNo:
+        params.attempts.findIndex((attempt) => attempt.result) + 1,
+      latencyMs: Date.now() - params.startedAt,
+      responseMeta: {
+        responseId: successfulAttempt.result.responseId,
+        providerId: successfulAttempt.candidate.provider.id,
+        providerKey: successfulAttempt.candidate.provider.key,
+        providerModel: successfulAttempt.result.model,
+        status: successfulAttempt.result.status ?? "pending",
+        output: successfulAttempt.result.output ?? {
+          text: successfulAttempt.result.content,
+        },
+        task: successfulAttempt.result.task ?? null,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(aiRequestLog.requestId, params.requestId));
+
+  return {
+    requestId: params.requestId,
+    provider: successfulAttempt.candidate.provider.key,
+    model: params.modelKey,
+    content: successfulAttempt.result.content,
+    output: successfulAttempt.result.output ?? {
+      text: successfulAttempt.result.content,
+    },
+    task: successfulAttempt.result.task ?? null,
+    status: successfulAttempt.result.status ?? "pending",
+    usage: successfulAttempt.result.usage,
+    billing: {
+      chargedCredits: 0,
+      billingMode: params.pricingRule.billingMode,
+      remainingBalance: params.balance,
+    },
+  };
+}
+
+async function finalizePolledPendingRequest(params: {
+  requestId: string;
+  userId: string;
+  toolKey: string;
+  featureKey: string;
+  pricingRule: typeof aiPricingRule.$inferSelect;
+  modelKey: string;
+  startedAt: number;
+  attemptNo: number;
+  candidate: CandidateBinding;
+  result: AIChatResult;
+}): Promise<ExecuteAIChatResult> {
+  const previousAttempts = await db
+    .select()
+    .from(aiRequestAttempt)
+    .where(eq(aiRequestAttempt.requestId, params.requestId));
+  const previousProviderCostMicros = previousAttempts
+    .filter((attempt) => attempt.attemptNo !== params.attemptNo)
+    .reduce((sum, attempt) => sum + (attempt.providerCostUsd ?? 0), 0);
+  const currentProviderCostMicros = calculateProviderCostMicros(
+    params.candidate.binding,
+    params.result
+  );
+  const totalProviderCostMicros =
+    previousProviderCostMicros + currentProviderCostMicros;
+  const chargedCredits = calculateChargedCredits(
+    params.pricingRule,
+    params.result,
+    totalProviderCostMicros
+  );
+
+  try {
+    const consumeResult =
+      chargedCredits > 0
+        ? await consumeCredits({
+            userId: params.userId,
+            amount: chargedCredits,
+            serviceName: `ai:${params.toolKey}:${params.featureKey}`,
+            description: `${params.toolKey}/${params.featureKey} AI 调用扣费`,
+            metadata: {
+              requestId: params.requestId,
+              toolKey: params.toolKey,
+              featureKey: params.featureKey,
+              modelKey: params.modelKey,
+            },
+          })
+        : null;
+
+    await db.insert(aiBillingRecord).values({
+      id: crypto.randomUUID(),
+      requestId: params.requestId,
+      userId: params.userId,
+      billingMode: params.pricingRule.billingMode,
+      chargedCredits,
+      creditsTransactionId: consumeResult?.transactionId ?? null,
+      status: chargedCredits > 0 ? "charged" : "skipped",
+      reason: chargedCredits > 0 ? "success" : "no_charge",
+    });
+
+    await db
+      .update(aiRequestAttempt)
+      .set({
+        promptTokens: params.result.usage.promptTokens,
+        completionTokens: params.result.usage.completionTokens,
+        totalTokens: params.result.usage.totalTokens,
+        providerCostUsd: currentProviderCostMicros,
+        responseMeta: {
+          responseId: params.result.responseId,
+          providerModel: params.result.model,
+          status: params.result.status ?? "completed",
+          output: params.result.output ?? { text: params.result.content },
+          task: params.result.task ?? null,
+        },
+      })
+      .where(
+        and(
+          eq(aiRequestAttempt.requestId, params.requestId),
+          eq(aiRequestAttempt.attemptNo, params.attemptNo)
+        )
+      );
+
+    await db
+      .update(aiRequestLog)
+      .set({
+        resolvedModel: params.candidate.binding.modelAlias,
+        status: "success",
+        promptTokens: params.result.usage.promptTokens,
+        completionTokens: params.result.usage.completionTokens,
+        totalTokens: params.result.usage.totalTokens,
+        providerCostUsd: totalProviderCostMicros,
+        chargedCredits,
+        attemptCount: previousAttempts.length,
+        winningAttemptNo: params.attemptNo,
+        latencyMs: Date.now() - params.startedAt,
+        responseMeta: {
+          responseId: params.result.responseId,
+          providerId: params.candidate.provider.id,
+          providerKey: params.candidate.provider.key,
+          providerModel: params.result.model,
+          status: params.result.status ?? "completed",
+          output: params.result.output ?? { text: params.result.content },
+          task: params.result.task ?? null,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(aiRequestLog.requestId, params.requestId));
+
+    return {
+      requestId: params.requestId,
+      provider: params.candidate.provider.key,
+      model: params.modelKey,
+      content: params.result.content,
+      output: params.result.output ?? { text: params.result.content },
+      task: params.result.task ?? null,
+      status: params.result.status ?? "completed",
+      usage: params.result.usage,
+      billing: {
+        chargedCredits,
+        billingMode: params.pricingRule.billingMode,
+        remainingBalance:
+          consumeResult?.remainingBalance ??
+          (await getCreditsBalance(params.userId)).balance,
+      },
+    };
+  } catch (error) {
+    await db
+      .update(aiRequestLog)
+      .set({
+        status:
+          error instanceof InsufficientCreditsError
+            ? "insufficient_credits"
+            : "billing_failed",
+        errorCode: error instanceof Error ? error.name : "billing_failed",
+        errorMessage: getErrorMessage(error),
+        updatedAt: new Date(),
+      })
+      .where(eq(aiRequestLog.requestId, params.requestId));
+
+    if (error instanceof InsufficientCreditsError) {
+      throw error;
+    }
+    throw new AIGatewayError("billing_failed", "AI 请求成功，但扣费失败", 409);
+  }
+}
+
+async function buildStoredRequestResult(
+  requestLog: typeof aiRequestLog.$inferSelect
+): Promise<ExecuteAIChatResult> {
+  const responseMeta = asRecord(requestLog.responseMeta);
+  const output = readOutputFromMeta(responseMeta?.output);
+  const task = readTaskFromMeta(responseMeta?.task);
+
+  return {
+    requestId: requestLog.requestId,
+    provider: asString(responseMeta?.providerKey) ?? "",
+    model: requestLog.requestedModel ?? requestLog.resolvedModel ?? "",
+    content: output.text ?? "",
+    output,
+    task,
+    status: asString(responseMeta?.status) ?? requestLog.status,
+    usage: {
+      promptTokens: requestLog.promptTokens ?? 0,
+      completionTokens: requestLog.completionTokens ?? 0,
+      totalTokens: requestLog.totalTokens ?? 0,
+    },
+    billing: {
+      chargedCredits: requestLog.chargedCredits ?? 0,
+      billingMode: requestLog.billingMode,
+      remainingBalance: (await getCreditsBalance(requestLog.userId)).balance,
+    },
+  };
 }
 
 async function finalizeSuccessfulRequest(params: {
@@ -757,8 +1138,18 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "未知错误";
 }
 
+function isPendingTaskResult(result: AIChatResult, background?: boolean) {
+  return background === true || !!result.task || result.status === "pending";
+}
+
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function asRecord(value: unknown) {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function asStringArray(value: unknown) {
@@ -767,6 +1158,55 @@ function asStringArray(value: unknown) {
         (item): item is string => typeof item === "string" && item.length > 0
       )
     : [];
+}
+
+function readOutputFromMeta(value: unknown): AIOutput {
+  const record = asRecord(value);
+  if (!record) {
+    return {};
+  }
+
+  const audioRecord = asRecord(record.audio);
+
+  return {
+    ...(asString(record.text)
+      ? { text: asString(record.text) ?? undefined }
+      : {}),
+    ...(typeof record.image === "string" || record.image === null
+      ? { image: record.image as string | null }
+      : {}),
+    ...(typeof record.video === "string" || record.video === null
+      ? { video: record.video as string | null }
+      : {}),
+    ...(audioRecord
+      ? {
+          audio: {
+            ...(asString(audioRecord.id)
+              ? { id: asString(audioRecord.id) ?? undefined }
+              : {}),
+            ...(asString(audioRecord.data)
+              ? { data: asString(audioRecord.data) ?? undefined }
+              : {}),
+            ...(typeof audioRecord.expiresAt === "number"
+              ? { expiresAt: audioRecord.expiresAt }
+              : {}),
+            ...(asString(audioRecord.transcript)
+              ? { transcript: asString(audioRecord.transcript) ?? undefined }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function readTaskFromMeta(value: unknown): AITaskState | null {
+  const record = asRecord(value);
+  const id = asString(record?.id);
+  const status = asString(record?.status);
+  if (!id || !status) {
+    return null;
+  }
+  return { id, status };
 }
 
 /**

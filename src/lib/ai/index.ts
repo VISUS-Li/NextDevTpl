@@ -29,4 +29,5 @@ export {
   getAIProvider,
   mimo,
   openai,
+  retrieveChatCompletionWithUsage,
 } from "./openai";
