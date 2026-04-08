@@ -198,6 +198,30 @@ export async function cleanupUserData(userId: string) {
 		.where(eq(schema.distributionProfile.userId, userId));
 
 	await testDb
+		.delete(schema.aiBillingRecord)
+		.where(eq(schema.aiBillingRecord.userId, userId));
+
+	const aiRequests = await testDb
+		.select({ requestId: schema.aiRequestLog.requestId })
+		.from(schema.aiRequestLog)
+		.where(eq(schema.aiRequestLog.userId, userId));
+
+	if (aiRequests.length > 0) {
+		await testDb
+			.delete(schema.aiRequestAttempt)
+			.where(
+				inArray(
+					schema.aiRequestAttempt.requestId,
+					aiRequests.map((item) => item.requestId)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.aiRequestLog)
+		.where(eq(schema.aiRequestLog.userId, userId));
+
+	await testDb
 		.delete(schema.creditsTransaction)
 		.where(eq(schema.creditsTransaction.userId, userId));
 
@@ -354,6 +378,30 @@ export async function cleanupTestUsers(userIds: string[]) {
 		.where(inArray(schema.ticket.userId, userIds));
 
 	// 3. 清理积分相关
+	await testDb
+		.delete(schema.aiBillingRecord)
+		.where(inArray(schema.aiBillingRecord.userId, userIds));
+
+	const aiRequestIds = await testDb
+		.select({ requestId: schema.aiRequestLog.requestId })
+		.from(schema.aiRequestLog)
+		.where(inArray(schema.aiRequestLog.userId, userIds));
+
+	if (aiRequestIds.length > 0) {
+		await testDb
+			.delete(schema.aiRequestAttempt)
+			.where(
+				inArray(
+					schema.aiRequestAttempt.requestId,
+					aiRequestIds.map((item) => item.requestId)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.aiRequestLog)
+		.where(inArray(schema.aiRequestLog.userId, userIds));
+
 	await testDb
 		.delete(schema.creditsTransaction)
 		.where(inArray(schema.creditsTransaction.userId, userIds));

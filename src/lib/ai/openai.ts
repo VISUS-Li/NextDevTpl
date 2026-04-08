@@ -16,6 +16,26 @@ export interface AIConfig {
 }
 
 /**
+ * AI 使用量信息
+ */
+export interface AIUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * AI 聊天结果
+ */
+export interface AIChatResult {
+  content: string;
+  model: string;
+  responseId: string | null;
+  usage: AIUsage;
+  raw: OpenAI.Chat.Completions.ChatCompletion;
+}
+
+/**
  * 获取当前配置的 AI 提供商
  */
 export function getAIProvider(config?: AIConfig): AIProvider {
@@ -176,6 +196,56 @@ export async function chatCompletion(
   }
 
   return content;
+}
+
+/**
+ * 通用 Chat Completion 调用，并返回 usage 等完整信息。
+ *
+ * 这层给 AI 网关使用，便于做成本统计和计费。
+ */
+export async function chatCompletionWithUsage(
+  messages: OpenAI.ChatCompletionMessageParam[],
+  options?: {
+    temperature?: number;
+    maxTokens?: number;
+    jsonMode?: boolean;
+    aiConfig?: AIConfig;
+  }
+): Promise<AIChatResult> {
+  const client = getAIClient(options?.aiConfig);
+  const model = getAIModel(options?.aiConfig);
+
+  const response = await client.chat.completions.create({
+    model,
+    messages,
+    temperature: options?.temperature ?? 0.7,
+    max_tokens: options?.maxTokens ?? 4096,
+    ...(options?.jsonMode && { response_format: { type: "json_object" } }),
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    const providerNames: Record<AIProvider, string> = {
+      openai: "OpenAI",
+      deepseek: "DeepSeek",
+      mimo: "MiMo",
+    };
+    throw new Error(
+      `No response from ${providerNames[getAIProvider(options?.aiConfig)]}`
+    );
+  }
+
+  return {
+    content,
+    model: response.model,
+    responseId: response.id ?? null,
+    usage: {
+      promptTokens: response.usage?.prompt_tokens ?? 0,
+      completionTokens: response.usage?.completion_tokens ?? 0,
+      totalTokens: response.usage?.total_tokens ?? 0,
+    },
+    raw: response,
+  };
 }
 
 export { openai, deepseek, mimo, getAIClient };

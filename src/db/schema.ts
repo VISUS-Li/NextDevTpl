@@ -1160,6 +1160,312 @@ export type CreditsTransactionType =
   (typeof creditsTransactionTypeEnum.enumValues)[number];
 
 // ============================================
+// AI 网关枚举
+// ============================================
+
+/**
+ * AI 请求类型枚举
+ */
+export const aiRequestTypeEnum = pgEnum("ai_request_type", ["chat"]);
+
+/**
+ * AI 中转站类型枚举
+ */
+export const aiRelayProviderTypeEnum = pgEnum("ai_relay_provider_type", [
+  "openai_compatible",
+]);
+
+/**
+ * AI 中转站健康状态枚举
+ */
+export const aiRelayProviderHealthStatusEnum = pgEnum(
+  "ai_relay_provider_health_status",
+  ["unknown", "healthy", "degraded", "down"]
+);
+
+/**
+ * AI 计费模式枚举
+ */
+export const aiBillingModeEnum = pgEnum("ai_billing_mode", [
+  "fixed_credits",
+  "token_based",
+  "cost_plus",
+]);
+
+/**
+ * AI 请求状态枚举
+ */
+export const aiRequestStatusEnum = pgEnum("ai_request_status", [
+  "pending",
+  "success",
+  "failed",
+  "insufficient_credits",
+  "billing_failed",
+]);
+
+/**
+ * AI 请求尝试状态枚举
+ */
+export const aiRequestAttemptStatusEnum = pgEnum("ai_request_attempt_status", [
+  "success",
+  "failed",
+  "timeout",
+  "rejected",
+]);
+
+/**
+ * AI 结算状态枚举
+ */
+export const aiBillingRecordStatusEnum = pgEnum("ai_billing_record_status", [
+  "charged",
+  "skipped",
+  "reversed",
+]);
+
+/**
+ * AI 路由策略枚举
+ */
+export const aiRouteStrategyEnum = pgEnum("ai_route_strategy", [
+  "primary_only",
+  "priority_failover",
+  "weighted",
+]);
+
+/**
+ * AI 成本计算模式枚举
+ */
+export const aiRelayCostModeEnum = pgEnum("ai_relay_cost_mode", [
+  "manual",
+  "fixed",
+]);
+
+// ============================================
+// AI 网关表
+// ============================================
+
+/**
+ * AI 中转站表 - 存储可调用的上游中转站
+ */
+export const aiRelayProvider = pgTable("ai_relay_provider", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  providerType: aiRelayProviderTypeEnum("provider_type")
+    .notNull()
+    .default("openai_compatible"),
+  baseUrl: text("base_url").notNull(),
+  apiKeyEncrypted: text("api_key_encrypted").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  priority: integer("priority").notNull().default(100),
+  weight: integer("weight").notNull().default(100),
+  requestType: aiRequestTypeEnum("request_type").notNull().default("chat"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  lastHealthAt: timestamp("last_health_at"),
+  lastHealthStatus: aiRelayProviderHealthStatusEnum("last_health_status")
+    .notNull()
+    .default("unknown"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * AI 模型绑定表 - 存储平台模型与上游模型映射
+ */
+export const aiRelayModelBinding = pgTable(
+  "ai_relay_model_binding",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => aiRelayProvider.id, { onDelete: "cascade" }),
+    modelKey: text("model_key").notNull(),
+    modelAlias: text("model_alias").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    priority: integer("priority").notNull().default(100),
+    weight: integer("weight").notNull().default(100),
+    costMode: aiRelayCostModeEnum("cost_mode").notNull().default("manual"),
+    inputCostPer1k: integer("input_cost_per_1k_micros").notNull().default(0),
+    outputCostPer1k: integer("output_cost_per_1k_micros").notNull().default(0),
+    fixedCostUsd: integer("fixed_cost_micros").notNull().default(0),
+    maxRetries: integer("max_retries").notNull().default(0),
+    timeoutMs: integer("timeout_ms").notNull().default(30000),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_relay_model_binding_provider_model_idx").on(
+      table.providerId,
+      table.modelKey
+    ),
+  ]
+);
+
+/**
+ * AI 计费规则表 - 存储工具功能计费规则
+ */
+export const aiPricingRule = pgTable(
+  "ai_pricing_rule",
+  {
+    id: text("id").primaryKey(),
+    toolKey: text("tool_key").notNull(),
+    featureKey: text("feature_key").notNull(),
+    requestType: aiRequestTypeEnum("request_type").notNull().default("chat"),
+    billingMode: aiBillingModeEnum("billing_mode").notNull(),
+    modelScope: text("model_scope").notNull().default("any"),
+    fixedCredits: integer("fixed_credits"),
+    inputTokensPerCredit: integer("input_tokens_per_credit"),
+    outputTokensPerCredit: integer("output_tokens_per_credit"),
+    costUsdPerCredit: integer("cost_usd_per_credit_micros"),
+    minimumCredits: integer("minimum_credits").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_pricing_rule_tool_feature_request_idx").on(
+      table.toolKey,
+      table.featureKey,
+      table.requestType,
+      table.modelScope
+    ),
+  ]
+);
+
+/**
+ * AI 请求日志表 - 记录平台视角的一次 AI 请求
+ */
+export const aiRequestLog = pgTable("ai_request_log", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  toolKey: text("tool_key").notNull(),
+  featureKey: text("feature_key").notNull(),
+  requestType: aiRequestTypeEnum("request_type").notNull().default("chat"),
+  requestedModel: text("requested_model"),
+  resolvedModel: text("resolved_model"),
+  routeStrategy: aiRouteStrategyEnum("route_strategy")
+    .notNull()
+    .default("priority_failover"),
+  status: aiRequestStatusEnum("status").notNull().default("pending"),
+  billingMode: aiBillingModeEnum("billing_mode").notNull(),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  providerCostUsd: integer("provider_cost_micros"),
+  chargedCredits: integer("charged_credits"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  winningAttemptNo: integer("winning_attempt_no"),
+  latencyMs: integer("latency_ms"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  requestBody: json("request_body").$type<Record<string, unknown>>(),
+  responseMeta: json("response_meta").$type<Record<string, unknown>>(),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * AI 请求尝试表 - 记录一次平台请求的每次上游尝试
+ */
+export const aiRequestAttempt = pgTable(
+  "ai_request_attempt",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => aiRequestLog.requestId, { onDelete: "cascade" }),
+    attemptNo: integer("attempt_no").notNull(),
+    providerId: text("provider_id").references(() => aiRelayProvider.id, {
+      onDelete: "set null",
+    }),
+    providerKey: text("provider_key").notNull(),
+    modelKey: text("model_key").notNull(),
+    modelAlias: text("model_alias").notNull(),
+    status: aiRequestAttemptStatusEnum("status").notNull(),
+    httpStatus: integer("http_status"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    totalTokens: integer("total_tokens"),
+    providerCostUsd: integer("provider_cost_micros"),
+    latencyMs: integer("latency_ms"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    requestMeta: json("request_meta").$type<Record<string, unknown>>(),
+    responseMeta: json("response_meta").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_request_attempt_request_attempt_idx").on(
+      table.requestId,
+      table.attemptNo
+    ),
+  ]
+);
+
+/**
+ * AI 结算记录表 - 关联 AI 请求与积分交易
+ */
+export const aiBillingRecord = pgTable("ai_billing_record", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id")
+    .notNull()
+    .references(() => aiRequestLog.requestId, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  billingMode: aiBillingModeEnum("billing_mode").notNull(),
+  chargedCredits: integer("charged_credits").notNull().default(0),
+  creditsTransactionId: text("credits_transaction_id").references(
+    () => creditsTransaction.id,
+    { onDelete: "set null" }
+  ),
+  status: aiBillingRecordStatusEnum("status").notNull().default("charged"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// AI 网关类型导出
+// ============================================
+
+export type AIRelayProvider = typeof aiRelayProvider.$inferSelect;
+export type NewAIRelayProvider = typeof aiRelayProvider.$inferInsert;
+
+export type AIRelayModelBinding = typeof aiRelayModelBinding.$inferSelect;
+export type NewAIRelayModelBinding = typeof aiRelayModelBinding.$inferInsert;
+
+export type AIPricingRule = typeof aiPricingRule.$inferSelect;
+export type NewAIPricingRule = typeof aiPricingRule.$inferInsert;
+
+export type AIRequestLog = typeof aiRequestLog.$inferSelect;
+export type NewAIRequestLog = typeof aiRequestLog.$inferInsert;
+
+export type AIRequestAttempt = typeof aiRequestAttempt.$inferSelect;
+export type NewAIRequestAttempt = typeof aiRequestAttempt.$inferInsert;
+
+export type AIBillingRecord = typeof aiBillingRecord.$inferSelect;
+export type NewAIBillingRecord = typeof aiBillingRecord.$inferInsert;
+
+export type AIRequestType = (typeof aiRequestTypeEnum.enumValues)[number];
+export type AIRelayProviderType =
+  (typeof aiRelayProviderTypeEnum.enumValues)[number];
+export type AIRelayProviderHealthStatus =
+  (typeof aiRelayProviderHealthStatusEnum.enumValues)[number];
+export type AIBillingMode = (typeof aiBillingModeEnum.enumValues)[number];
+export type AIRequestStatus = (typeof aiRequestStatusEnum.enumValues)[number];
+export type AIRequestAttemptStatus =
+  (typeof aiRequestAttemptStatusEnum.enumValues)[number];
+export type AIBillingRecordStatus =
+  (typeof aiBillingRecordStatusEnum.enumValues)[number];
+export type AIRouteStrategy = (typeof aiRouteStrategyEnum.enumValues)[number];
+export type AIRelayCostMode = (typeof aiRelayCostModeEnum.enumValues)[number];
+
+// ============================================
 // Newsletter 订阅表
 // ============================================
 /**

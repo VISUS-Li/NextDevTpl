@@ -1,7 +1,10 @@
 export {
   type AIConfig,
+  type AIChatResult,
   type AIProvider,
+  type AIUsage,
   chatCompletion,
+  chatCompletionWithUsage,
   createAIClient,
   deepseek,
   getAIClient,
