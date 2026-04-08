@@ -48,6 +48,17 @@
   - 当前返回标准 `text/event-stream`
   - 当前阶段为平台侧 SSE 输出，不是上游实时 token 透传
   - 已完成接口级测试，覆盖流式响应协议
+- Phase 4 管理闭环已完成：
+  - 已新增后台入口 `/admin/ai`
+  - 已新增管理员接口：
+    - `GET/POST /api/platform/ai/admin/providers`
+    - `PATCH/DELETE /api/platform/ai/admin/providers/:id`
+    - `GET/POST /api/platform/ai/admin/model-bindings`
+    - `PATCH/DELETE /api/platform/ai/admin/model-bindings/:id`
+    - `GET/POST /api/platform/ai/admin/pricing-rules`
+    - `PATCH/DELETE /api/platform/ai/admin/pricing-rules/:id`
+    - `GET /api/platform/ai/admin/requests`
+  - 已完成接口级测试，覆盖“管理员建配置 -> 普通用户请求 -> 管理员查明细”链路
 - Phase 5 最小运营能力已完成：
   - 已新增 `GET /api/platform/ai/summary`
   - 已提供总览统计与 provider 摘要
@@ -56,7 +67,7 @@
 ### 当前状态
 
 - 本文档定义的核心阶段能力已经全部落成
-- 当前已经进入“可直接接工具使用”的状态
+- 当前已经进入“可直接接工具使用，并可由管理员维护 AI 路由与计费配置”的状态
 - 后续新增能力应优先在现有 AI 网关和账本结构上迭代，而不是重起一套新系统
 
 ## 2. 当前项目现状
