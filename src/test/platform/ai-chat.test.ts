@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as postAIChat } from "@/app/api/platform/ai/chat/route";
-import { saveAdminToolConfig, seedDefaultToolConfigProject } from "@/features/tool-config";
+import { saveUserToolConfig, seedDefaultToolConfigProject } from "@/features/tool-config";
 import { auth } from "@/lib/auth";
 import {
   aiBillingRecord,
@@ -212,7 +212,7 @@ async function insertFallbackProvider(providerKey: string, priority: number) {
  * 初始化工具配置。
  */
 async function seedToolConfig(actorId: string) {
-  await saveAdminToolConfig({
+  await saveUserToolConfig({
     toolKey: "redink",
     actorId,
     values: {
@@ -368,7 +368,7 @@ describe("Platform AI Chat API", () => {
     });
     createdUserIds.push(creditsUser.user.id);
 
-    await saveAdminToolConfig({
+    await saveUserToolConfig({
       toolKey: "redink",
       actorId: creditsUser.user.id,
       values: {
@@ -474,7 +474,7 @@ describe("Platform AI Chat API", () => {
     });
     createdUserIds.push(creditsUser.user.id);
 
-    await saveAdminToolConfig({
+    await saveUserToolConfig({
       toolKey: "redink",
       actorId: creditsUser.user.id,
       values: {
@@ -567,5 +567,66 @@ describe("Platform AI Chat API", () => {
           item.creditAccount === "SERVICE:ai:redink:analysis"
       )
     ).toBe(true);
+  });
+
+  it("stream=true 时应返回 SSE 响应", async () => {
+    await seedAIGatewayBaseData();
+    const testEmail = `1183989659+phase4-stream-${Date.now()}@qq.com`;
+    const creditsUser = await createTestUserWithCredits({
+      email: testEmail,
+      name: "AI 流式测试用户",
+      initialCredits: 10,
+    });
+    createdUserIds.push(creditsUser.user.id);
+    await seedToolConfig(creditsUser.user.id);
+
+    mockSession({
+      id: creditsUser.user.id,
+      name: creditsUser.user.name,
+      email: creditsUser.user.email,
+    });
+
+    chatCompletionWithUsageMock.mockResolvedValue({
+      content: "流式输出内容",
+      model: "gpt-4o-mini",
+      responseId: "resp_stream",
+      usage: {
+        promptTokens: 20,
+        completionTokens: 30,
+        totalTokens: 50,
+      },
+      raw: {
+        id: "resp_stream",
+        model: "gpt-4o-mini",
+        usage: {
+          prompt_tokens: 20,
+          completion_tokens: 30,
+          total_tokens: 50,
+        },
+      },
+    });
+
+    const response = await postAIChat(
+      new Request("http://localhost:3000/api/platform/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool: "redink",
+          feature: "rewrite",
+          messages: [{ role: "user", content: "请流式返回结果" }],
+          stream: true,
+        }),
+      })
+    );
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(bodyText).toContain("event: meta");
+    expect(bodyText).toContain("event: message");
+    expect(bodyText).toContain("流式输出内容");
+    expect(bodyText).toContain("event: done");
   });
 });

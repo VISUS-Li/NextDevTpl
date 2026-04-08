@@ -6,3 +6,4 @@ export {
   type ExecuteAIChatParams,
   type ExecuteAIChatResult,
 } from "./service";
+export { getAIGatewayOverview, getAIProviderSummary } from "./queries";

@@ -64,15 +64,16 @@ export const POST = withApiLogging(async (request: Request) => {
       toolKey: payload.data.tool,
       featureKey: payload.data.feature,
       messages: payload.data.messages,
-      ...(payload.data.stream !== undefined
-        ? { stream: payload.data.stream }
-        : {}),
       ...(payload.data.model ? { model: payload.data.model } : {}),
       ...(payload.data.temperature !== undefined
         ? { temperature: payload.data.temperature }
         : {}),
       ...(payload.data.metadata ? { metadata: payload.data.metadata } : {}),
     });
+
+    if (payload.data.stream) {
+      return createChatStreamResponse(result);
+    }
 
     return NextResponse.json({
       success: true,
@@ -117,3 +118,47 @@ export const POST = withApiLogging(async (request: Request) => {
     throw error;
   }
 });
+
+/**
+ * 构造 SSE 响应。
+ *
+ * 当前阶段先输出标准流式协议，底层仍复用同步结算链路。
+ */
+function createChatStreamResponse(result: Awaited<ReturnType<typeof executeAIChat>>) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `event: meta\ndata: ${JSON.stringify({
+            requestId: result.requestId,
+            provider: result.provider,
+            model: result.model,
+          })}\n\n`
+        )
+      );
+      controller.enqueue(
+        encoder.encode(
+          `event: message\ndata: ${JSON.stringify({
+            content: result.content,
+          })}\n\n`
+        )
+      );
+      controller.enqueue(
+        encoder.encode(
+          `event: billing\ndata: ${JSON.stringify(result.billing)}\n\n`
+        )
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    },
+  });
+}
