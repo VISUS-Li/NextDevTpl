@@ -86,6 +86,7 @@ describe("Tool config platform API", () => {
         (field: { fieldKey: string }) => field.fieldKey === "secret1"
       )
     ).toMatchObject({
+      settingLabel: "secret1",
       secretSet: true,
       source: "project_admin",
     });
@@ -224,6 +225,43 @@ describe("Tool config platform API", () => {
     expect(runtime.config).toMatchObject({
       config1: "yunwu",
       secret1: "external-secret",
+    });
+  });
+
+  it("应该给 jingfang-ai 返回槽位用途说明字段", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    await seedDefaultToolConfigProject({ projectKey });
+    mockSession({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: "user",
+    });
+
+    const response = await getEditor(
+      new Request(
+        `http://localhost:3000/api/platform/tool-config/editor?projectKey=${projectKey}&tool=jingfang-ai`
+      )
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(
+      body.fields.find(
+        (field: { fieldKey: string }) => field.fieldKey === "config1"
+      )
+    ).toMatchObject({
+      label: "config1",
+      settingLabel: "聊天平台",
+    });
+    expect(
+      body.fields.find(
+        (field: { fieldKey: string }) => field.fieldKey === "secret6"
+      )
+    ).toMatchObject({
+      label: "secret6",
+      settingLabel: "高级设置密码",
     });
   });
 });

@@ -29,6 +29,7 @@ import { saveAdminToolConfigAction } from "@/features/tool-config/actions";
 type AdminToolConfigField = {
   fieldKey: string;
   label: string;
+  settingLabel: string;
   description: string | null;
   group: string;
   type:
@@ -192,9 +193,17 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
                           <div key={field.fieldKey} className="space-y-2">
                             <Label
                               htmlFor={`${toolConfig.tool.toolKey}-${field.fieldKey}`}
+                              className="flex flex-col gap-1"
                             >
-                              {field.label}
-                              {field.required ? " *" : ""}
+                              <span>
+                                {field.settingLabel}
+                                {field.required ? " *" : ""}
+                              </span>
+                              {field.settingLabel !== field.label ? (
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  槽位：{field.label}
+                                </span>
+                              ) : null}
                             </Label>
                             {renderFieldInput({
                               field,

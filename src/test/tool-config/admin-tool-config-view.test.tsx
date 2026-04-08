@@ -57,6 +57,7 @@ describe("AdminToolConfigView", () => {
                   {
                     fieldKey: "config1",
                     label: "config1",
+                    settingLabel: "聊天平台",
                     description: null,
                     group: "config",
                     type: "string",
@@ -69,6 +70,7 @@ describe("AdminToolConfigView", () => {
                   {
                     fieldKey: "secret1",
                     label: "secret1",
+                    settingLabel: "主聊天 API Key",
                     description: null,
                     group: "secret",
                     type: "secret",
@@ -81,6 +83,7 @@ describe("AdminToolConfigView", () => {
                   {
                     fieldKey: "text1",
                     label: "text1",
+                    settingLabel: "text1",
                     description: null,
                     group: "text",
                     type: "textarea",
@@ -105,7 +108,9 @@ describe("AdminToolConfigView", () => {
       screen.getByText("已设置密钥，留空不会覆盖旧值。")
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("config1"), {
+    expect(screen.getByText("槽位：config1")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("聊天平台"), {
       target: { value: "deepseek-chat" },
     });
     fireEvent.change(screen.getByLabelText("text1"), {

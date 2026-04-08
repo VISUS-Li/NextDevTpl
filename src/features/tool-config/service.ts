@@ -38,6 +38,26 @@ const defaultTools = [
   },
 ] as const;
 
+const TOOL_SLOT_SETTING_LABELS: Record<
+  string,
+  Record<string, string>
+> = {
+  "jingfang-ai": {
+    config1: "聊天平台",
+    config2: "火山存储空间名",
+    config3: "语音识别 App ID",
+    config4: "语音识别 App Type",
+    config5: "豆包视觉 Endpoint",
+    config6: "火山区域 Region",
+    secret1: "主聊天 API Key",
+    secret2: "云雾 API Key",
+    secret3: "火山 Access Key ID",
+    secret4: "火山 Secret Access Key",
+    secret5: "语音识别 Access Token",
+    secret6: "高级设置密码",
+  },
+};
+
 const defaultFieldDefinitions: Array<{
   toolKey: string;
   fieldKey: string;
@@ -267,9 +287,15 @@ export async function getToolConfigEditorData(params: {
     revision: currentProject.configRevision,
     fields: visibleFields.map((field) => {
       const resolved = resolveFieldValue(field, values);
+      const settingLabel = getToolFieldSettingLabel(
+        params.toolKey,
+        field.fieldKey,
+        field.label
+      );
       return {
         fieldKey: field.fieldKey,
         label: field.label,
+        settingLabel,
         description: field.description,
         group: field.group,
         type: field.type,
@@ -282,6 +308,14 @@ export async function getToolConfigEditorData(params: {
       };
     }),
   };
+}
+
+function getToolFieldSettingLabel(
+  toolKey: string,
+  fieldKey: string,
+  fallback: string
+) {
+  return TOOL_SLOT_SETTING_LABELS[toolKey]?.[fieldKey] ?? fallback;
 }
 
 /**
