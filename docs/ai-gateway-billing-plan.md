@@ -63,12 +63,37 @@
   - 已新增 `GET /api/platform/ai/summary`
   - 已提供总览统计与 provider 摘要
   - 已完成独立测试文件，覆盖“普通用户调用 -> 管理员查看汇总”链路
+- Phase 5 运维闭环已完成：
+  - 已新增管理员运维接口：
+    - `POST /api/platform/ai/admin/providers/health-check`
+    - `POST /api/platform/ai/admin/billing-adjustments`
+    - `GET /api/platform/ai/admin/alerts`
+  - 已支持管理员手工调账，生成独立 `ai_billing_record`
+  - 已支持 provider 健康检查并可按失败结果自动下线
+  - 已支持基础运维告警：
+    - provider 下线告警
+    - 高失败率告警
+    - 高成本请求告警
+  - 已完成接口级测试，覆盖“普通用户请求 -> 管理员退款 -> 健康检查下线 -> 告警查询”链路
 
 ### 当前状态
 
-- 本文档定义的核心阶段能力已经全部落成
-- 当前已经进入“可直接接工具使用，并可由管理员维护 AI 路由与计费配置”的状态
+- 本文档定义的所有阶段能力已经全部落成
+- 当前已经进入“可直接接工具使用，并可由管理员维护 AI 路由、计费和运维动作”的状态
 - 后续新增能力应优先在现有 AI 网关和账本结构上迭代，而不是重起一套新系统
+
+### 最终完成说明
+
+当前项目已具备以下完整闭环：
+
+1. 工具统一调用 `POST /api/platform/ai/chat`
+2. 平台按 `toolKey / featureKey / model / provider` 记录请求、尝试、结算
+3. 平台支持多中转站路由、失败回退、成本统计和积分扣费
+4. 管理员可维护 provider、model binding、pricing rule
+5. 管理员可查看请求明细与汇总
+6. 管理员可执行健康检查、手工调账和告警排查
+
+当前剩余工作不再是“基础能力缺失”，而是未来可按业务需要继续叠加更细的 UI、更多 request type 和外部网关接入。
 
 ## 2. 当前项目现状
 
