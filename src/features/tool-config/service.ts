@@ -74,6 +74,59 @@ const defaultFieldDefinitions: Array<{
   sortOrder: number;
 }> = defaultTools.flatMap((tool) => buildDefaultSlotFields(tool.toolKey));
 
+const REDINK_DEFAULT_RUNTIME_VALUES = {
+  config1: "gpt-4o-mini",
+  config2: "primary_only",
+  config3: "geek-default",
+  json1: ["gpt-4o-mini"],
+  json2: {
+    rewrite: {
+      enabled: true,
+      billingMode: "fixed_credits",
+      defaultCredits: 3,
+      minimumCredits: 3,
+    },
+    outline: {
+      enabled: true,
+      billingMode: "token_based",
+      minimumCredits: 2,
+    },
+    content: {
+      enabled: true,
+      billingMode: "token_based",
+      minimumCredits: 2,
+    },
+    "product-copy": {
+      enabled: true,
+      billingMode: "token_based",
+      minimumCredits: 2,
+    },
+    "product-post-content": {
+      enabled: true,
+      billingMode: "token_based",
+      minimumCredits: 2,
+    },
+    "product-image-analysis": {
+      enabled: true,
+      billingMode: "token_based",
+      minimumCredits: 3,
+    },
+    "product-post-image": {
+      enabled: true,
+      billingMode: "fixed_credits",
+      defaultCredits: 8,
+      minimumCredits: 8,
+    },
+    "image-generation": {
+      enabled: true,
+      billingMode: "fixed_credits",
+      defaultCredits: 8,
+      minimumCredits: 8,
+    },
+  },
+  json3: ["geek-default"],
+} as const;
+
 type ConfigValueRow = typeof toolConfigValue.$inferSelect;
 
 type SaveConfigParams = {
@@ -195,7 +248,74 @@ export async function seedDefaultToolConfigProject(params?: {
       );
   }
 
+  await seedDefaultRedinkRuntimeConfig(currentProject.id, now);
+
   return currentProject;
+}
+
+/**
+ * 补齐 RedInk 的默认运行时配置，避免新接入功能缺槽位。
+ */
+async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
+  const rows = await db
+    .select()
+    .from(toolConfigValue)
+    .where(
+      and(
+        eq(toolConfigValue.projectId, projectId),
+        eq(toolConfigValue.toolKey, "redink"),
+        eq(toolConfigValue.scope, "project_admin"),
+        isNull(toolConfigValue.userId)
+      )
+    );
+
+  const rowMap = new Map(rows.map((row) => [row.fieldKey, row]));
+  const runtimeFields = Object.entries(REDINK_DEFAULT_RUNTIME_VALUES);
+
+  for (const [fieldKey, defaultValue] of runtimeFields) {
+    const currentRow = rowMap.get(fieldKey);
+    if (!currentRow) {
+      await db.insert(toolConfigValue).values({
+        id: crypto.randomUUID(),
+        projectId,
+        toolKey: "redink",
+        fieldKey,
+        scope: "project_admin",
+        valueJson: defaultValue,
+        updatedBy: "system",
+        createdAt: now,
+        updatedAt: now,
+      });
+      continue;
+    }
+
+    if (fieldKey !== "json2") {
+      continue;
+    }
+
+    const currentValue =
+      typeof currentRow.valueJson === "object" && currentRow.valueJson
+        ? (currentRow.valueJson as Record<string, unknown>)
+        : {};
+    const mergedValue = {
+      ...REDINK_DEFAULT_RUNTIME_VALUES.json2,
+      ...currentValue,
+    };
+
+    if (JSON.stringify(mergedValue) === JSON.stringify(currentValue)) {
+      continue;
+    }
+
+    await db
+      .update(toolConfigValue)
+      .set({
+        valueJson: mergedValue,
+        revision: currentRow.revision + 1,
+        updatedBy: "system",
+        updatedAt: now,
+      })
+      .where(eq(toolConfigValue.id, currentRow.id));
+  }
 }
 
 function buildDefaultSlotFields(toolKey: string) {

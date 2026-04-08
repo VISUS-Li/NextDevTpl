@@ -43,6 +43,56 @@ import {
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 
+const REDINK_DEFAULT_PRICING_RULES = [
+  {
+    featureKey: "outline",
+    billingMode: "token_based" as const,
+    inputTokensPerCredit: 600,
+    outputTokensPerCredit: 300,
+    minimumCredits: 2,
+  },
+  {
+    featureKey: "content",
+    billingMode: "token_based" as const,
+    inputTokensPerCredit: 600,
+    outputTokensPerCredit: 300,
+    minimumCredits: 2,
+  },
+  {
+    featureKey: "product-copy",
+    billingMode: "token_based" as const,
+    inputTokensPerCredit: 600,
+    outputTokensPerCredit: 300,
+    minimumCredits: 2,
+  },
+  {
+    featureKey: "product-post-content",
+    billingMode: "token_based" as const,
+    inputTokensPerCredit: 600,
+    outputTokensPerCredit: 300,
+    minimumCredits: 2,
+  },
+  {
+    featureKey: "product-image-analysis",
+    billingMode: "token_based" as const,
+    inputTokensPerCredit: 400,
+    outputTokensPerCredit: 200,
+    minimumCredits: 3,
+  },
+  {
+    featureKey: "product-post-image",
+    billingMode: "fixed_credits" as const,
+    fixedCredits: 8,
+    minimumCredits: 8,
+  },
+  {
+    featureKey: "image-generation",
+    billingMode: "fixed_credits" as const,
+    fixedCredits: 8,
+    minimumCredits: 8,
+  },
+] as const;
+
 export class AIGatewayError extends Error {
   constructor(
     public code:
@@ -186,6 +236,8 @@ async function getPricingRule(
   featureKey: string,
   modelKey: string
 ) {
+  await seedDefaultPricingRules(toolKey);
+
   const [exactRule] = await db
     .select()
     .from(aiPricingRule)
@@ -223,6 +275,51 @@ async function getPricingRule(
   }
 
   return defaultRule;
+}
+
+/**
+ * 为 RedInk 补齐默认计费规则，避免新功能没有 rule。
+ */
+async function seedDefaultPricingRules(toolKey: string) {
+  if (toolKey !== "redink") {
+    return;
+  }
+
+  for (const rule of REDINK_DEFAULT_PRICING_RULES) {
+    const [existingRule] = await db
+      .select({ id: aiPricingRule.id })
+      .from(aiPricingRule)
+      .where(
+        and(
+          eq(aiPricingRule.toolKey, toolKey),
+          eq(aiPricingRule.featureKey, rule.featureKey),
+          eq(aiPricingRule.requestType, "chat"),
+          eq(aiPricingRule.modelScope, "any")
+        )
+      )
+      .limit(1);
+
+    if (existingRule) {
+      continue;
+    }
+
+    await db.insert(aiPricingRule).values({
+      id: crypto.randomUUID(),
+      toolKey,
+      featureKey: rule.featureKey,
+      requestType: "chat",
+      billingMode: rule.billingMode,
+      modelScope: "any",
+      fixedCredits: "fixedCredits" in rule ? rule.fixedCredits : null,
+      inputTokensPerCredit:
+        "inputTokensPerCredit" in rule ? rule.inputTokensPerCredit : null,
+      outputTokensPerCredit:
+        "outputTokensPerCredit" in rule ? rule.outputTokensPerCredit : null,
+      costUsdPerCredit: null,
+      minimumCredits: rule.minimumCredits,
+      enabled: true,
+    });
+  }
 }
 
 /**
