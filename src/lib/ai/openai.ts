@@ -16,12 +16,160 @@ export interface AIConfig {
 }
 
 /**
+ * 图片细节等级
+ */
+export type AIImageDetail = "auto" | "low" | "high";
+
+/**
+ * 平台内部统一的消息角色
+ */
+export type AIMessageRole = "system" | "user" | "assistant";
+
+/**
+ * 文本消息片段
+ */
+export interface AITextPart {
+  type: "text";
+  text: string;
+}
+
+/**
+ * 图片 URL 片段
+ */
+export interface AIImageUrlPart {
+  type: "image_url";
+  imageUrl: string;
+  detail?: AIImageDetail | undefined;
+}
+
+/**
+ * 平台内图片资产片段
+ */
+export interface AIImageAssetPart {
+  type: "image_asset";
+  bucket: string;
+  key: string;
+  detail?: AIImageDetail | undefined;
+}
+
+/**
+ * 音频 URL 片段
+ */
+export interface AIAudioUrlPart {
+  type: "audio_url";
+  audioUrl: string;
+  format?: string | undefined;
+}
+
+/**
+ * 平台内音频资产片段
+ */
+export interface AIAudioAssetPart {
+  type: "audio_asset";
+  bucket: string;
+  key: string;
+  format?: string | undefined;
+}
+
+/**
+ * 视频 URL 片段
+ */
+export interface AIVideoUrlPart {
+  type: "video_url";
+  videoUrl: string;
+}
+
+/**
+ * 平台内视频资产片段
+ */
+export interface AIVideoAssetPart {
+  type: "video_asset";
+  bucket: string;
+  key: string;
+}
+
+/**
+ * 平台内通用文件资产片段
+ */
+export interface AIFileAssetPart {
+  type: "file_asset";
+  bucket: string;
+  key: string;
+  filename?: string | undefined;
+  mimeType?: string | undefined;
+}
+
+/**
+ * 平台统一输入片段
+ */
+export type AIInputPart =
+  | AITextPart
+  | AIImageUrlPart
+  | AIImageAssetPart
+  | AIAudioUrlPart
+  | AIAudioAssetPart
+  | AIVideoUrlPart
+  | AIVideoAssetPart
+  | AIFileAssetPart;
+
+/**
+ * 平台统一消息结构
+ */
+export interface AIChatMessage {
+  role: AIMessageRole;
+  content: string | AIInputPart[];
+}
+
+/**
+ * 音频输出结构
+ */
+export interface AIAudioOutput {
+  id?: string | null | undefined;
+  data?: string | null | undefined;
+  expiresAt?: number | null | undefined;
+  transcript?: string | null | undefined;
+}
+
+/**
+ * 平台统一输出结构
+ */
+export interface AIOutput {
+  text?: string | undefined;
+  image?: string | null | undefined;
+  video?: string | null | undefined;
+  audio?: AIAudioOutput | null | undefined;
+}
+
+/**
+ * 平台统一任务结构
+ */
+export interface AITaskState {
+  id: string;
+  status: string;
+}
+
+/**
+ * 发给上游的 provider 消息结构。
+ */
+export interface AIProviderMessage {
+  role: AIMessageRole;
+  content: string | Array<Record<string, unknown>>;
+}
+
+/**
  * AI 使用量信息
  */
 export interface AIUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  textInputTokens?: number | undefined;
+  imageInputTokens?: number | undefined;
+  audioInputTokens?: number | undefined;
+  videoInputTokens?: number | undefined;
+  reasoningTokens?: number | undefined;
+  cachedTokens?: number | undefined;
+  billedUnits?: number | undefined;
 }
 
 /**
@@ -31,15 +179,31 @@ export interface AIChatResult {
   content: string;
   model: string;
   responseId: string | null;
+  status?: string;
   usage: AIUsage;
-  raw: OpenAI.Chat.Completions.ChatCompletion;
+  output?: AIOutput;
+  task?: AITaskState | null;
+  raw: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>;
+}
+
+/**
+ * 通用 Chat 请求选项
+ */
+export interface AIChatOptions {
+  temperature?: number;
+  maxTokens?: number;
+  jsonMode?: boolean;
+  aiConfig?: AIConfig;
+  extraBody?: Record<string, unknown>;
 }
 
 /**
  * 获取当前配置的 AI 提供商
  */
 export function getAIProvider(config?: AIConfig): AIProvider {
-  return config?.provider || (process.env.AI_PROVIDER as AIProvider) || "openai";
+  return (
+    config?.provider || (process.env.AI_PROVIDER as AIProvider) || "openai"
+  );
 }
 
 /**
@@ -164,26 +328,22 @@ export function createAIClient(config: AIConfig): OpenAI {
  * @returns AI 返回的文本内容
  */
 export async function chatCompletion(
-  messages: OpenAI.ChatCompletionMessageParam[],
-  options?: {
-    temperature?: number;
-    maxTokens?: number;
-    jsonMode?: boolean;
-    aiConfig?: AIConfig;
-  }
+  messages: AIProviderMessage[],
+  options?: AIChatOptions
 ): Promise<string> {
   const client = getAIClient(options?.aiConfig);
   const model = getAIModel(options?.aiConfig);
 
   const response = await client.chat.completions.create({
     model,
-    messages,
+    messages: messages as OpenAI.ChatCompletionMessageParam[],
     temperature: options?.temperature ?? 0.7,
     max_tokens: options?.maxTokens ?? 4096,
     ...(options?.jsonMode && { response_format: { type: "json_object" } }),
+    ...(options?.extraBody ?? {}),
   });
 
-  const content = response.choices[0]?.message?.content;
+  const content = getResponseText(response);
   if (!content) {
     const providerNames: Record<AIProvider, string> = {
       openai: "OpenAI",
@@ -204,27 +364,24 @@ export async function chatCompletion(
  * 这层给 AI 网关使用，便于做成本统计和计费。
  */
 export async function chatCompletionWithUsage(
-  messages: OpenAI.ChatCompletionMessageParam[],
-  options?: {
-    temperature?: number;
-    maxTokens?: number;
-    jsonMode?: boolean;
-    aiConfig?: AIConfig;
-  }
+  messages: AIProviderMessage[],
+  options?: AIChatOptions
 ): Promise<AIChatResult> {
   const client = getAIClient(options?.aiConfig);
   const model = getAIModel(options?.aiConfig);
 
   const response = await client.chat.completions.create({
     model,
-    messages,
+    messages: messages as OpenAI.ChatCompletionMessageParam[],
     temperature: options?.temperature ?? 0.7,
     max_tokens: options?.maxTokens ?? 4096,
     ...(options?.jsonMode && { response_format: { type: "json_object" } }),
+    ...(options?.extraBody ?? {}),
   });
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
+  const content = getResponseText(response);
+  const output = getResponseOutput(response);
+  if (!content && !output.image && !output.video && !output.audio) {
     const providerNames: Record<AIProvider, string> = {
       openai: "OpenAI",
       deepseek: "DeepSeek",
@@ -239,13 +396,160 @@ export async function chatCompletionWithUsage(
     content,
     model: response.model,
     responseId: response.id ?? null,
-    usage: {
-      promptTokens: response.usage?.prompt_tokens ?? 0,
-      completionTokens: response.usage?.completion_tokens ?? 0,
-      totalTokens: response.usage?.total_tokens ?? 0,
-    },
+    status: getResponseStatus(response),
+    usage: getUsage(response),
+    output,
+    task: getTaskState(response),
     raw: response,
   };
 }
 
 export { openai, deepseek, mimo, getAIClient };
+
+/**
+ * 提取响应中的纯文本内容。
+ */
+function getResponseText(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+) {
+  const message = getResponseMessage(response);
+  const content = message?.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (!isRecord(item)) {
+          return "";
+        }
+        const type = item.type;
+        if (type === "text" && typeof item.text === "string") {
+          return item.text;
+        }
+        return "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+/**
+ * 提取响应中的统一输出结构。
+ */
+function getResponseOutput(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+): AIOutput {
+  const message = getResponseMessage(response);
+  if (!message) {
+    return {};
+  }
+
+  const audio = isRecord(message.audio)
+    ? {
+        id: asOptionalString(message.audio.id),
+        data: asOptionalString(message.audio.data),
+        expiresAt: asOptionalNumber(message.audio.expires_at),
+        transcript: asOptionalString(message.audio.transcript),
+      }
+    : null;
+
+  return {
+    text: getResponseText(response) || undefined,
+    image: asOptionalString(message.image),
+    video: asOptionalString(message.video),
+    audio,
+  };
+}
+
+/**
+ * 提取统一 usage 结构。
+ */
+function getUsage(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+): AIUsage {
+  const usage = isRecord(response.usage) ? response.usage : {};
+  const promptDetails = isRecord(usage.prompt_tokens_details)
+    ? usage.prompt_tokens_details
+    : {};
+  const completionDetails = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : {};
+
+  return {
+    promptTokens: asOptionalNumber(usage.prompt_tokens) ?? 0,
+    completionTokens: asOptionalNumber(usage.completion_tokens) ?? 0,
+    totalTokens: asOptionalNumber(usage.total_tokens) ?? 0,
+    textInputTokens: asOptionalNumber(promptDetails.text_tokens) ?? undefined,
+    imageInputTokens: asOptionalNumber(promptDetails.image_tokens) ?? undefined,
+    audioInputTokens: asOptionalNumber(promptDetails.audio_tokens) ?? undefined,
+    videoInputTokens: asOptionalNumber(promptDetails.video_tokens) ?? undefined,
+    reasoningTokens:
+      asOptionalNumber(completionDetails.reasoning_tokens) ?? undefined,
+    cachedTokens: asOptionalNumber(promptDetails.cached_tokens) ?? undefined,
+    billedUnits: asOptionalNumber(usage.billed_units) ?? undefined,
+  };
+}
+
+/**
+ * 提取上游响应状态。
+ */
+function getResponseStatus(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+) {
+  return (
+    (isRecord(response) ? asOptionalString(response.status) : null) ??
+    "completed"
+  );
+}
+
+/**
+ * 从上游响应里提取任务状态。
+ */
+function getTaskState(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+): AITaskState | null {
+  const status = isRecord(response) ? asOptionalString(response.status) : null;
+  const id = asOptionalString(response.id);
+  if (!status || !id || status === "completed") {
+    return null;
+  }
+  return { id, status };
+}
+
+/**
+ * 安全提取首条消息对象。
+ */
+function getResponseMessage(
+  response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
+) {
+  if (!Array.isArray(response.choices)) {
+    return null;
+  }
+  const firstChoice = response.choices[0];
+  if (!isRecord(firstChoice) || !isRecord(firstChoice.message)) {
+    return null;
+  }
+  return firstChoice.message;
+}
+
+/**
+ * 判断值是否为普通对象。
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * 将未知值安全转换为字符串。
+ */
+function asOptionalString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * 将未知值安全转换为数字。
+ */
+function asOptionalNumber(value: unknown) {
+  return typeof value === "number" ? value : null;
+}

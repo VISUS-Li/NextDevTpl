@@ -8,15 +8,15 @@ import { and, asc, desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
+  type AIBillingMode,
+  type AIRelayModelBinding,
+  type AIRouteStrategy,
   aiBillingRecord,
   aiPricingRule,
   aiRelayModelBinding,
   aiRelayProvider,
   aiRequestAttempt,
   aiRequestLog,
-  type AIBillingMode,
-  type AIRelayModelBinding,
-  type AIRouteStrategy,
 } from "@/db/schema";
 import {
   AccountFrozenError,
@@ -24,8 +24,21 @@ import {
   getCreditsBalance,
   InsufficientCreditsError,
 } from "@/features/credits/core";
-import { DEFAULT_PROJECT_KEY, getResolvedToolConfig, seedDefaultToolConfigProject } from "@/features/tool-config/service";
-import { chatCompletionWithUsage, type AIChatResult } from "@/lib/ai";
+import { getStorageProvider } from "@/features/storage/providers";
+import {
+  DEFAULT_PROJECT_KEY,
+  getResolvedToolConfig,
+  seedDefaultToolConfigProject,
+} from "@/features/tool-config/service";
+import {
+  type AIChatMessage,
+  type AIChatResult,
+  type AIInputPart,
+  type AIOutput,
+  type AIProviderMessage,
+  type AITaskState,
+  chatCompletionWithUsage,
+} from "@/lib/ai";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 
@@ -71,10 +84,14 @@ export type ExecuteAIChatParams = {
   userId: string;
   toolKey: string;
   featureKey: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  messages: AIChatMessage[];
   stream?: boolean;
   model?: string;
   temperature?: number;
+  modalities?: string[];
+  audio?: Record<string, unknown>;
+  image?: Record<string, unknown>;
+  background?: boolean;
   metadata?: Record<string, unknown>;
 };
 
@@ -83,10 +100,20 @@ export type ExecuteAIChatResult = {
   provider: string;
   model: string;
   content: string;
+  output: AIOutput;
+  task: AITaskState | null;
+  status: string;
   usage: {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    textInputTokens?: number | undefined;
+    imageInputTokens?: number | undefined;
+    audioInputTokens?: number | undefined;
+    videoInputTokens?: number | undefined;
+    reasoningTokens?: number | undefined;
+    cachedTokens?: number | undefined;
+    billedUnits?: number | undefined;
   };
   billing: {
     chargedCredits: number;
@@ -122,14 +149,21 @@ async function resolveToolAISettings(
   }
 
   const requestedModel =
-    model || asString(config.config1) || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    model ||
+    asString(config.config1) ||
+    process.env.OPENAI_MODEL ||
+    "gpt-4o-mini";
   const routeStrategy = parseRouteStrategy(asString(config.config2));
   const preferredProviderKey = asString(config.config3);
   const allowedModels = asStringArray(config.json1);
   const allowedProviderKeys = asStringArray(config.json3);
 
   if (allowedModels.length > 0 && !allowedModels.includes(requestedModel)) {
-    throw new AIGatewayError("model_not_allowed", "当前模型未开放给该工具", 403);
+    throw new AIGatewayError(
+      "model_not_allowed",
+      "当前模型未开放给该工具",
+      403
+    );
   }
 
   return {
@@ -145,7 +179,11 @@ async function resolveToolAISettings(
 /**
  * 查询适用的计费规则。
  */
-async function getPricingRule(toolKey: string, featureKey: string, modelKey: string) {
+async function getPricingRule(
+  toolKey: string,
+  featureKey: string,
+  modelKey: string
+) {
   const [exactRule] = await db
     .select()
     .from(aiPricingRule)
@@ -198,7 +236,10 @@ async function getCandidateBindings(
       provider: aiRelayProvider,
     })
     .from(aiRelayModelBinding)
-    .innerJoin(aiRelayProvider, eq(aiRelayModelBinding.providerId, aiRelayProvider.id))
+    .innerJoin(
+      aiRelayProvider,
+      eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
+    )
     .where(
       and(
         eq(aiRelayModelBinding.modelKey, modelKey),
@@ -232,7 +273,11 @@ async function getCandidateBindings(
   });
 
   if (filtered.length === 0) {
-    throw new AIGatewayError("provider_unavailable", "没有可用的 AI 中转站", 503);
+    throw new AIGatewayError(
+      "provider_unavailable",
+      "没有可用的 AI 中转站",
+      503
+    );
   }
 
   if (settings.preferredProviderKey && settings.routeStrategy !== "weighted") {
@@ -286,6 +331,7 @@ export async function executeAIChat(
 
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
+  const providerMessages = await normalizeMessagesForProvider(params.messages);
 
   await db.insert(aiRequestLog).values({
     id: crypto.randomUUID(),
@@ -300,14 +346,22 @@ export async function executeAIChat(
     billingMode: pricingRule.billingMode,
     requestBody: {
       messages: params.messages,
+      providerMessages,
       model: params.model ?? null,
       temperature: params.temperature ?? null,
       stream: params.stream ?? false,
+      modalities: params.modalities ?? null,
+      audio: params.audio ?? null,
+      image: params.image ?? null,
+      background: params.background ?? false,
     },
     metadata: params.metadata,
   });
 
-  const candidates = await getCandidateBindings(settings.requestedModel, settings);
+  const candidates = await getCandidateBindings(
+    settings.requestedModel,
+    settings
+  );
   const attempts: Array<{
     candidate: CandidateBinding;
     result?: AIChatResult;
@@ -322,20 +376,25 @@ export async function executeAIChat(
     const attemptStartedAt = Date.now();
 
     try {
-      const result = await chatCompletionWithUsage(
-        params.messages as never,
-        {
-          ...(params.temperature !== undefined
-            ? { temperature: params.temperature }
+      const result = await chatCompletionWithUsage(providerMessages, {
+        ...(params.temperature !== undefined
+          ? { temperature: params.temperature }
+          : {}),
+        extraBody: {
+          ...(params.modalities ? { modalities: params.modalities } : {}),
+          ...(params.audio ? { audio: params.audio } : {}),
+          ...(params.image ? { image: params.image } : {}),
+          ...(params.background !== undefined
+            ? { background: params.background }
             : {}),
-          aiConfig: {
-            provider: "openai",
-            apiKey: decryptRelayApiKey(candidate.provider.apiKeyEncrypted),
-            baseUrl: candidate.provider.baseUrl,
-            model: candidate.binding.modelAlias,
-          },
-        }
-      );
+        },
+        aiConfig: {
+          provider: "openai",
+          apiKey: decryptRelayApiKey(candidate.provider.apiKeyEncrypted),
+          baseUrl: candidate.provider.baseUrl,
+          model: candidate.binding.modelAlias,
+        },
+      });
       const latencyMs = Date.now() - attemptStartedAt;
       const providerCostMicros = calculateProviderCostMicros(
         candidate.binding,
@@ -359,6 +418,9 @@ export async function executeAIChat(
         responseMeta: {
           responseId: result.responseId,
           providerModel: result.model,
+          status: result.status ?? "completed",
+          output: result.output ?? { text: result.content },
+          task: result.task ?? null,
         },
       });
 
@@ -418,7 +480,8 @@ export async function executeAIChat(
       status: "failed",
       attemptCount: attempts.length,
       latencyMs: Date.now() - startedAt,
-      errorCode: finalError instanceof Error ? finalError.name : "upstream_error",
+      errorCode:
+        finalError instanceof Error ? finalError.name : "upstream_error",
       errorMessage: getErrorMessage(finalError),
       updatedAt: new Date(),
     })
@@ -496,12 +559,18 @@ async function finalizeSuccessfulRequest(params: {
         providerCostUsd: totalProviderCostMicros,
         chargedCredits,
         attemptCount: params.attempts.length,
-        winningAttemptNo: params.attempts.findIndex((attempt) => attempt.result) + 1,
+        winningAttemptNo:
+          params.attempts.findIndex((attempt) => attempt.result) + 1,
         latencyMs: Date.now() - params.startedAt,
         responseMeta: {
           responseId: successfulAttempt.result.responseId,
           providerKey: successfulAttempt.candidate.provider.key,
           providerModel: successfulAttempt.result.model,
+          status: successfulAttempt.result.status ?? "completed",
+          output: successfulAttempt.result.output ?? {
+            text: successfulAttempt.result.content,
+          },
+          task: successfulAttempt.result.task ?? null,
         },
         updatedAt: new Date(),
       })
@@ -512,23 +581,33 @@ async function finalizeSuccessfulRequest(params: {
       provider: successfulAttempt.candidate.provider.key,
       model: params.modelKey,
       content: successfulAttempt.result.content,
+      output: successfulAttempt.result.output ?? {
+        text: successfulAttempt.result.content,
+      },
+      task: successfulAttempt.result.task ?? null,
+      status: successfulAttempt.result.status ?? "completed",
       usage: successfulAttempt.result.usage,
       billing: {
         chargedCredits,
         billingMode: params.pricingRule.billingMode,
-        remainingBalance: consumeResult?.remainingBalance ?? (await getCreditsBalance(params.userId)).balance,
+        remainingBalance:
+          consumeResult?.remainingBalance ??
+          (await getCreditsBalance(params.userId)).balance,
       },
     };
   } catch (error) {
     await db
       .update(aiRequestLog)
       .set({
-        status: error instanceof InsufficientCreditsError ? "insufficient_credits" : "billing_failed",
+        status:
+          error instanceof InsufficientCreditsError
+            ? "insufficient_credits"
+            : "billing_failed",
         attemptCount: params.attempts.length,
-        winningAttemptNo: params.attempts.findIndex((attempt) => attempt.result) + 1,
+        winningAttemptNo:
+          params.attempts.findIndex((attempt) => attempt.result) + 1,
         latencyMs: Date.now() - params.startedAt,
-        errorCode:
-          error instanceof Error ? error.name : "billing_failed",
+        errorCode: error instanceof Error ? error.name : "billing_failed",
         errorMessage: getErrorMessage(error),
         updatedAt: new Date(),
       })
@@ -548,7 +627,10 @@ export function encryptRelayApiKey(value: string): string {
   const key = getEncryptionKey();
   const iv = randomBytes(12);
   const cipher = createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
   return `${iv.toString("base64")}.${authTag.toString("base64")}.${encrypted.toString("base64")}`;
 }
@@ -579,7 +661,8 @@ export function decryptRelayApiKey(payload: string): string {
  * 获取加密密钥。
  */
 function getEncryptionKey() {
-  const secret = process.env.CONFIG_SECRET_KEY || process.env.BETTER_AUTH_SECRET;
+  const secret =
+    process.env.CONFIG_SECRET_KEY || process.env.BETTER_AUTH_SECRET;
   if (!secret) {
     throw new Error("缺少 CONFIG_SECRET_KEY 或 BETTER_AUTH_SECRET");
   }
@@ -603,7 +686,9 @@ function calculateProviderCostMicros(
   const inputCost =
     Math.ceil((result.usage.promptTokens * binding.inputCostPer1k) / 1000) || 0;
   const outputCost =
-    Math.ceil((result.usage.completionTokens * binding.outputCostPer1k) / 1000) || 0;
+    Math.ceil(
+      (result.usage.completionTokens * binding.outputCostPer1k) / 1000
+    ) || 0;
   return inputCost + outputCost;
 }
 
@@ -649,7 +734,11 @@ function weightedOrder(items: CandidateBinding[]) {
       return cursor <= 0;
     });
     const index = selectedIndex >= 0 ? selectedIndex : 0;
-    sorted.push(pool[index]!);
+    const selectedItem = pool[index];
+    if (!selectedItem) {
+      break;
+    }
+    sorted.push(selectedItem);
     pool.splice(index, 1);
   }
 
@@ -674,6 +763,107 @@ function asString(value: unknown) {
 
 function asStringArray(value: unknown) {
   return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    ? value.filter(
+        (item): item is string => typeof item === "string" && item.length > 0
+      )
     : [];
+}
+
+/**
+ * 将平台内部消息转换为上游可识别的消息结构。
+ */
+async function normalizeMessagesForProvider(
+  messages: AIChatMessage[]
+): Promise<AIProviderMessage[]> {
+  return Promise.all(
+    messages.map(async (message) => ({
+      role: message.role,
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : await normalizeContentParts(message.content),
+    }))
+  );
+}
+
+/**
+ * 归一化多模态内容片段。
+ */
+async function normalizeContentParts(
+  parts: AIInputPart[]
+): Promise<Array<Record<string, unknown>>> {
+  return Promise.all(
+    parts.map(async (part) => {
+      switch (part.type) {
+        case "text":
+          return {
+            type: "text",
+            text: part.text,
+          };
+        case "image_url":
+          return {
+            type: "image_url",
+            image_url: {
+              url: part.imageUrl,
+              ...(part.detail ? { detail: part.detail } : {}),
+            },
+          };
+        case "image_asset":
+          return {
+            type: "image_url",
+            image_url: {
+              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              ...(part.detail ? { detail: part.detail } : {}),
+            },
+          };
+        case "audio_url":
+          return {
+            type: "audio_url",
+            audio_url: {
+              url: part.audioUrl,
+              ...(part.format ? { format: part.format } : {}),
+            },
+          };
+        case "audio_asset":
+          return {
+            type: "audio_url",
+            audio_url: {
+              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              ...(part.format ? { format: part.format } : {}),
+            },
+          };
+        case "video_url":
+          return {
+            type: "video_url",
+            video_url: {
+              url: part.videoUrl,
+            },
+          };
+        case "video_asset":
+          return {
+            type: "video_url",
+            video_url: {
+              url: await resolveStorageAssetUrl(part.bucket, part.key),
+            },
+          };
+        case "file_asset":
+          return {
+            type: "file_url",
+            file_url: {
+              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              ...(part.filename ? { filename: part.filename } : {}),
+              ...(part.mimeType ? { mime_type: part.mimeType } : {}),
+            },
+          };
+      }
+    })
+  );
+}
+
+/**
+ * 将平台存储对象转为受控可访问 URL。
+ */
+async function resolveStorageAssetUrl(bucket: string, key: string) {
+  const provider = getStorageProvider();
+  return provider.getSignedUrl(key, bucket, 3600);
 }

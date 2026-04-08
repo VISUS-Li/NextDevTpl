@@ -75,12 +75,21 @@
     - 高失败率告警
     - 高成本请求告警
   - 已完成接口级测试，覆盖“普通用户请求 -> 管理员退款 -> 健康检查下线 -> 告警查询”链路
+- Phase 6 多模态阶段 1 已完成：
+  - `POST /api/platform/ai/chat` 已支持文本 + 图片输入
+  - `messages[].content` 已支持字符串和 part 数组两种形式
+  - 已支持平台受控图片资产输入 `image_asset`
+  - 已支持 `input` 作为 `messages` 的兼容别名，便于后续接 `responses` 风格
+  - 已在 API 返回中补充 `output` 字段和更细的 usage 明细字段
+  - 已新增独立测试文件 `src/test/platform/ai-chat-multimodal-phase1.test.ts`
+  - 已通过接口级测试，覆盖图片 URL 输入和平台资产输入两条链路
 
 ### 当前状态
 
-- 本文档定义的所有阶段能力已经全部落成
-- 当前已经进入“可直接接工具使用，并可由管理员维护 AI 路由、计费和运维动作”的状态
-- 后续新增能力应优先在现有 AI 网关和账本结构上迭代，而不是重起一套新系统
+- 基础 AI 网关、计费、运维和管理闭环已经全部落成
+- 多模态改造已完成第 1 阶段，当前可直接用于“文本 + 图片输入，文本输出”场景
+- 下一阶段应继续补齐音频输入 / 输出与更细 usage 结构
+- 多模态能力仍应优先在现有 AI 网关和账本结构上迭代，而不是重起一套新系统
 
 ### 最终完成说明
 
@@ -93,7 +102,7 @@
 5. 管理员可查看请求明细与汇总
 6. 管理员可执行健康检查、手工调账和告警排查
 
-当前剩余工作不再是“基础能力缺失”，而是未来可按业务需要继续叠加更细的 UI、更多 request type 和外部网关接入。
+当前剩余工作主要集中在多模态后续阶段，包括音频、视频、任务型输出与结果轮询。
 
 ## 2. 当前项目现状
 
@@ -253,6 +262,267 @@
 
 - GeekAI: <https://docs.geekai.co/cn/docs/introduction>
 - 云雾: <https://yunwu.apifox.cn/>
+
+### 3.6 多模态接入时可直接借鉴的实现点
+
+这一节不是为了决定“是否引入外部平台”，而是为了给 `NextDevTpl` 自研多模态能力提供边界和参考，避免闭门造车。
+
+核心结论先写明：
+
+- `NextDevTpl` 仍然自己实现统一 AI 网关
+- 外部项目只借鉴长处，不接管主账本
+- 多模态改造的重点不是“兼容某一家接口”，而是先定义平台内部统一消息结构
+- provider 适配、计费、日志、媒体存储要分层，不要糊在一个接口里
+
+#### 3.6.1 one-api / new-api 值得借鉴的点
+
+适合借鉴：
+
+- 渠道抽象
+  - 把上游站点、分组、线路显式建模
+- 模型映射
+  - 区分平台内部模型名和上游真实模型名
+- 协议兼容层
+  - 同一平台入口兼容 OpenAI、Claude、Gemini 等不同协议
+- 请求尺寸限制
+  - 对大请求体、流式缓冲做上限保护
+- 令牌 / 配额 / 限流
+  - 可参考它们对 key、用户、模型的约束维度
+
+不建议照搬：
+
+- 用户体系
+- 令牌体系
+- 在线充值
+- 平台余额和账单页面
+
+原因：
+
+- 这些能力会和 `NextDevTpl` 现有用户、订阅、credits 账本形成双系统
+- 你的核心维度是“用户 + 工具 + feature + request”，不是“外部 API key 平台”
+
+对 `NextDevTpl` 的具体启发：
+
+- `provider` 必须支持“站点 + 分组 + 路由策略”建模
+- `modelKey` 和 `modelAlias` 必须持续保留
+- 多模态请求体必须有限制，不允许任意超大 base64 直接压进业务接口
+- 如果后续需要兼容更多协议，应该在 adapter 层做转换，而不是在业务入口直接分叉
+
+#### 3.6.2 LiteLLM 值得借鉴的点
+
+LiteLLM 对你最有价值的不是“替你计费”，而是“统一 provider 适配层”的思路。
+
+适合借鉴：
+
+- 统一 OpenAI 风格输入输出
+- `chat`、`responses`、`images`、`audio` 等不同端点的抽象
+- metadata 透传
+- fallback / retry / routing
+- project / user / team 维度的 spend tracking 思路
+- 虚拟 key 和预算控制的接口边界
+
+不建议照搬：
+
+- 让 LiteLLM 成为业务主账本
+- 让工具直接面向 LiteLLM，而绕过 `NextDevTpl`
+
+对 `NextDevTpl` 的具体启发：
+
+- 你自己的 adapter 层要和业务层解耦
+- 统一接口应当允许记录 metadata，并在请求日志里落库
+- 内部要为 `chat completions` 与 `responses` 两类风格预留映射空间
+- 如果未来 provider 数量明显增加，LiteLLM 很适合作为 `NextDevTpl` 后面的第二层网关
+
+#### 3.6.3 Helicone 值得借鉴的点
+
+适合借鉴：
+
+- 请求级 trace
+- 按 user、team、自定义属性做归因
+- latency / cost / provider / model 观测
+- 自定义 metadata / property 标签
+
+对 `NextDevTpl` 的具体启发：
+
+- 每次请求都应附带并记录：
+  - `userId`
+  - `toolKey`
+  - `featureKey`
+  - `requestType`
+  - `requestedModel`
+  - `resolvedProvider`
+  - `resolvedModel`
+  - `requestId`
+- 这些字段应当是你自己的观测基础字段，而不是依赖某个外部平台
+
+#### 3.6.4 OpenMeter 值得借鉴的点
+
+适合借鉴：
+
+- usage event 和 billing ledger 分离
+- quota / entitlement / threshold 概念清晰
+- 计量规则和定价规则分开
+
+对 `NextDevTpl` 的具体启发：
+
+- 多模态请求落库时，要区分“事实用量”和“财务结果”
+- `usage` 不能只记录 `totalTokens`
+- 计费不应和请求执行逻辑写死在一起
+
+#### 3.6.5 BricksLLM 值得借鉴的点
+
+适合借鉴：
+
+- per key / per tenant 的 spend limit
+- 成本和速率限制分层
+- 生产环境下的 usage ledger 思维
+
+对 `NextDevTpl` 的具体启发：
+
+- 后续如果同一用户在不同工具、feature、模型上的成本差异很大，可以继续加：
+  - 用户级预算
+  - 工具级预算
+  - provider 级熔断
+- 这些约束仍应放在 `NextDevTpl` 内，而不是外包给上游平台
+
+#### 3.6.6 GeekAI 这类上游接口值得借鉴的点
+
+GeekAI 的意义在于，它展示了“OpenAI 兼容超集”的现实形态。
+
+从官方接口能确认的有价值信息：
+
+- `chat/completions` 已不只是文本接口
+- 支持 `modalities`
+  - `text`
+  - `image`
+  - `audio`
+  - `video`
+- 响应 usage 里细分了：
+  - `text_tokens`
+  - `audio_tokens`
+  - `image_tokens`
+  - `video_tokens`
+  - `reasoning_tokens`
+  - `billed_units`
+- 支持 `tools`、`tool_choice`、`thinking`、`enable_search`、`enable_url_context`
+- 提供单次对话账单查询接口，可做上游成本核对
+
+对 `NextDevTpl` 的具体启发：
+
+- 内部 usage 结构必须预留多模态细分字段
+- 请求模型不能再只按“文本 chat”建模
+- 未来某些能力是“按次计费”而不是按 token 计费
+- 即便上游号称 OpenAI 兼容，也往往会存在超出 OpenAI 基线的扩展参数
+- 平台不应把这些扩展参数原样暴露给前端，而应在 adapter 层做翻译
+
+#### 3.6.7 面向 `NextDevTpl` 的最终收敛原则
+
+基于上面这些项目，`NextDevTpl` 后续做多模态时，建议收敛成下面这几条硬约束：
+
+1. 统一消息结构
+
+- 内部消息内容不再固定为 `string`
+- 改为“消息 + part 列表”模型
+- part 至少支持：
+  - `text`
+  - `image_url`
+  - `image_asset`
+  - `audio_url`
+  - `audio_asset`
+  - `video_url`
+  - `video_asset`
+  - `file_asset`
+
+2. 统一资产入口
+
+- 图片、音频、视频、文件先进入平台存储
+- AI 请求里只引用平台资产 ID 或受控 URL
+- 不建议把大文件长期以内联 base64 形式直接走业务主接口
+
+3. 统一能力表
+
+- 需要给模型维护能力描述，而不是写死在代码判断里
+- 至少记录：
+  - 是否支持图片输入
+  - 是否支持音频输入
+  - 是否支持视频输入
+  - 是否支持图片输出
+  - 是否支持音频输出
+  - 是否支持工具调用
+  - 是否支持 JSON schema
+  - 是否支持 reasoning
+  - 是否支持 streaming
+
+4. 统一 usage 结构
+
+- 平台内部 usage 至少要支持：
+  - `promptTokens`
+  - `completionTokens`
+  - `totalTokens`
+  - `textInputTokens`
+  - `imageInputTokens`
+  - `audioInputTokens`
+  - `videoInputTokens`
+  - `reasoningTokens`
+  - `cachedTokens`
+  - `billedUnits`
+
+5. 统一 adapter 边界
+
+- 前端和工具侧只调用 `NextDevTpl` 自己的接口
+- provider 差异只存在于 adapter 层
+- 不允许在业务层直接写 Geek / OpenAI / Gemini / Claude 的协议细节
+
+6. 统一计费分层
+
+- 请求执行成功或失败，是调用层事实
+- 上游实际成本，是成本层事实
+- 用户 credits 扣减，是业务账本事实
+- 三者必须分开记录
+
+#### 3.6.8 推荐的多模态落地顺序
+
+为了避免一次改太多，建议按下面顺序推进：
+
+第一阶段：
+
+- 支持文本输入 + 图片输入
+- 输出仍以文本为主
+- 保留现有 chat 主链路
+- 当前状态：已完成
+
+第二阶段：
+
+- 支持音频输入和音频输出
+- 补齐更细 usage 字段
+- 支持 `responses` 风格映射
+- 当前状态：待开发
+
+第三阶段：
+
+- 支持视频输入
+- 支持图片生成 / 视频任务型输出
+- 支持异步任务和结果轮询
+- 当前状态：待开发
+
+这样实现的好处是：
+
+- 和当前仓库现状最连续
+- 风险最小
+- 便于逐阶段验证计费、日志和媒体处理是否正确
+
+参考地址：
+
+- one-api: <https://github.com/songquanpeng/one-api>
+- new-api: <https://github.com/QuantumNous/new-api>
+- LiteLLM: <https://github.com/BerriAI/litellm>
+- LiteLLM Docs: <https://docs.litellm.ai/>
+- OpenMeter: <https://github.com/openmeterio/openmeter>
+- Helicone AI Gateway: <https://github.com/Helicone/ai-gateway>
+- Helicone Custom Properties: <https://docs.helicone.ai/helicone-headers>
+- BricksLLM: <https://github.com/bricks-cloud/BricksLLM>
+- GeekAI Chat Completions: <https://docs.geekai.co/cn/api/chat/completions>
+- GeekAI 对话账单: <https://docs.geekai.co/cn/api/credit/transaction>
 
 ## 4. 总体设计原则
 
@@ -1581,6 +1851,8 @@ providerCostUsd =
 - 分阶段测试方案
 - 验收标准
 - 风险与应对
+- 多模态接入时对 one-api、new-api、LiteLLM、Helicone、OpenMeter、BricksLLM、GeekAI 的可借鉴点
+- `NextDevTpl` 自研多模态时的统一消息结构、资产入口、能力表、usage 结构和 adapter 分层约束
 
 本轮验证方式：
 
