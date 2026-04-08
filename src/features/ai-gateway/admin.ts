@@ -128,6 +128,38 @@ type AlertQueryParams = {
   failureRateThreshold?: number | undefined;
 };
 
+type GeekPresetTier = "cheap" | "standard" | "premium";
+
+type GeekPresetPricingProfile =
+  | "text_basic"
+  | "text_long"
+  | "multimodal_basic"
+  | "multimodal_heavy"
+  | "async_media";
+
+type GeekPresetModelInput = {
+  modelKey: string;
+  modelAlias: string;
+  tier?: GeekPresetTier | undefined;
+  timeoutMs?: number | undefined;
+};
+
+type GeekPresetRuleInput = {
+  toolKey: string;
+  featureKey: string;
+  profile?: GeekPresetPricingProfile | undefined;
+  modelScope?: string | undefined;
+};
+
+type ApplyGeekPresetInput = {
+  apiKey: string;
+  providerKey: string;
+  providerName: string;
+  baseUrl: string;
+  models: GeekPresetModelInput[];
+  pricingRules: GeekPresetRuleInput[];
+};
+
 /**
  * 读取 AI Provider 列表和聚合指标。
  */
@@ -202,6 +234,195 @@ export async function createAIProvider(input: SaveProviderInput) {
 }
 
 /**
+ * 应用 Geek 预设配置。
+ *
+ * 这里的费率是平台侧推荐默认值，用于尽快起步。
+ * 它们不是 Geek 官方计费标准，后续应按你的实际账单再调整。
+ */
+export async function applyGeekPreset(input: ApplyGeekPresetInput) {
+  const [existingProvider] = await db
+    .select()
+    .from(aiRelayProvider)
+    .where(eq(aiRelayProvider.key, input.providerKey))
+    .limit(1);
+
+  const providerId = existingProvider?.id ?? crypto.randomUUID();
+
+  if (existingProvider) {
+    await db
+      .update(aiRelayProvider)
+      .set({
+        name: input.providerName,
+        baseUrl: input.baseUrl,
+        apiKeyEncrypted: encryptRelayApiKey(input.apiKey),
+        enabled: true,
+        priority: 10,
+        weight: 100,
+        requestType: "chat",
+        metadata: {
+          preset: "geek",
+          note: "由 Geek 预设接口维护",
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(aiRelayProvider.id, existingProvider.id));
+  } else {
+    await db.insert(aiRelayProvider).values({
+      id: providerId,
+      key: input.providerKey,
+      name: input.providerName,
+      providerType: "openai_compatible",
+      baseUrl: input.baseUrl,
+      apiKeyEncrypted: encryptRelayApiKey(input.apiKey),
+      enabled: true,
+      priority: 10,
+      weight: 100,
+      requestType: "chat",
+      metadata: {
+        preset: "geek",
+        note: "由 Geek 预设接口创建",
+      },
+    });
+  }
+
+  for (const model of input.models) {
+    const [existingBinding] = await db
+      .select()
+      .from(aiRelayModelBinding)
+      .where(
+        and(
+          eq(aiRelayModelBinding.providerId, providerId),
+          eq(aiRelayModelBinding.modelKey, model.modelKey)
+        )
+      )
+      .limit(1);
+
+    const bindingValues = getGeekBindingPreset(model);
+
+    if (existingBinding) {
+      await db
+        .update(aiRelayModelBinding)
+        .set({
+          modelAlias: model.modelAlias,
+          enabled: true,
+          priority: bindingValues.priority,
+          weight: bindingValues.weight,
+          costMode: "manual",
+          inputCostPer1k: bindingValues.inputCostPer1k,
+          outputCostPer1k: bindingValues.outputCostPer1k,
+          timeoutMs: bindingValues.timeoutMs,
+          metadata: {
+            preset: "geek",
+            tier: bindingValues.tier,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(aiRelayModelBinding.id, existingBinding.id));
+    } else {
+      await db.insert(aiRelayModelBinding).values({
+        id: crypto.randomUUID(),
+        providerId,
+        modelKey: model.modelKey,
+        modelAlias: model.modelAlias,
+        enabled: true,
+        priority: bindingValues.priority,
+        weight: bindingValues.weight,
+        costMode: "manual",
+        inputCostPer1k: bindingValues.inputCostPer1k,
+        outputCostPer1k: bindingValues.outputCostPer1k,
+        timeoutMs: bindingValues.timeoutMs,
+        metadata: {
+          preset: "geek",
+          tier: bindingValues.tier,
+        },
+      });
+    }
+  }
+
+  for (const rule of input.pricingRules) {
+    const pricingValues = getGeekPricingPreset(rule.profile);
+    const modelScope = rule.modelScope ?? "any";
+    const [existingRule] = await db
+      .select()
+      .from(aiPricingRule)
+      .where(
+        and(
+          eq(aiPricingRule.toolKey, rule.toolKey),
+          eq(aiPricingRule.featureKey, rule.featureKey),
+          eq(aiPricingRule.requestType, "chat"),
+          eq(aiPricingRule.modelScope, modelScope)
+        )
+      )
+      .limit(1);
+
+    if (existingRule) {
+      await db
+        .update(aiPricingRule)
+        .set({
+          billingMode: pricingValues.billingMode,
+          fixedCredits: pricingValues.fixedCredits,
+          inputTokensPerCredit: pricingValues.inputTokensPerCredit,
+          outputTokensPerCredit: pricingValues.outputTokensPerCredit,
+          costUsdPerCredit: pricingValues.costUsdPerCredit,
+          minimumCredits: pricingValues.minimumCredits,
+          enabled: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(aiPricingRule.id, existingRule.id));
+    } else {
+      await db.insert(aiPricingRule).values({
+        id: crypto.randomUUID(),
+        toolKey: rule.toolKey,
+        featureKey: rule.featureKey,
+        requestType: "chat",
+        billingMode: pricingValues.billingMode,
+        modelScope,
+        fixedCredits: pricingValues.fixedCredits,
+        inputTokensPerCredit: pricingValues.inputTokensPerCredit,
+        outputTokensPerCredit: pricingValues.outputTokensPerCredit,
+        costUsdPerCredit: pricingValues.costUsdPerCredit,
+        minimumCredits: pricingValues.minimumCredits,
+        enabled: true,
+      });
+    }
+  }
+
+  const [provider] = await db
+    .select()
+    .from(aiRelayProvider)
+    .where(eq(aiRelayProvider.id, providerId))
+    .limit(1);
+
+  const bindings = await db
+    .select()
+    .from(aiRelayModelBinding)
+    .where(eq(aiRelayModelBinding.providerId, providerId))
+    .orderBy(aiRelayModelBinding.priority, aiRelayModelBinding.modelKey);
+
+  const pricingRules = await db
+    .select()
+    .from(aiPricingRule)
+    .where(
+      and(
+        inArray(
+          aiPricingRule.featureKey,
+          input.pricingRules.map((item) => item.featureKey)
+        ),
+        inArray(
+          aiPricingRule.toolKey,
+          input.pricingRules.map((item) => item.toolKey)
+        )
+      )
+    );
+
+  return {
+    provider,
+    bindings,
+    pricingRules,
+  };
+}
+
+/**
  * 更新 AI Provider。
  */
 export async function updateAIProvider(
@@ -237,6 +458,95 @@ export async function updateAIProvider(
     .returning();
 
   return updated;
+}
+
+/**
+ * 按模型档位生成默认成本配置。
+ */
+function getGeekBindingPreset(model: GeekPresetModelInput) {
+  const tier = model.tier ?? "standard";
+  if (tier === "cheap") {
+    return {
+      tier,
+      priority: 10,
+      weight: 100,
+      inputCostPer1k: 200,
+      outputCostPer1k: 800,
+      timeoutMs: model.timeoutMs ?? 30000,
+    };
+  }
+  if (tier === "premium") {
+    return {
+      tier,
+      priority: 10,
+      weight: 100,
+      inputCostPer1k: 1500,
+      outputCostPer1k: 6000,
+      timeoutMs: model.timeoutMs ?? 60000,
+    };
+  }
+  return {
+    tier,
+    priority: 10,
+    weight: 100,
+    inputCostPer1k: 500,
+    outputCostPer1k: 2000,
+    timeoutMs: model.timeoutMs ?? 45000,
+  };
+}
+
+/**
+ * 按业务场景生成平台侧默认计费规则。
+ */
+function getGeekPricingPreset(profile: GeekPresetPricingProfile = "text_basic") {
+  if (profile === "text_long") {
+    return {
+      billingMode: "token_based" as const,
+      fixedCredits: null,
+      inputTokensPerCredit: 600,
+      outputTokensPerCredit: 300,
+      costUsdPerCredit: null,
+      minimumCredits: 2,
+    };
+  }
+  if (profile === "multimodal_basic") {
+    return {
+      billingMode: "token_based" as const,
+      fixedCredits: null,
+      inputTokensPerCredit: 400,
+      outputTokensPerCredit: 200,
+      costUsdPerCredit: null,
+      minimumCredits: 3,
+    };
+  }
+  if (profile === "multimodal_heavy") {
+    return {
+      billingMode: "token_based" as const,
+      fixedCredits: null,
+      inputTokensPerCredit: 250,
+      outputTokensPerCredit: 120,
+      costUsdPerCredit: null,
+      minimumCredits: 5,
+    };
+  }
+  if (profile === "async_media") {
+    return {
+      billingMode: "fixed_credits" as const,
+      fixedCredits: 8,
+      inputTokensPerCredit: null,
+      outputTokensPerCredit: null,
+      costUsdPerCredit: null,
+      minimumCredits: 8,
+    };
+  }
+  return {
+    billingMode: "fixed_credits" as const,
+    fixedCredits: 2,
+    inputTokensPerCredit: null,
+    outputTokensPerCredit: null,
+    costUsdPerCredit: null,
+    minimumCredits: 2,
+  };
 }
 
 /**

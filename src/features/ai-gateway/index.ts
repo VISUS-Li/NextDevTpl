@@ -1,4 +1,5 @@
 export {
+  applyGeekPreset,
   createAIBillingAdjustment,
   createAIModelBinding,
   createAIPricingRule,

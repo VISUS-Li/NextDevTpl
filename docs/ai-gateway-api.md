@@ -492,6 +492,106 @@ data: [DONE]
 
 `DELETE /api/platform/ai/admin/providers/:id`
 
+### 一键写入 Geek 预置配置
+
+`POST /api/platform/ai/admin/presets/geek`
+
+用于快速写入一套可直接开用的 Geek provider、模型绑定和计费规则。
+
+```json
+{
+  "apiKey": "gk-xxx",
+  "providerKey": "geek-default",
+  "providerName": "Geek Default",
+  "baseUrl": "https://geekai.co/api/v1",
+  "models": [
+    {
+      "modelKey": "gpt-5-mini",
+      "modelAlias": "gpt-5-mini",
+      "tier": "standard",
+      "timeoutMs": 45000
+    },
+    {
+      "modelKey": "gpt-4.1-mini",
+      "modelAlias": "gpt-4.1-mini",
+      "tier": "cheap"
+    }
+  ],
+  "pricingRules": [
+    {
+      "toolKey": "redink",
+      "featureKey": "rewrite",
+      "profile": "text_basic"
+    },
+    {
+      "toolKey": "redink",
+      "featureKey": "image-generate",
+      "profile": "async_media"
+    }
+  ]
+}
+```
+
+### 字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `apiKey` | Geek 平台 API Key |
+| `providerKey` | 平台内部 provider key，默认 `geek-default` |
+| `providerName` | 管理后台展示名称 |
+| `baseUrl` | Geek OpenAI 兼容入口，默认 `https://geekai.co/api/v1` |
+| `models[].tier` | 平台推荐成本档位，可选 `cheap / standard / premium` |
+| `pricingRules[].profile` | 平台推荐计费模板，可选 `text_basic / text_long / multimodal_basic / multimodal_heavy / async_media` |
+
+### 默认档位说明
+
+这些值是 `NextDevTpl` 为“先开起来”准备的推荐默认值，不是 Geek 官方报价。
+接入后应根据你自己的 Geek 实际账单和业务毛利目标再调整。
+
+#### `models[].tier`
+
+| 档位 | 输入成本 | 输出成本 | 默认超时 |
+|------|------|------|------|
+| `cheap` | `200` 微美元 / 1k token | `800` 微美元 / 1k token | `30000ms` |
+| `standard` | `500` 微美元 / 1k token | `2000` 微美元 / 1k token | `45000ms` |
+| `premium` | `1500` 微美元 / 1k token | `6000` 微美元 / 1k token | `60000ms` |
+
+#### `pricingRules[].profile`
+
+| 模板 | 计费模式 | 默认值 |
+|------|------|------|
+| `text_basic` | `fixed_credits` | 固定扣 `2` 积分，最低 `2` |
+| `text_long` | `token_based` | 输入 `600` token / 积分，输出 `300` token / 积分，最低 `2` |
+| `multimodal_basic` | `token_based` | 输入 `400` token / 积分，输出 `200` token / 积分，最低 `3` |
+| `multimodal_heavy` | `token_based` | 输入 `250` token / 积分，输出 `120` token / 积分，最低 `5` |
+| `async_media` | `fixed_credits` | 固定扣 `8` 积分，最低 `8` |
+
+### 成功响应
+
+```json
+{
+  "success": true,
+  "provider": {
+    "key": "geek-default"
+  },
+  "bindings": [
+    {
+      "modelKey": "gpt-5-mini",
+      "inputCostPer1k": 500,
+      "outputCostPer1k": 2000
+    }
+  ],
+  "pricingRules": [
+    {
+      "toolKey": "redink",
+      "featureKey": "rewrite",
+      "billingMode": "fixed_credits",
+      "fixedCredits": 2
+    }
+  ]
+}
+```
+
 ## 5.3 Model Binding 管理
 
 ### 读取列表
@@ -665,6 +765,12 @@ GET /api/platform/ai/admin/alerts?costAlertMicros=50000&failureRateThreshold=0.5
 2. 创建 model binding
 3. 创建 pricing rule
 4. 给目标工具配置允许使用的模型和 provider
+
+如果是 Geek 接入，也可以直接调用一次：
+
+- `POST /api/platform/ai/admin/presets/geek`
+
+这样可以一次写入 provider、模型绑定和建议计费规则，再按业务需要微调。
 
 ## 6.2 工具运行时调用
 
