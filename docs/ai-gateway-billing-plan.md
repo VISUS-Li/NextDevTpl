@@ -31,14 +31,18 @@
   - 已改造 `src/lib/ai/openai.ts`，支持返回 usage
   - 已完成接口级测试，覆盖成功扣费和余额不足两条主链路
   - 已将最新 schema 推送到本地开发数据库
+- Phase 2 后端回退链路已完成：
+  - 已支持多个 provider 的优先级路由
+  - 已支持 `priority_failover`
+  - 已新增 `ai_request_attempt` 明细记录
+  - 已完成接口级测试，覆盖主中转站失败后自动回退到备份中转站
 
 ### 进行中
 
-- Phase 2：多中转站回退能力
+- Phase 3：token 计费与成本对账
 
 ### 待完成
 
-- Phase 3：token 计费与成本对账
 - Phase 4：流式与更多请求类型
 - Phase 5：运营化与长期维护
 

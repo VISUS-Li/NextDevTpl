@@ -15,6 +15,7 @@ import {
   aiPricingRule,
   aiRelayModelBinding,
   aiRelayProvider,
+  aiRequestAttempt,
   aiRequestLog,
   creditsTransaction,
 } from "@/db/schema";
@@ -145,6 +146,42 @@ async function seedAIGatewayBaseData() {
       enabled: true,
     });
   }
+}
+
+/**
+ * 新增一个额外 provider，供回退场景测试。
+ */
+async function insertFallbackProvider(providerKey: string, priority: number) {
+  const providerId = crypto.randomUUID();
+  const bindingId = crypto.randomUUID();
+  createdProviderIds.push(providerId);
+  createdBindingIds.push(bindingId);
+
+  await db.insert(aiRelayProvider).values({
+    id: providerId,
+    key: providerKey,
+    name: providerKey,
+    baseUrl: `https://${providerKey}.mock.test/v1`,
+    apiKeyEncrypted: encryptRelayApiKey(`${providerKey}-key`),
+    enabled: true,
+    priority,
+    weight: 100,
+    requestType: "chat",
+  });
+
+  await db.insert(aiRelayModelBinding).values({
+    id: bindingId,
+    providerId,
+    modelKey: "gpt-4o-mini",
+    modelAlias: "gpt-4o-mini",
+    enabled: true,
+    priority,
+    weight: 100,
+    costMode: "manual",
+    inputCostPer1k: 150,
+    outputCostPer1k: 600,
+    timeoutMs: 30000,
+  });
 }
 
 /**
@@ -293,5 +330,104 @@ describe("Platform AI Chat API", () => {
     expect(data.success).toBe(false);
     expect(data.error).toBe("insufficient_credits");
     expect(chatCompletionWithUsageMock).not.toHaveBeenCalled();
+  });
+
+  it("主中转站失败时应自动回退到下一个 provider", async () => {
+    await seedAIGatewayBaseData();
+    await insertFallbackProvider("yunwu-backup", 2);
+
+    const testEmail = `1183989659+phase2-fallback-${Date.now()}@qq.com`;
+    const creditsUser = await createTestUserWithCredits({
+      email: testEmail,
+      name: "AI 回退测试用户",
+      initialCredits: 10,
+    });
+    createdUserIds.push(creditsUser.user.id);
+
+    await saveAdminToolConfig({
+      toolKey: "redink",
+      actorId: creditsUser.user.id,
+      values: {
+        config1: "gpt-4o-mini",
+        config2: "priority_failover",
+        config3: "geek-default",
+        json1: ["gpt-4o-mini"],
+        json2: {
+          rewrite: {
+            enabled: true,
+            billingMode: "fixed_credits",
+            defaultCredits: 3,
+            minimumCredits: 3,
+          },
+        },
+        json3: ["geek-default", "yunwu-backup"],
+      },
+    });
+
+    mockSession({
+      id: creditsUser.user.id,
+      name: creditsUser.user.name,
+      email: creditsUser.user.email,
+    });
+
+    chatCompletionWithUsageMock
+      .mockRejectedValueOnce(new Error("primary provider unavailable"))
+      .mockResolvedValueOnce({
+        content: "回退成功后的内容",
+        model: "gpt-4o-mini",
+        responseId: "resp_fallback",
+        usage: {
+          promptTokens: 50,
+          completionTokens: 60,
+          totalTokens: 110,
+        },
+        raw: {
+          id: "resp_fallback",
+          model: "gpt-4o-mini",
+          usage: {
+            prompt_tokens: 50,
+            completion_tokens: 60,
+            total_tokens: 110,
+          },
+        },
+      });
+
+    const response = await postAIChat(
+      new Request("http://localhost:3000/api/platform/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool: "redink",
+          feature: "rewrite",
+          messages: [{ role: "user", content: "请帮我再次改写这段文案" }],
+          stream: false,
+        }),
+      })
+    );
+    const data = await response.json();
+
+    const [requestLog] = await db
+      .select()
+      .from(aiRequestLog)
+      .where(eq(aiRequestLog.requestId, data.requestId))
+      .limit(1);
+    const attempts = await db
+      .select()
+      .from(aiRequestAttempt)
+      .where(eq(aiRequestAttempt.requestId, data.requestId));
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.provider).toBe("yunwu-backup");
+    expect(requestLog?.attemptCount).toBe(2);
+    expect(requestLog?.winningAttemptNo).toBe(2);
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.providerKey).toBe("geek-default");
+    expect(attempts[0]?.status).toBe("failed");
+    expect(attempts[1]?.providerKey).toBe("yunwu-backup");
+    expect(attempts[1]?.status).toBe("success");
+    expect(chatCompletionWithUsageMock).toHaveBeenCalledTimes(2);
   });
 });
