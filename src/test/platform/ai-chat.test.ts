@@ -12,6 +12,7 @@ import { POST as postAIChat } from "@/app/api/platform/ai/chat/route";
 import { saveAdminToolConfig, seedDefaultToolConfigProject } from "@/features/tool-config";
 import { auth } from "@/lib/auth";
 import {
+  aiBillingRecord,
   aiPricingRule,
   aiRelayModelBinding,
   aiRelayProvider,
@@ -146,6 +147,29 @@ async function seedAIGatewayBaseData() {
       enabled: true,
     });
   }
+}
+
+/**
+ * 新增一条计费规则。
+ */
+async function insertPricingRule(
+  values: Partial<typeof aiPricingRule.$inferInsert> & {
+    toolKey: string;
+    featureKey: string;
+    billingMode: "fixed_credits" | "token_based" | "cost_plus";
+  }
+) {
+  const ruleId = crypto.randomUUID();
+  createdRuleIds.push(ruleId);
+
+  await db.insert(aiPricingRule).values({
+    id: ruleId,
+    requestType: "chat",
+    modelScope: "any",
+    minimumCredits: 0,
+    enabled: true,
+    ...values,
+  });
 }
 
 /**
@@ -429,5 +453,119 @@ describe("Platform AI Chat API", () => {
     expect(attempts[1]?.providerKey).toBe("yunwu-backup");
     expect(attempts[1]?.status).toBe("success");
     expect(chatCompletionWithUsageMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("token_based 规则应按 usage 扣费，并写入 billing record", async () => {
+    await seedAIGatewayBaseData();
+    await insertPricingRule({
+      toolKey: "redink",
+      featureKey: "analysis",
+      billingMode: "token_based",
+      inputTokensPerCredit: 100,
+      outputTokensPerCredit: 80,
+      minimumCredits: 2,
+    });
+
+    const testEmail = `1183989659+phase3-token-${Date.now()}@qq.com`;
+    const creditsUser = await createTestUserWithCredits({
+      email: testEmail,
+      name: "AI Token 计费测试用户",
+      initialCredits: 20,
+    });
+    createdUserIds.push(creditsUser.user.id);
+
+    await saveAdminToolConfig({
+      toolKey: "redink",
+      actorId: creditsUser.user.id,
+      values: {
+        config1: "gpt-4o-mini",
+        config2: "primary_only",
+        config3: "geek-default",
+        json1: ["gpt-4o-mini"],
+        json2: {
+          analysis: {
+            enabled: true,
+            billingMode: "token_based",
+            minimumCredits: 2,
+          },
+        },
+        json3: ["geek-default"],
+      },
+    });
+
+    mockSession({
+      id: creditsUser.user.id,
+      name: creditsUser.user.name,
+      email: creditsUser.user.email,
+    });
+
+    chatCompletionWithUsageMock.mockResolvedValue({
+      content: "分析完成",
+      model: "gpt-4o-mini",
+      responseId: "resp_token",
+      usage: {
+        promptTokens: 250,
+        completionTokens: 160,
+        totalTokens: 410,
+      },
+      raw: {
+        id: "resp_token",
+        model: "gpt-4o-mini",
+        usage: {
+          prompt_tokens: 250,
+          completion_tokens: 160,
+          total_tokens: 410,
+        },
+      },
+    });
+
+    const response = await postAIChat(
+      new Request("http://localhost:3000/api/platform/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool: "redink",
+          feature: "analysis",
+          messages: [{ role: "user", content: "请分析这段长文本" }],
+          stream: false,
+        }),
+      })
+    );
+    const data = await response.json();
+
+    const [requestLog] = await db
+      .select()
+      .from(aiRequestLog)
+      .where(eq(aiRequestLog.requestId, data.requestId))
+      .limit(1);
+    const [billingRecord] = await db
+      .select()
+      .from(aiBillingRecord)
+      .where(eq(aiBillingRecord.requestId, data.requestId))
+      .limit(1);
+    const transactions = await db
+      .select()
+      .from(creditsTransaction)
+      .where(eq(creditsTransaction.userId, creditsUser.user.id));
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.billing.billingMode).toBe("token_based");
+    expect(data.billing.chargedCredits).toBe(5);
+    expect(data.billing.remainingBalance).toBe(15);
+    expect(requestLog?.providerCostUsd).toBe(134);
+    expect(requestLog?.chargedCredits).toBe(5);
+    expect(billingRecord?.status).toBe("charged");
+    expect(billingRecord?.chargedCredits).toBe(5);
+    expect(
+      transactions.some(
+        (item) =>
+          item.type === "consumption" &&
+          item.amount === 5 &&
+          item.creditAccount === "SERVICE:ai:redink:analysis"
+      )
+    ).toBe(true);
   });
 });

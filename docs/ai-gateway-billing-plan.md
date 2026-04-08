@@ -36,14 +36,20 @@
   - 已支持 `priority_failover`
   - 已新增 `ai_request_attempt` 明细记录
   - 已完成接口级测试，覆盖主中转站失败后自动回退到备份中转站
+- Phase 3 后端计费能力已完成：
+  - 已支持 `fixed_credits`
+  - 已支持 `token_based`
+  - 已支持平台侧 provider 成本计算
+  - 已新增 `ai_billing_record`
+  - 已完成接口级测试，覆盖 token 计费与 AI 请求到积分账本的关联
+  - 当前已验证“平台成本”和“用户扣费”是两套独立口径
 
 ### 进行中
 
-- Phase 3：token 计费与成本对账
+- Phase 4：流式与更多请求类型
 
 ### 待完成
 
-- Phase 4：流式与更多请求类型
 - Phase 5：运营化与长期维护
 
 ## 2. 当前项目现状
