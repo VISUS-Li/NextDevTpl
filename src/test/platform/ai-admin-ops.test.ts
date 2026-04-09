@@ -146,6 +146,7 @@ describe("Platform AI Admin Ops API", () => {
             providerId,
             modelKey: "gpt-4o-mini",
             modelAlias: "gpt-4o-mini",
+            capabilities: ["text"],
             enabled: true,
             priority: 1,
             weight: 100,

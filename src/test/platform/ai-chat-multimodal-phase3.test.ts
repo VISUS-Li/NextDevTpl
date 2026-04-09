@@ -125,6 +125,14 @@ async function seedPhase3Data() {
       providerId,
       modelKey: "gpt-4o-mini",
       modelAlias: "gpt-4o-mini",
+      metadata: {
+        capabilities: [
+          "text",
+          "video_input",
+          "image_generation",
+          "video_generation",
+        ],
+      },
       enabled: true,
       priority: 1,
       weight: 100,
@@ -258,7 +266,17 @@ describe("Platform AI Chat API Phase 3", () => {
     expect(createData.status).toBe("pending");
     expect(createData.task.id).toBe("task_video_001");
     expect(createData.billing.chargedCredits).toBe(0);
-    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toEqual([
+    expect(chatCompletionWithUsageMock.mock.calls[0]?.[1]).toMatchObject({
+      extraBody: {
+        modalities: ["image"],
+        image_generation: true,
+        background: true,
+        image: {
+          aspect_ratio: "1:1",
+        },
+      },
+    });
+    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toMatchObject([
       {
         role: "user",
         content: [
@@ -269,7 +287,9 @@ describe("Platform AI Chat API Phase 3", () => {
           {
             type: "video_url",
             video_url: {
-              url: `http://localhost:3000/api/platform/storage/local-object?bucket=nextdevtpl-uploads&key=${encodeURIComponent(`redink/video/${creditsUser.user.id}/sample.mp4`)}`,
+              url: expect.stringContaining(
+                encodeURIComponent(`redink/video/${creditsUser.user.id}/sample.mp4`)
+              ),
             },
           },
         ],

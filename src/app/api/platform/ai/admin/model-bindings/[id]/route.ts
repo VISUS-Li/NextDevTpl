@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  AI_MODEL_CAPABILITIES,
   deleteAIModelBinding,
   updateAIModelBinding,
 } from "@/features/ai-gateway/admin";
@@ -12,6 +13,7 @@ const bindingUpdateSchema = z.object({
   providerId: z.string().trim().min(1).optional(),
   modelKey: z.string().trim().min(1).max(120).optional(),
   modelAlias: z.string().trim().min(1).max(120).optional(),
+  capabilities: z.array(z.enum(AI_MODEL_CAPABILITIES)).min(1).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().min(0).max(100000).optional(),
   weight: z.number().int().min(1).max(100000).optional(),

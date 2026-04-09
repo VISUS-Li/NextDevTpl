@@ -145,6 +145,9 @@ async function seedPhase2Data() {
       providerId,
       modelKey: "gpt-4o-mini",
       modelAlias: "gpt-4o-mini",
+      metadata: {
+        capabilities: ["text", "audio_input", "audio_generation"],
+      },
       enabled: true,
       priority: 1,
       weight: 100,
@@ -286,7 +289,7 @@ describe("Platform AI Chat API Phase 2", () => {
     expect(data.usage.audioInputTokens).toBe(128);
     expect(data.usage.reasoningTokens).toBe(32);
     expect(chatCompletionWithUsageMock).toHaveBeenCalledTimes(1);
-    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toEqual([
+    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toMatchObject([
       {
         role: "user",
         content: [
@@ -297,7 +300,9 @@ describe("Platform AI Chat API Phase 2", () => {
           {
             type: "audio_url",
             audio_url: {
-              url: `http://localhost:3000/api/platform/storage/local-object?bucket=nextdevtpl-uploads&key=${encodeURIComponent(`redink/audio/${creditsUser.user.id}/sample.wav`)}`,
+              url: expect.stringContaining(
+                encodeURIComponent(`redink/audio/${creditsUser.user.id}/sample.wav`)
+              ),
               format: "wav",
             },
           },

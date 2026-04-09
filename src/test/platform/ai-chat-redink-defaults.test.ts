@@ -87,6 +87,9 @@ async function ensureDefaultRelayBinding() {
     providerId: provider.id,
     modelKey: "gpt-4o-mini",
     modelAlias: "gpt-4o-mini",
+    metadata: {
+      capabilities: ["text", "image_generation"],
+    },
     enabled: true,
     priority: 10,
     weight: 100,

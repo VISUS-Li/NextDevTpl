@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  AI_MODEL_CAPABILITIES,
   createAIModelBinding,
   listAIModelBindings,
 } from "@/features/ai-gateway/admin";
@@ -12,6 +13,7 @@ const bindingSchema = z.object({
   providerId: z.string().trim().min(1),
   modelKey: z.string().trim().min(1).max(120),
   modelAlias: z.string().trim().min(1).max(120),
+  capabilities: z.array(z.enum(AI_MODEL_CAPABILITIES)).min(1).default(["text"]),
   enabled: z.boolean().default(true),
   priority: z.number().int().min(0).max(100000).default(100),
   weight: z.number().int().min(1).max(100000).default(100),

@@ -123,6 +123,9 @@ async function seedAIBaseData() {
       providerId,
       modelKey: "gpt-4o-mini",
       modelAlias: "gpt-4o-mini",
+      metadata: {
+        capabilities: ["text", "image_input"],
+      },
       enabled: true,
       priority: 1,
       weight: 100,

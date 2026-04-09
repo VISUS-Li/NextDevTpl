@@ -91,6 +91,29 @@
 
 这个值由平台决定，调用方只会在响应里看到最终命中的 provider。
 
+### 3.5 `model capability`
+
+表示某条模型绑定已经确认支持的能力，例如：
+
+- `text`
+- `image_input`
+- `image_generation`
+- `audio_input`
+- `audio_generation`
+- `video_input`
+- `video_generation`
+
+平台会按请求内容自动推导所需能力，再只从声明了这些能力的模型绑定里选择 provider。
+
+例如：
+
+- 普通文本对话至少需要 `text`
+- 带参考图输入的请求需要 `image_input`
+- 生成图片的请求需要 `image_generation`
+- 音频输入和音频输出会分别要求 `audio_input`、`audio_generation`
+
+如果当前模型虽然在工具白名单里，但模型绑定没有声明所需能力，平台会直接返回 `model_not_allowed`，而不是继续把请求发给上游碰运气。
+
 ## 4. 工具侧接口
 
 ## 4.1 统一 AI Chat
@@ -607,6 +630,7 @@ data: [DONE]
   "providerId": "provider_xxx",
   "modelKey": "gpt-4o-mini",
   "modelAlias": "gpt-4o-mini",
+  "capabilities": ["text"],
   "enabled": true,
   "priority": 1,
   "weight": 100,
@@ -623,16 +647,58 @@ data: [DONE]
 
 | 字段 | 说明 |
 |------|------|
+| `providerId` | 这条模型绑定所属的 provider |
 | `modelKey` | 平台统一模型名 |
 | `modelAlias` | 上游真实模型名 |
+| `capabilities` | 模型能力声明，至少要包含 1 项 |
 | `costMode` | `manual` 或 `fixed` |
 | `inputCostPer1k` | 每 1k 输入 token 的成本，单位为微美元 |
 | `outputCostPer1k` | 每 1k 输出 token 的成本，单位为微美元 |
 | `fixedCostUsd` | 固定成本，单位为微美元 |
 
+### `capabilities` 可选值
+
+| 值 | 说明 |
+|------|------|
+| `text` | 支持文本输入与文本输出 |
+| `image_input` | 支持图片 URL、图片资产、参考图输入 |
+| `image_generation` | 支持直接生成图片结果 |
+| `audio_input` | 支持音频 URL、音频资产输入 |
+| `audio_generation` | 支持音频或语音结果输出 |
+| `video_input` | 支持视频 URL、视频资产输入 |
+| `video_generation` | 支持直接生成视频结果 |
+
+### 后台配置说明
+
+管理后台的“模型绑定”页面里，`能力声明` 已改成多选控件。
+管理员应只勾选该模型已经在真实上游确认支持的能力，不应把所有能力都默认勾上。
+
+常见建议：
+
+- 普通文本模型通常只勾选 `text`
+- 支持看图但不出图的模型勾选 `text + image_input`
+- 图片生成模型至少勾选 `image_generation`
+- 既支持参考图又支持出图的模型勾选 `text + image_input + image_generation`
+
 ### 更新
 
 `PATCH /api/platform/ai/admin/model-bindings/:id`
+
+可更新字段：
+
+- `providerId`
+- `modelKey`
+- `modelAlias`
+- `capabilities`
+- `enabled`
+- `priority`
+- `weight`
+- `costMode`
+- `inputCostPer1k`
+- `outputCostPer1k`
+- `fixedCostUsd`
+- `maxRetries`
+- `timeoutMs`
 
 ### 删除
 
@@ -796,6 +862,7 @@ GET /api/platform/ai/admin/alerts?costAlertMicros=50000&failureRateThreshold=0.5
 | `unauthorized` | 引导用户重新登录 |
 | `insufficient_credits` | 提示积分不足并跳转充值 |
 | `feature_disabled` | 提示当前功能未开放 |
+| `model_not_allowed` | 提示当前模型不支持该能力，提醒管理员检查模型绑定能力声明 |
 | `provider_unavailable` | 提示服务繁忙，稍后重试 |
 | `upstream_error` | 可重试 1 次，仍失败则提示稍后再试 |
 

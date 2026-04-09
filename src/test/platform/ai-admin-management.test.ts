@@ -149,6 +149,7 @@ describe("Platform AI Admin Management API", () => {
             providerId,
             modelKey: "gpt-4o-mini",
             modelAlias: "gpt-4o-mini",
+            capabilities: ["text"],
             enabled: true,
             priority: 1,
             weight: 100,
@@ -309,6 +310,176 @@ describe("Platform AI Admin Management API", () => {
         (item: { providerKey: string; featureKey: string; userEmail: string }) =>
           item.providerKey === providerKey &&
           item.featureKey === "admin-rewrite" &&
+          item.userEmail === normalUser.user.email
+      )
+    ).toBe(true);
+  });
+
+  it("失败请求也应显示实际尝试过的 provider", async () => {
+    await seedDefaultToolConfigProject();
+
+    const adminUser = await createTestUser({
+      email: `1183989659+phase4-admin-failed-${Date.now()}@qq.com`,
+      name: "AI 管理失败测试用户",
+      role: "admin",
+    });
+    createdUserIds.push(adminUser.id);
+
+    const normalUser = await createTestUserWithCredits({
+      email: `1183989659+phase4-user-failed-${Date.now()}@qq.com`,
+      name: "AI 普通失败测试用户",
+      initialCredits: 20,
+    });
+    createdUserIds.push(normalUser.user.id);
+
+    mockSession({
+      id: adminUser.id,
+      name: adminUser.name,
+      email: adminUser.email,
+      role: "admin",
+    });
+
+    const providerResponse = await postProvider(
+      new Request("http://localhost:3000/api/platform/ai/admin/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: `geek-admin-failed-${Date.now()}`,
+          name: "Geek Admin Failed",
+          baseUrl: "https://geek-admin-failed.mock.test/v1",
+          apiKey: "geek-admin-failed-key",
+          enabled: true,
+          priority: 1,
+          weight: 100,
+          requestType: "chat",
+        }),
+      })
+    );
+    const providerData = await providerResponse.json();
+    const providerId = providerData.provider.id as string;
+    const providerKey = providerData.provider.key as string;
+    createdProviderIds.push(providerId);
+
+    const bindingResponse = await postModelBinding(
+      new Request(
+        "http://localhost:3000/api/platform/ai/admin/model-bindings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            providerId,
+            modelKey: "gpt-4o-mini",
+            modelAlias: "gpt-4o-mini",
+            capabilities: ["text"],
+            enabled: true,
+            priority: 1,
+            weight: 100,
+            costMode: "manual",
+            inputCostPer1k: 150,
+            outputCostPer1k: 600,
+            fixedCostUsd: 0,
+            maxRetries: 0,
+            timeoutMs: 30000,
+          }),
+        }
+      )
+    );
+    const bindingData = await bindingResponse.json();
+    createdBindingIds.push(bindingData.binding.id);
+
+    const pricingResponse = await postPricingRule(
+      new Request(
+        "http://localhost:3000/api/platform/ai/admin/pricing-rules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toolKey: "redink",
+            featureKey: "admin-rewrite-failed",
+            requestType: "chat",
+            billingMode: "fixed_credits",
+            modelScope: "any",
+            fixedCredits: 4,
+            inputTokensPerCredit: null,
+            outputTokensPerCredit: null,
+            costUsdPerCredit: null,
+            minimumCredits: 4,
+            enabled: true,
+          }),
+        }
+      )
+    );
+    const pricingData = await pricingResponse.json();
+    createdRuleIds.push(pricingData.pricingRule.id);
+
+    await saveUserToolConfig({
+      toolKey: "redink",
+      actorId: normalUser.user.id,
+      values: {
+        config1: "gpt-4o-mini",
+        config2: "primary_only",
+        config3: providerKey,
+        json1: ["gpt-4o-mini"],
+        json2: {
+          "admin-rewrite-failed": {
+            enabled: true,
+            billingMode: "fixed_credits",
+            defaultCredits: 4,
+            minimumCredits: 4,
+          },
+        },
+        json3: [providerKey],
+      },
+    });
+
+    chatCompletionWithUsageMock.mockRejectedValueOnce(
+      new Error("mock upstream failed")
+    );
+
+    mockSession({
+      id: normalUser.user.id,
+      name: normalUser.user.name,
+      email: normalUser.user.email,
+      role: "user",
+    });
+
+    const chatResponse = await postAIChat(
+      new Request("http://localhost:3000/api/platform/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: "redink",
+          feature: "admin-rewrite-failed",
+          messages: [{ role: "user", content: "请生成一段会失败的管理测试文案" }],
+        }),
+      })
+    );
+    const chatData = await chatResponse.json();
+
+    expect(chatResponse.status).toBe(502);
+    expect(chatData.success).toBe(false);
+
+    mockSession({
+      id: adminUser.id,
+      name: adminUser.name,
+      email: adminUser.email,
+      role: "admin",
+    });
+
+    const requestsResponse = await getAIRequests(
+      new Request(
+        "http://localhost:3000/api/platform/ai/admin/requests?toolKey=redink&status=failed"
+      )
+    );
+    const requestsData = await requestsResponse.json();
+
+    expect(requestsResponse.status).toBe(200);
+    expect(requestsData.success).toBe(true);
+    expect(
+      requestsData.requests.some(
+        (item: { providerKey: string; featureKey: string; userEmail: string }) =>
+          item.providerKey === providerKey &&
+          item.featureKey === "admin-rewrite-failed" &&
           item.userEmail === normalUser.user.email
       )
     ).toBe(true);

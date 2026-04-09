@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -63,6 +64,7 @@ type BindingData = {
   providerName: string;
   modelKey: string;
   modelAlias: string;
+  capabilities: string[];
   enabled: boolean;
   priority: number;
   weight: number;
@@ -147,6 +149,7 @@ type BindingFormState = {
   providerId: string;
   modelKey: string;
   modelAlias: string;
+  capabilities: string[];
   enabled: string;
   priority: string;
   weight: string;
@@ -192,6 +195,7 @@ const defaultBindingForm: BindingFormState = {
   providerId: "",
   modelKey: "",
   modelAlias: "",
+  capabilities: ["text"],
   enabled: "true",
   priority: "100",
   weight: "100",
@@ -222,6 +226,40 @@ const defaultBillingAdjustmentForm: BillingAdjustmentFormState = {
   credits: "",
   reason: "",
 };
+
+const AI_MODEL_CAPABILITY_OPTIONS = [
+  { value: "text", label: "文本", description: "支持普通文本输入与输出" },
+  {
+    value: "image_input",
+    label: "图片输入",
+    description: "支持参考图、图片 URL、图片资产输入",
+  },
+  {
+    value: "image_generation",
+    label: "图片生成",
+    description: "支持直接返回图片结果",
+  },
+  {
+    value: "audio_input",
+    label: "音频输入",
+    description: "支持音频 URL、音频资产输入",
+  },
+  {
+    value: "audio_generation",
+    label: "音频生成",
+    description: "支持语音或音频结果输出",
+  },
+  {
+    value: "video_input",
+    label: "视频输入",
+    description: "支持视频 URL、视频资产输入",
+  },
+  {
+    value: "video_generation",
+    label: "视频生成",
+    description: "支持直接返回视频结果",
+  },
+] as const;
 
 /**
  * AI 管理台客户端视图。
@@ -338,6 +376,7 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         providerId: bindingForm.providerId,
         modelKey: bindingForm.modelKey.trim(),
         modelAlias: bindingForm.modelAlias.trim(),
+        capabilities: bindingForm.capabilities,
         enabled: bindingForm.enabled === "true",
         priority: toNumber(bindingForm.priority),
         weight: toNumber(bindingForm.weight),
@@ -887,6 +926,47 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                 />
               </Field>
               <Field
+                label="能力声明"
+                info="直接勾选模型已确认支持的能力。图片生成模型至少要声明图片生成，支持参考图还应声明图片输入。"
+              >
+                <div className="rounded-md border p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {AI_MODEL_CAPABILITY_OPTIONS.map((option) => {
+                      const inputId = `binding-capability-${option.value}`;
+                      const checked = bindingForm.capabilities.includes(option.value);
+                      return (
+                        <label
+                          key={option.value}
+                          htmlFor={inputId}
+                          className="flex cursor-pointer items-start gap-3 rounded-md border p-3"
+                        >
+                          <Checkbox
+                            id={inputId}
+                            checked={checked}
+                            onCheckedChange={(nextChecked) =>
+                              setBindingForm((current) => ({
+                                ...current,
+                                capabilities: nextChecked
+                                  ? [...current.capabilities, option.value]
+                                  : current.capabilities.filter(
+                                      (item) => item !== option.value
+                                    ),
+                              }))
+                            }
+                          />
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium">{option.label}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {option.description}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Field>
+              <Field
                 label="成本模式"
                 info="`manual` 表示按输入/输出 token 成本计算真实上游成本；`fixed` 表示每次请求按固定成本记账。多数文本模型建议用 manual，只有上游按次收费时才用 fixed。"
               >
@@ -1072,6 +1152,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                       <div className="text-sm text-muted-foreground">
                         {binding.providerName} · 超时 {binding.timeoutMs} ms
                       </div>
+                      <div className="text-sm text-muted-foreground">
+                        能力: {binding.capabilities.join(", ")}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -1083,6 +1166,7 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                             providerId: binding.providerId,
                             modelKey: binding.modelKey,
                             modelAlias: binding.modelAlias,
+                            capabilities: binding.capabilities,
                             enabled: String(binding.enabled),
                             priority: String(binding.priority),
                             weight: String(binding.weight),

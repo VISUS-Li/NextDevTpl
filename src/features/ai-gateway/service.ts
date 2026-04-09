@@ -43,6 +43,17 @@ import {
 } from "@/lib/ai";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
+const AI_MODEL_CAPABILITIES = [
+  "text",
+  "image_input",
+  "image_generation",
+  "audio_input",
+  "audio_generation",
+  "video_input",
+  "video_generation",
+] as const;
+
+type AIModelCapability = (typeof AI_MODEL_CAPABILITIES)[number];
 
 const REDINK_DEFAULT_PRICING_RULES = [
   {
@@ -331,7 +342,8 @@ async function seedDefaultPricingRules(toolKey: string) {
  */
 async function getCandidateBindings(
   modelKey: string,
-  settings: ResolvedToolAISettings
+  settings: ResolvedToolAISettings,
+  requiredCapabilities: AIModelCapability[]
 ): Promise<CandidateBinding[]> {
   const rows = await db
     .select({
@@ -358,7 +370,14 @@ async function getCandidateBindings(
       desc(aiRelayProvider.weight)
     );
 
-  const filtered = rows.filter((row) => {
+  const capabilityMatchedRows = rows.filter((row) => {
+    const capabilities = readBindingCapabilities(row.binding.metadata);
+    return !requiredCapabilities.some(
+      (capability) => !capabilities.includes(capability)
+    );
+  });
+
+  const filtered = capabilityMatchedRows.filter((row) => {
     if (
       settings.allowedProviderKeys.length > 0 &&
       !settings.allowedProviderKeys.includes(row.provider.key)
@@ -376,6 +395,13 @@ async function getCandidateBindings(
   });
 
   if (filtered.length === 0) {
+    if (requiredCapabilities.length > 0 && capabilityMatchedRows.length === 0) {
+      throw new AIGatewayError(
+        "model_not_allowed",
+        `当前模型未声明所需能力: ${requiredCapabilities.join(", ")}`,
+        403
+      );
+    }
     throw new AIGatewayError(
       "provider_unavailable",
       "没有可用的 AI 中转站",
@@ -438,6 +464,7 @@ export async function executeAIChat(
     params.messages,
     settings
   );
+  const requiredCapabilities = getRequiredCapabilities(params);
 
   await db.insert(aiRequestLog).values({
     id: crypto.randomUUID(),
@@ -466,7 +493,8 @@ export async function executeAIChat(
 
   const candidates = await getCandidateBindings(
     settings.requestedModel,
-    settings
+    settings,
+    requiredCapabilities
   );
   const attempts: Array<{
     candidate: CandidateBinding;
@@ -488,6 +516,9 @@ export async function executeAIChat(
           : {}),
         extraBody: {
           ...(params.modalities ? { modalities: params.modalities } : {}),
+          ...(params.modalities?.includes("image")
+            ? { image_generation: true }
+            : {}),
           ...(params.audio ? { audio: params.audio } : {}),
           ...(params.image ? { image: params.image } : {}),
           ...(params.background !== undefined
@@ -1262,6 +1293,68 @@ function asStringArray(value: unknown) {
         (item): item is string => typeof item === "string" && item.length > 0
       )
     : [];
+}
+
+function getRequiredCapabilities(params: ExecuteAIChatParams) {
+  const capabilities = new Set<AIModelCapability>();
+
+  if (!params.modalities || params.modalities.includes("text")) {
+    capabilities.add("text");
+  }
+  if (
+    params.featureKey === "product-post-image" ||
+    params.featureKey === "image-generation" ||
+    params.modalities?.includes("image")
+  ) {
+    capabilities.add("image_generation");
+  }
+  if (params.modalities?.includes("audio")) {
+    capabilities.add("audio_generation");
+  }
+  if (params.modalities?.includes("video")) {
+    capabilities.add("video_generation");
+  }
+
+  for (const message of params.messages) {
+    const content = message.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      if (
+        part.type === "image_url" ||
+        part.type === "image_asset"
+      ) {
+        capabilities.add("image_input");
+      }
+      if (
+        part.type === "audio_url" ||
+        part.type === "audio_asset"
+      ) {
+        capabilities.add("audio_input");
+      }
+      if (
+        part.type === "video_url" ||
+        part.type === "video_asset"
+      ) {
+        capabilities.add("video_input");
+      }
+    }
+  }
+
+  return Array.from(capabilities);
+}
+
+function readBindingCapabilities(value: unknown): AIModelCapability[] {
+  const metadata = asRecord(value);
+  if (!Array.isArray(metadata?.capabilities)) {
+    return ["text"];
+  }
+  return metadata.capabilities.filter(
+    (item): item is AIModelCapability =>
+      typeof item === "string" &&
+      (AI_MODEL_CAPABILITIES as readonly string[]).includes(item)
+  );
 }
 
 function readOutputFromMeta(value: unknown): AIOutput {

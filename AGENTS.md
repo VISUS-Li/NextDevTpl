@@ -29,6 +29,9 @@
 
 ## 最近记录
 
+- 2026-04-09：为 AI 模型绑定新增能力声明并在网关按能力筛选 provider，原因是图片生成、音视频输入输出不能再默认所有模型都支持；已通过 `pnpm test:run src/test/platform/ai-chat.test.ts src/test/platform/ai-chat-multimodal-phase1.test.ts src/test/platform/ai-chat-multimodal-phase2.test.ts src/test/platform/ai-chat-multimodal-phase3.test.ts src/test/platform/ai-admin-management.test.ts src/test/platform/ai-admin-ops.test.ts` 与 `pnpm exec tsc --noEmit --pretty false` 验证
+- 2026-04-09：修复极客智坊图片任务轮询路径与状态映射，并为图片输出请求自动补 `image_generation`，原因是 `product-post-image` 创建后需通过 `/chat/{id}` 轮询且 `succeed` 需要视为完成，否则 `redink` 会在轮询阶段失败或只拿到文本说明；已通过 `pnpm test:run src/test/tool-config/ai-client.test.ts src/test/platform/ai-chat-multimodal-phase3.test.ts`、`pnpm exec tsc --noEmit --pretty false` 和真实上游 `/chat/{id}` 查询验证
+- 2026-04-09：修复 `redink` 图片生成走 AI 网关时把异步 `pending` 任务误判为空响应的问题，并让后台失败请求回填实际尝试的 provider，原因是 `gemini-2.5-flash` 图片请求会先返回仅含任务元信息的 201 响应且管理台此前显示“未命中”容易误导；已通过 `pnpm test:run src/test/tool-config/ai-client.test.ts`、`pnpm test:run src/test/platform/ai-admin-management.test.ts` 和 `pnpm exec tsc --noEmit --pretty false` 验证
 - 2026-04-09：把 AI 资源访问方式接入管理员工具配置，支持按工具切换 `public/proxy`，原因是需要在后台随时切换 OSS 直连和平台代理回源；已通过 `pnpm typecheck` 和 `pnpm exec biome check ...` 验证，`pnpm test:run src/test/platform/storage-phase1-provider.test.ts` 因缺少 `.env.test` 的 `DATABASE_URL` 未能执行
 - 2026-04-09：新增管理员对象存储页面，展示运行时存储配置、按工具 AI 资源访问方式、资源记录明细和过期清理入口，原因是后台此前没有集中查看和管理存储能力；已通过 `pnpm typecheck` 与 `pnpm exec biome check ...` 验证
 - 2026-04-09：补齐 `.env.test` 以对接本地 PostgreSQL `nextdevtpl`，并完成存储相关平台测试，原因是测试框架只读取 `.env.test`；已通过 `pnpm test:run src/test/platform/storage-*.test.ts`

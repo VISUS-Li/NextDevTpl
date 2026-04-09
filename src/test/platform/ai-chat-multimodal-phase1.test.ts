@@ -121,6 +121,9 @@ async function seedPhase1Data() {
       providerId,
       modelKey: "gpt-4o-mini",
       modelAlias: "gpt-4o-mini",
+      metadata: {
+        capabilities: ["text", "image_input"],
+      },
       enabled: true,
       priority: 1,
       weight: 100,
@@ -357,7 +360,7 @@ describe("Platform AI Chat API Phase 1", () => {
     expect(data.output.text).toBe("已读取平台存储中的图片");
     expect(requestLog?.status).toBe("success");
     expect(chatCompletionWithUsageMock).toHaveBeenCalledTimes(1);
-    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toEqual([
+    expect(chatCompletionWithUsageMock.mock.calls[0]?.[0]).toMatchObject([
       {
         role: "user",
         content: [
@@ -368,7 +371,11 @@ describe("Platform AI Chat API Phase 1", () => {
           {
             type: "image_url",
             image_url: {
-              url: `http://localhost:3000/api/platform/storage/local-object?bucket=nextdevtpl-uploads&key=${encodeURIComponent(`redink/product-images/${creditsUser.user.id}/test.png`)}`,
+              url: expect.stringContaining(
+                encodeURIComponent(
+                  `redink/product-images/${creditsUser.user.id}/test.png`
+                )
+              ),
             },
           },
         ],

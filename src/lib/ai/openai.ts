@@ -381,7 +381,8 @@ export async function chatCompletionWithUsage(
 
   const content = getResponseText(response);
   const output = getResponseOutput(response);
-  if (!content && !output.image && !output.video && !output.audio) {
+  const task = getTaskState(response);
+  if (!content && !output.image && !output.video && !output.audio && !task) {
     const providerNames: Record<AIProvider, string> = {
       openai: "OpenAI",
       deepseek: "DeepSeek",
@@ -399,7 +400,7 @@ export async function chatCompletionWithUsage(
     status: getResponseStatus(response),
     usage: getUsage(response),
     output,
-    task: getTaskState(response),
+    task,
     raw: response,
   };
 }
@@ -413,7 +414,7 @@ export async function retrieveChatCompletionWithUsage(
 ): Promise<AIChatResult> {
   const requestConfig = getResolvedRequestConfig(options?.aiConfig);
   const response = await fetch(
-    `${requestConfig.baseUrl}/chat/completions/${encodeURIComponent(taskId)}`,
+    `${requestConfig.baseUrl}/chat/${encodeURIComponent(taskId)}`,
     {
       method: "GET",
       headers: {
@@ -539,10 +540,14 @@ function getUsage(
 function getResponseStatus(
   response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
 ) {
-  return (
-    (isRecord(response) ? asOptionalString(response.status) : null) ??
-    "completed"
-  );
+  const status = isRecord(response) ? asOptionalString(response.status) : null;
+  if (status === "succeed") {
+    return "completed";
+  }
+  if (status === "running") {
+    return "pending";
+  }
+  return status ?? "completed";
 }
 
 /**
@@ -551,8 +556,9 @@ function getResponseStatus(
 function getTaskState(
   response: OpenAI.Chat.Completions.ChatCompletion | Record<string, unknown>
 ): AITaskState | null {
-  const status = isRecord(response) ? asOptionalString(response.status) : null;
+  const status = getResponseStatus(response);
   const id = asOptionalString(response.id);
+  // 兼容只返回任务元信息的异步图片/视频创建响应。
   if (!status || !id || status === "completed") {
     return null;
   }

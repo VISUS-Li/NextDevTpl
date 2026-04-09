@@ -16,6 +16,18 @@ import { chatCompletionWithUsage } from "@/lib/ai";
 
 import { decryptRelayApiKey, encryptRelayApiKey } from "./service";
 
+export const AI_MODEL_CAPABILITIES = [
+  "text",
+  "image_input",
+  "image_generation",
+  "audio_input",
+  "audio_generation",
+  "video_input",
+  "video_generation",
+] as const;
+
+export type AIModelCapability = (typeof AI_MODEL_CAPABILITIES)[number];
+
 type ProviderStatsRow = typeof aiRelayProvider.$inferSelect & {
   totalAttempts: number;
   successAttempts: number;
@@ -45,6 +57,7 @@ type SaveModelBindingInput = {
   providerId: string;
   modelKey: string;
   modelAlias: string;
+  capabilities: AIModelCapability[];
   enabled: boolean;
   priority: number;
   weight: number;
@@ -71,6 +84,7 @@ type UpdateModelBindingInput = {
   providerId?: string | undefined;
   modelKey?: string | undefined;
   modelAlias?: string | undefined;
+  capabilities?: AIModelCapability[] | undefined;
   enabled?: boolean | undefined;
   priority?: number | undefined;
   weight?: number | undefined;
@@ -140,6 +154,7 @@ type GeekPresetPricingProfile =
 type GeekPresetModelInput = {
   modelKey: string;
   modelAlias: string;
+  capabilities?: AIModelCapability[] | undefined;
   tier?: GeekPresetTier | undefined;
   timeoutMs?: number | undefined;
 };
@@ -464,9 +479,13 @@ export async function updateAIProvider(
  * 按模型档位生成默认成本配置。
  */
 function getGeekBindingPreset(model: GeekPresetModelInput) {
+  const capabilities =
+    model.capabilities ??
+    inferCapabilitiesFromModelName(model.modelKey, model.modelAlias);
   const tier = model.tier ?? "standard";
   if (tier === "cheap") {
     return {
+      capabilities,
       tier,
       priority: 10,
       weight: 100,
@@ -477,6 +496,7 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
   }
   if (tier === "premium") {
     return {
+      capabilities,
       tier,
       priority: 10,
       weight: 100,
@@ -486,6 +506,7 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
     };
   }
   return {
+    capabilities,
     tier,
     priority: 10,
     weight: 100,
@@ -560,7 +581,7 @@ export async function deleteAIProvider(providerId: string) {
  * 读取 AI Model Binding 列表。
  */
 export async function listAIModelBindings() {
-  return db
+  const rows = await db
     .select({
       id: aiRelayModelBinding.id,
       providerId: aiRelayModelBinding.providerId,
@@ -584,6 +605,11 @@ export async function listAIModelBindings() {
     .from(aiRelayModelBinding)
     .innerJoin(aiRelayProvider, eq(aiRelayModelBinding.providerId, aiRelayProvider.id))
     .orderBy(aiRelayProvider.priority, aiRelayModelBinding.priority, aiRelayModelBinding.modelKey);
+
+  return rows.map((row) => ({
+    ...row,
+    capabilities: readBindingCapabilities(row.metadata),
+  }));
 }
 
 /**
@@ -606,10 +632,20 @@ export async function createAIModelBinding(input: SaveModelBindingInput) {
       fixedCostUsd: input.fixedCostUsd,
       maxRetries: input.maxRetries,
       timeoutMs: input.timeoutMs,
+      metadata: {
+        capabilities: input.capabilities,
+      },
     })
     .returning();
 
-  return created;
+  if (!created) {
+    throw new Error("模型绑定创建失败");
+  }
+
+  return {
+    ...created,
+    capabilities: readBindingCapabilities(created.metadata),
+  };
 }
 
 /**
@@ -619,6 +655,21 @@ export async function updateAIModelBinding(
   bindingId: string,
   input: UpdateModelBindingInput
 ) {
+  const [current] = await db
+    .select()
+    .from(aiRelayModelBinding)
+    .where(eq(aiRelayModelBinding.id, bindingId))
+    .limit(1);
+
+  if (!current) {
+    throw new Error("模型绑定不存在");
+  }
+
+  const metadata = {
+    ...(isRecord(current.metadata) ? current.metadata : {}),
+    ...(input.capabilities ? { capabilities: input.capabilities } : {}),
+  };
+
   const [updated] = await db
     .update(aiRelayModelBinding)
     .set({
@@ -640,12 +691,59 @@ export async function updateAIModelBinding(
         : {}),
       ...(input.maxRetries !== undefined ? { maxRetries: input.maxRetries } : {}),
       ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      metadata,
       updatedAt: new Date(),
     })
     .where(eq(aiRelayModelBinding.id, bindingId))
     .returning();
 
-  return updated;
+  if (!updated) {
+    throw new Error("模型绑定更新失败");
+  }
+
+  return {
+    ...updated,
+    capabilities: readBindingCapabilities(updated.metadata),
+  };
+}
+
+function readBindingCapabilities(value: unknown): AIModelCapability[] {
+  const capabilities = isRecord(value) ? value.capabilities : null;
+  if (!Array.isArray(capabilities)) {
+    return ["text"];
+  }
+  return capabilities.filter((item): item is AIModelCapability =>
+    typeof item === "string" &&
+    (AI_MODEL_CAPABILITIES as readonly string[]).includes(item)
+  );
+}
+
+function inferCapabilitiesFromModelName(modelKey: string, modelAlias: string) {
+  const fingerprint = `${modelKey} ${modelAlias}`.toLowerCase();
+  const capabilities: AIModelCapability[] = ["text"];
+
+  if (fingerprint.includes("vision") || fingerprint.includes("gemini")) {
+    capabilities.push("image_input");
+  }
+  if (
+    fingerprint.includes("image") ||
+    fingerprint.includes("img") ||
+    fingerprint.includes("nano banana")
+  ) {
+    capabilities.push("image_input", "image_generation");
+  }
+  if (fingerprint.includes("audio")) {
+    capabilities.push("audio_input", "audio_generation");
+  }
+  if (fingerprint.includes("video")) {
+    capabilities.push("video_input", "video_generation");
+  }
+
+  return Array.from(new Set(capabilities));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 /**
@@ -786,19 +884,27 @@ export async function listAIRequestLogs(params: ListRequestLogParams = {}) {
   const winningAttemptMap = new Map(
     attempts.map((item) => [`${item.requestId}:${item.attemptNo}`, item])
   );
+  const latestAttemptMap = new Map<string, (typeof attempts)[number]>();
+
+  for (const attempt of attempts) {
+    const current = latestAttemptMap.get(attempt.requestId);
+    if (!current || attempt.attemptNo > current.attemptNo) {
+      latestAttemptMap.set(attempt.requestId, attempt);
+    }
+  }
 
   return requests.map((item) => ({
     ...item,
-    providerKey:
+    providerKey: (
       item.winningAttemptNo === null
-        ? null
-        : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)?.providerKey ??
-          null,
-    providerModel:
+        ? latestAttemptMap.get(item.requestId)
+        : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)
+    )?.providerKey ?? null,
+    providerModel: (
       item.winningAttemptNo === null
-        ? null
-        : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)?.modelAlias ??
-          null,
+        ? latestAttemptMap.get(item.requestId)
+        : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)
+    )?.modelAlias ?? null,
   }));
 }
 
