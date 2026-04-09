@@ -1402,5 +1402,8 @@ async function normalizeContentParts(
  */
 async function resolveStorageAssetUrl(bucket: string, key: string) {
   const provider = getStorageProvider();
+  if ((process.env.STORAGE_AI_URL_MODE ?? "public") === "public") {
+    return provider.getPublicUrl(key, bucket);
+  }
   return provider.getSignedUrl(key, bucket, 3600);
 }

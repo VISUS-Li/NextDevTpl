@@ -27,6 +27,17 @@ export interface StorageProvider {
   getSignedUrl(key: string, bucket: string, expiresIn: number): Promise<string>;
 
   /**
+   * 获取公开访问 URL
+   *
+   * 用于给 AI 上游或前端直接访问对象。
+   *
+   * @param key - 文件键名 (路径)
+   * @param bucket - 存储桶名称
+   * @returns 可公网访问的 URL
+   */
+  getPublicUrl(key: string, bucket: string): string;
+
+  /**
    * 获取签名上传 URL
    *
    * 用于客户端直接上传文件到存储
@@ -107,6 +118,12 @@ export interface S3StorageConfig {
   endpoint: string;
   /** 区域 (如 auto, us-east-1) */
   region: string;
+  /** 厂商标识 */
+  vendor: string;
+  /** 是否强制 path-style */
+  forcePathStyle: boolean;
+  /** 对外公开访问地址 */
+  publicBaseUrl: string | null;
 }
 
 // ============================================

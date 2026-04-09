@@ -25,6 +25,7 @@ import {
 // ============================================
 
 let s3Client: S3Client | null = null;
+let cachedClientKey: string | null = null;
 
 /**
  * 获取存储配置
@@ -36,6 +37,9 @@ function getStorageConfig(): S3StorageConfig {
   const secretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY;
   const endpoint = process.env.STORAGE_ENDPOINT;
   const region = process.env.STORAGE_REGION ?? "auto";
+  const vendor = process.env.STORAGE_VENDOR ?? "generic";
+  const publicBaseUrl = process.env.STORAGE_PUBLIC_BASE_URL?.trim() || null;
+  const forcePathStyle = parseForcePathStyle(vendor);
 
   // 验证必需的环境变量
   if (!accessKeyId || !secretAccessKey || !endpoint) {
@@ -49,7 +53,45 @@ function getStorageConfig(): S3StorageConfig {
     secretAccessKey,
     endpoint,
     region,
+    vendor,
+    forcePathStyle,
+    publicBaseUrl,
   };
+}
+
+/**
+ * 解析 path-style 开关。
+ */
+function parseForcePathStyle(vendor: string) {
+  const explicit = process.env.STORAGE_FORCE_PATH_STYLE?.trim();
+  if (explicit === "true") {
+    return true;
+  }
+  if (explicit === "false") {
+    return false;
+  }
+  // 阿里 OSS 明确要求 virtual-hosted style。
+  if (vendor === "oss") {
+    return false;
+  }
+  // TOS、R2、MinIO 默认更适合 path-style。
+  if (vendor === "tos" || vendor === "r2" || vendor === "minio") {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 构造缓存键，避免切换配置后仍复用旧客户端。
+ */
+function buildClientCacheKey(config: S3StorageConfig) {
+  return [
+    config.vendor,
+    config.region,
+    config.endpoint,
+    config.accessKeyId,
+    config.forcePathStyle ? "path" : "host",
+  ].join("|");
 }
 
 /**
@@ -58,8 +100,10 @@ function getStorageConfig(): S3StorageConfig {
  * 延迟初始化，避免在模块加载时就检查环境变量
  */
 function getS3Client(): S3Client {
-  if (!s3Client) {
-    const config = getStorageConfig();
+  const config = getStorageConfig();
+  const cacheKey = buildClientCacheKey(config);
+  if (!s3Client || cachedClientKey !== cacheKey) {
+    cachedClientKey = cacheKey;
 
     s3Client = new S3Client({
       region: config.region,
@@ -68,12 +112,23 @@ function getS3Client(): S3Client {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
-      // Cloudflare R2 需要的配置
-      forcePathStyle: true,
+      forcePathStyle: config.forcePathStyle,
     });
   }
 
   return s3Client;
+}
+
+/**
+ * 规范拼接公开访问地址。
+ */
+function joinPublicUrl(baseUrl: string, bucket: string, key: string) {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const encodedKey = key
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `${normalizedBaseUrl}/${encodeURIComponent(bucket)}/${encodedKey}`;
 }
 
 // ============================================
@@ -115,6 +170,25 @@ export const s3Provider: StorageProvider = {
     });
 
     return signedUrl;
+  },
+
+  getPublicUrl(key: string, bucket: string): string {
+    const config = getStorageConfig();
+    if (config.publicBaseUrl) {
+      return joinPublicUrl(config.publicBaseUrl, bucket, key);
+    }
+    // 没有公开域名时，回退到签名 URL 调用链之外的直接对象地址。
+    // 这里主要供可公开访问的对象存储使用；私有桶仍建议在业务层改走 getSignedUrl。
+    if (config.forcePathStyle) {
+      return joinPublicUrl(config.endpoint, bucket, key);
+    }
+    const endpoint = new URL(config.endpoint);
+    endpoint.hostname = `${bucket}.${endpoint.hostname}`;
+    endpoint.pathname = key
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    return endpoint.toString();
   },
 
   /**

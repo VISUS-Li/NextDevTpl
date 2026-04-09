@@ -78,6 +78,14 @@ export const localProvider: StorageProvider = {
     return `${baseUrl}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
   },
 
+  getPublicUrl(key: string, bucket: string): string {
+    const baseUrl =
+      process.env.STORAGE_PUBLIC_BASE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+    return `${baseUrl}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+  },
+
   async getSignedUploadUrl(
     key: string,
     bucket: string,

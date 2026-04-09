@@ -57,10 +57,12 @@ export const POST = withApiLogging(async (request: Request) => {
     bucket,
     payload.data.contentType as AllowedImageType
   );
+  const publicUrl = provider.getPublicUrl(key, bucket);
 
   return NextResponse.json({
     success: true,
     uploadUrl,
+    publicUrl,
     key,
     bucket,
     maxFileSize: MAX_FILE_SIZE,

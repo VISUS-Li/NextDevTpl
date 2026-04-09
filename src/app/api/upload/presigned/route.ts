@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { nanoid } from "nanoid";
+
+import { getStorageProvider } from "@/features/storage/providers";
 import { getFileTypeFromName } from "@/lib/file-utils";
 import { auth } from "@/lib/auth";
 import { withApiLogging } from "@/lib/api-logger";
-
-/**
- * S3/R2 客户端配置
- */
-const s3Client = new S3Client({
-  region: process.env.STORAGE_REGION || "auto",
-  ...(process.env.STORAGE_ENDPOINT && { endpoint: process.env.STORAGE_ENDPOINT }),
-  credentials: {
-    accessKeyId: process.env.STORAGE_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY || "",
-  },
-});
 
 const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
 
@@ -82,19 +70,15 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     const fileExtension = filename.match(/\.[^.]+$/)?.[0] || "";
     const fileKey = `uploads/${session.user.id}/${nanoid()}${fileExtension}`;
 
-    // 创建预签名 URL
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: fileKey,
-      ContentType: contentType,
-    });
-
-    const presignedUrl = await getSignedUrl(s3Client, command, {
-      expiresIn: 3600, // 1 hour
-    });
-
-    // 构建文件访问 URL
-    const fileUrl = `${process.env.STORAGE_ENDPOINT}/${BUCKET_NAME}/${fileKey}`;
+    // 统一走存储 provider，避免上层直接耦合某一家云厂商 SDK。
+    const provider = getStorageProvider();
+    const presignedUrl = await provider.getSignedUploadUrl(
+      fileKey,
+      BUCKET_NAME,
+      contentType,
+      3600
+    );
+    const fileUrl = provider.getPublicUrl(fileKey, BUCKET_NAME);
 
     return NextResponse.json({
       presignedUrl,
