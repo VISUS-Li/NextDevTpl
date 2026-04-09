@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import { CircleHelp, Loader2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { startTransition, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -596,7 +601,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-              <Field label="Provider Key">
+              <Field
+                label="Provider Key"
+                info="平台内部使用的唯一标识。建议使用稳定英文名，例如 geek-default、yunwu-main。工具配置和日志里会引用这个值。"
+              >
                 <Input
                   value={providerForm.key}
                   onChange={(event) =>
@@ -608,7 +616,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="geek-default"
                 />
               </Field>
-              <Field label="名称">
+              <Field
+                label="名称"
+                info="后台展示名称，给管理员识别用。可以填更易读的名字，例如 Geek 主线路由、云雾备用线路。"
+              >
                 <Input
                   value={providerForm.name}
                   onChange={(event) =>
@@ -620,7 +631,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="Geek Default"
                 />
               </Field>
-              <Field label="Base URL">
+              <Field
+                label="Base URL"
+                info="上游中转站的 OpenAI 兼容基础地址，一般以 /v1 结尾，例如 https://your-provider.example.com/v1。"
+              >
                 <Input
                   value={providerForm.baseUrl}
                   onChange={(event) =>
@@ -632,7 +646,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="https://example.com/v1"
                 />
               </Field>
-              <Field label="API Key">
+              <Field
+                label="API Key"
+                info="当前 provider 使用的上游密钥。编辑时留空表示保留原密钥，不会覆盖。"
+              >
                 <Input
                   value={providerForm.apiKey}
                   onChange={(event) =>
@@ -644,7 +661,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder={editingProviderId ? "留空表示不覆盖" : "sk-xxx"}
                 />
               </Field>
-              <Field label="启用状态">
+              <Field
+                label="启用状态"
+                info="启用后这个 provider 才会参与路由；停用后不会再接收新请求。"
+              >
                 <Select
                   value={providerForm.enabled}
                   onValueChange={(value) =>
@@ -663,7 +683,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="优先级">
+              <Field
+                label="优先级"
+                info="数值越小越优先。`priority_failover` 路由策略下会优先选择优先级更小的 provider。"
+              >
                 <Input
                   value={providerForm.priority}
                   onChange={(event) =>
@@ -674,7 +697,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="权重">
+              <Field
+                label="权重"
+                info="主要用于 `weighted` 路由策略。数值越大，被选中的概率越高。当前如果主要用主备切换，可以先保持默认值。"
+              >
                 <Input
                   value={providerForm.weight}
                   onChange={(event) =>
@@ -805,7 +831,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
               <CardTitle>{editingBindingId ? "编辑模型绑定" : "新增模型绑定"}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="Provider">
+              <Field
+                label="Provider"
+                info="选择这条模型绑定属于哪个上游中转站。一个平台模型可以绑定到多个 provider。"
+              >
                 <Select
                   value={bindingForm.providerId}
                   onValueChange={(value) =>
@@ -827,7 +856,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="平台模型名">
+              <Field
+                label="平台模型名"
+                info="平台内部统一模型名。工具请求时填写的是这个值，例如 gpt-4o-mini。"
+              >
                 <Input
                   value={bindingForm.modelKey}
                   onChange={(event) =>
@@ -839,7 +871,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="gpt-4o-mini"
                 />
               </Field>
-              <Field label="上游模型别名">
+              <Field
+                label="上游模型别名"
+                info="真正发给上游 provider 的模型名。如果上游和平台模型名一致，可以填相同值。"
+              >
                 <Input
                   value={bindingForm.modelAlias}
                   onChange={(event) =>
@@ -851,7 +886,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="gpt-4o-mini"
                 />
               </Field>
-              <Field label="成本模式">
+              <Field
+                label="成本模式"
+                info="`manual` 表示按输入/输出 token 成本计算真实上游成本；`fixed` 表示每次请求按固定成本记账。多数文本模型建议用 manual，只有上游按次收费时才用 fixed。"
+              >
                 <Select
                   value={bindingForm.costMode}
                   onValueChange={(value: "manual" | "fixed") =>
@@ -870,7 +908,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="输入成本">
+              <Field
+                label="输入成本"
+                info="每 1000 个输入 token 的成本，单位是微美元。1 美元 = 1000000 微美元。比如 0.00015 美元可填写 150。"
+              >
                 <Input
                   value={bindingForm.inputCostPer1k}
                   onChange={(event) =>
@@ -881,7 +922,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="输出成本">
+              <Field
+                label="输出成本"
+                info="每 1000 个输出 token 的成本，单位是微美元。文本模型通常输出成本高于输入成本。"
+              >
                 <Input
                   value={bindingForm.outputCostPer1k}
                   onChange={(event) =>
@@ -892,7 +936,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="固定成本">
+              <Field
+                label="固定成本"
+                info="仅在成本模式为 fixed 时生效，表示每次请求固定记多少微美元成本。"
+              >
                 <Input
                   value={bindingForm.fixedCostUsd}
                   onChange={(event) =>
@@ -903,7 +950,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="优先级">
+              <Field
+                label="优先级"
+                info="同一模型在多个 provider 下的排序，数值越小越先尝试。"
+              >
                 <Input
                   value={bindingForm.priority}
                   onChange={(event) =>
@@ -914,7 +964,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="权重">
+              <Field
+                label="权重"
+                info="同一模型在 weighted 路由中的选择权重。"
+              >
                 <Input
                   value={bindingForm.weight}
                   onChange={(event) =>
@@ -925,7 +978,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="重试次数">
+              <Field
+                label="重试次数"
+                info="单个绑定内部允许的重试次数。当前平台以 provider 回退为主，这里通常保持 0。"
+              >
                 <Input
                   value={bindingForm.maxRetries}
                   onChange={(event) =>
@@ -936,7 +992,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="超时毫秒">
+              <Field
+                label="超时毫秒"
+                info="调用这个 provider-model 组合时的超时阈值。常见范围是 10000 到 60000 毫秒。"
+              >
                 <Input
                   value={bindingForm.timeoutMs}
                   onChange={(event) =>
@@ -947,7 +1006,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="启用状态">
+              <Field
+                label="启用状态"
+                info="停用后这条模型绑定不会参与路由，但 provider 本身还可以继续服务其他模型。"
+              >
                 <Select
                   value={bindingForm.enabled}
                   onValueChange={(value) =>
@@ -1064,7 +1126,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
               <CardTitle>{editingPricingRuleId ? "编辑计费规则" : "新增计费规则"}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="工具标识">
+              <Field
+                label="工具标识"
+                info="计费规则所属工具，例如 redink、jingfang-ai。必须和工具调用 /api/platform/ai/chat 时传入的 tool 一致。"
+              >
                 <Input
                   value={pricingRuleForm.toolKey}
                   onChange={(event) =>
@@ -1076,7 +1141,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="redink"
                 />
               </Field>
-              <Field label="功能标识">
+              <Field
+                label="功能标识"
+                info="计费规则所属功能，例如 rewrite、summary。必须和接口里的 feature 一致。"
+              >
                 <Input
                   value={pricingRuleForm.featureKey}
                   onChange={(event) =>
@@ -1088,7 +1156,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="rewrite"
                 />
               </Field>
-              <Field label="计费模式">
+              <Field
+                label="计费模式"
+                info="`fixed_credits` 表示固定扣积分；`token_based` 表示按输入输出 token 换算积分；`cost_plus` 表示先算平台真实成本，再按成本比例换算积分。大多数面向用户的功能先用 fixed_credits，成本波动大的功能再用 token_based 或 cost_plus。"
+              >
                 <Select
                   value={pricingRuleForm.billingMode}
                   onValueChange={(
@@ -1110,7 +1181,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="模型范围">
+              <Field
+                label="模型范围"
+                info="填写 any 表示所有模型都生效；也可以填写具体平台模型名，只让某个模型命中这条计费规则。"
+              >
                 <Input
                   value={pricingRuleForm.modelScope}
                   onChange={(event) =>
@@ -1121,7 +1195,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="固定积分">
+              <Field
+                label="固定积分"
+                info="只有计费模式为 fixed_credits 时需要填写，表示每次成功请求固定扣多少积分。"
+              >
                 <Input
                   value={pricingRuleForm.fixedCredits}
                   onChange={(event) =>
@@ -1133,7 +1210,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="固定扣费可填写"
                 />
               </Field>
-              <Field label="输入 token / 积分">
+              <Field
+                label="输入 token / 积分"
+                info="只有 token_based 时需要填写，表示每多少输入 token 扣 1 积分。例如填 1000 表示 1000 输入 token = 1 积分。"
+              >
                 <Input
                   value={pricingRuleForm.inputTokensPerCredit}
                   onChange={(event) =>
@@ -1144,7 +1224,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="输出 token / 积分">
+              <Field
+                label="输出 token / 积分"
+                info="只有 token_based 时需要填写，表示每多少输出 token 扣 1 积分。"
+              >
                 <Input
                   value={pricingRuleForm.outputTokensPerCredit}
                   onChange={(event) =>
@@ -1155,7 +1238,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="成本 / 积分">
+              <Field
+                label="成本 / 积分"
+                info="只有 cost_plus 时需要填写，单位是微美元。表示平台真实成本达到多少微美元时扣 1 积分。"
+              >
                 <Input
                   value={pricingRuleForm.costUsdPerCredit}
                   onChange={(event) =>
@@ -1166,7 +1252,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="最低扣费">
+              <Field
+                label="最低扣费"
+                info="本次请求最少扣多少积分。即使 token 或成本换算结果更低，也不会低于这个值。"
+              >
                 <Input
                   value={pricingRuleForm.minimumCredits}
                   onChange={(event) =>
@@ -1177,7 +1266,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="启用状态">
+              <Field
+                label="启用状态"
+                info="停用后这条计费规则不会再参与结算匹配。"
+              >
                 <Select
                   value={pricingRuleForm.enabled}
                   onValueChange={(value) =>
@@ -1347,7 +1439,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-              <Field label="请求 ID">
+              <Field
+                label="请求 ID"
+                info="要调账的 AI 请求编号。可以从请求明细里直接复制。"
+              >
                 <Input
                   value={billingAdjustmentForm.requestId}
                   onChange={(event) =>
@@ -1359,7 +1454,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   placeholder="air_xxx"
                 />
               </Field>
-              <Field label="调账方向">
+              <Field
+                label="调账方向"
+                info="refund 表示退积分给用户；charge 表示补扣积分。"
+              >
                 <Select
                   value={billingAdjustmentForm.direction}
                   onValueChange={(value: "refund" | "charge") =>
@@ -1378,7 +1476,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="积分数量">
+              <Field
+                label="积分数量"
+                info="本次调账的积分数量，必须是正整数。方向由上一个字段决定。"
+              >
                 <Input
                   value={billingAdjustmentForm.credits}
                   onChange={(event) =>
@@ -1389,7 +1490,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field label="调账原因">
+              <Field
+                label="调账原因"
+                info="记录本次调账原因，便于后续核账和审计。建议写清楚背景，例如“上游异常退款”或“人工补扣”。"
+              >
                 <Textarea
                   value={billingAdjustmentForm.reason}
                   onChange={(event) =>
@@ -1466,14 +1570,43 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
 /**
  * 统一表单字段包装。
  */
-function Field(props: { label: string; children: React.ReactNode }) {
+function Field(props: {
+  label: string;
+  info?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-2">
       <Label className="space-y-2">
-        <span>{props.label}</span>
+        <span className="flex items-center gap-2">
+          <span>{props.label}</span>
+          {props.info ? <InfoTip content={props.info} /> : null}
+        </span>
         {props.children}
       </Label>
     </div>
+  );
+}
+
+/**
+ * 字段说明提示。
+ */
+function InfoTip(props: { content: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+          aria-label="查看字段说明"
+        >
+          <CircleHelp className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 text-xs leading-6">
+        {props.content}
+      </PopoverContent>
+    </Popover>
   );
 }
 
