@@ -26,3 +26,11 @@
 - 修改时保持现有代码风格一致
 - 每次启动项目时，默认同时启动 Cloudflare 隧道，并使用生成的可访问域名进行访问
 - 如果发现阻塞项，先说明原因，再继续处理
+
+## 最近记录
+
+- 2026-04-09：把 AI 资源访问方式接入管理员工具配置，支持按工具切换 `public/proxy`，原因是需要在后台随时切换 OSS 直连和平台代理回源；已通过 `pnpm typecheck` 和 `pnpm exec biome check ...` 验证，`pnpm test:run src/test/platform/storage-phase1-provider.test.ts` 因缺少 `.env.test` 的 `DATABASE_URL` 未能执行
+- 2026-04-09：新增管理员对象存储页面，展示运行时存储配置、按工具 AI 资源访问方式、资源记录明细和过期清理入口，原因是后台此前没有集中查看和管理存储能力；已通过 `pnpm typecheck` 与 `pnpm exec biome check ...` 验证
+- 2026-04-09：补齐 `.env.test` 以对接本地 PostgreSQL `nextdevtpl`，并完成存储相关平台测试，原因是测试框架只读取 `.env.test`；已通过 `pnpm test:run src/test/platform/storage-*.test.ts`
+- 2026-04-09：补齐 storage Phase 4/5 主功能，包括后台生命周期策略、前缀规则、按 requestId/taskId 主动清理和 cron 过期清理，原因是文档剩余功能尚未闭环；已通过 `pnpm typecheck` 与 `pnpm test:run src/test/platform/storage-*.test.ts`
+- 2026-04-09：完成 `redink` 真实对象存储链路验收，并更新规划文档，原因是需要确认后台页面、上传、归档和按 requestId 清理在真实环境可用；已通过本地真实接口验收与 `pnpm test:run src/test/platform/storage-*.test.ts`

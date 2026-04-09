@@ -1,16 +1,15 @@
-import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { auth } from "@/lib/auth";
-import { withApiLogging } from "@/lib/api-logger";
 import { saveStorageObjectRecord } from "@/features/storage";
 import { getStorageProvider } from "@/features/storage/providers";
 import {
   ALLOWED_IMAGE_TYPES,
-  MAX_FILE_SIZE,
   type AllowedImageType,
+  MAX_FILE_SIZE,
 } from "@/features/storage/types";
+import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 const presignedImageSchema = z.object({
   filename: z.string().trim().min(1).max(255),
@@ -21,6 +20,8 @@ const presignedImageSchema = z.object({
     .enum(["permanent", "long_term", "temporary", "ephemeral"])
     .default("long_term"),
   expiresAt: z.string().datetime().optional(),
+  requestId: z.string().trim().min(1).max(120).optional(),
+  taskId: z.string().trim().min(1).max(120).optional(),
 });
 
 /**
@@ -72,9 +73,9 @@ export const POST = withApiLogging(async (request: Request) => {
     toolKey: "redink",
     purpose: payload.data.purpose,
     retentionClass: payload.data.retentionClass,
-    expiresAt: payload.data.expiresAt
-      ? new Date(payload.data.expiresAt)
-      : null,
+    expiresAt: payload.data.expiresAt ? new Date(payload.data.expiresAt) : null,
+    requestId: payload.data.requestId ?? null,
+    taskId: payload.data.taskId ?? null,
     status: "pending",
   });
 
@@ -87,6 +88,8 @@ export const POST = withApiLogging(async (request: Request) => {
     purpose: storageRecord.purpose,
     retentionClass: storageRecord.retentionClass,
     expiresAt: storageRecord.expiresAt,
+    requestId: storageRecord.requestId,
+    taskId: storageRecord.taskId,
     maxFileSize: MAX_FILE_SIZE,
     contentType: payload.data.contentType,
   });

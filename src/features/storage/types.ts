@@ -64,6 +64,14 @@ export interface StorageProvider {
   deleteObject(key: string, bucket: string): Promise<void>;
 
   /**
+   * 按前缀删除一组对象
+   *
+   * @param prefix - 键名前缀
+   * @param bucket - 存储桶名称
+   */
+  deletePrefix(prefix: string, bucket: string): Promise<void>;
+
+  /**
    * 直接写入文件内容
    *
    * @param key - 文件键名

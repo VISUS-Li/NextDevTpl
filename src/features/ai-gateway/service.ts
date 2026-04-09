@@ -125,6 +125,7 @@ type ResolvedToolAISettings = {
   preferredProviderKey: string | null;
   allowedModels: string[];
   allowedProviderKeys: string[];
+  assetUrlMode: "public" | "proxy" | "signed";
   featureConfig: ChatFeatureConfig | null;
 };
 
@@ -208,6 +209,7 @@ async function resolveToolAISettings(
     "gpt-4o-mini";
   const routeStrategy = parseRouteStrategy(asString(config.config2));
   const preferredProviderKey = asString(config.config3);
+  const assetUrlMode = parseStorageAssetUrlMode(asString(config.config10));
   const allowedModels = asStringArray(config.json1);
   const allowedProviderKeys = asStringArray(config.json3);
 
@@ -225,6 +227,7 @@ async function resolveToolAISettings(
     preferredProviderKey,
     allowedModels,
     allowedProviderKeys,
+    assetUrlMode,
     featureConfig,
   };
 }
@@ -431,7 +434,10 @@ export async function executeAIChat(
 
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
-  const providerMessages = await normalizeMessagesForProvider(params.messages);
+  const providerMessages = await normalizeMessagesForProvider(
+    params.messages,
+    settings
+  );
 
   await db.insert(aiRequestLog).values({
     id: crypto.randomUUID(),
@@ -1311,7 +1317,8 @@ function readTaskFromMeta(value: unknown): AITaskState | null {
  * 将平台内部消息转换为上游可识别的消息结构。
  */
 async function normalizeMessagesForProvider(
-  messages: AIChatMessage[]
+  messages: AIChatMessage[],
+  settings: ResolvedToolAISettings
 ): Promise<AIProviderMessage[]> {
   return Promise.all(
     messages.map(async (message) => ({
@@ -1319,7 +1326,7 @@ async function normalizeMessagesForProvider(
       content:
         typeof message.content === "string"
           ? message.content
-          : await normalizeContentParts(message.content),
+          : await normalizeContentParts(message.content, settings),
     }))
   );
 }
@@ -1328,7 +1335,8 @@ async function normalizeMessagesForProvider(
  * 归一化多模态内容片段。
  */
 async function normalizeContentParts(
-  parts: AIInputPart[]
+  parts: AIInputPart[],
+  settings: ResolvedToolAISettings
 ): Promise<Array<Record<string, unknown>>> {
   return Promise.all(
     parts.map(async (part) => {
@@ -1350,7 +1358,11 @@ async function normalizeContentParts(
           return {
             type: "image_url",
             image_url: {
-              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              url: await resolveStorageAssetUrl(
+                part.bucket,
+                part.key,
+                settings.assetUrlMode
+              ),
               ...(part.detail ? { detail: part.detail } : {}),
             },
           };
@@ -1366,7 +1378,11 @@ async function normalizeContentParts(
           return {
             type: "audio_url",
             audio_url: {
-              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              url: await resolveStorageAssetUrl(
+                part.bucket,
+                part.key,
+                settings.assetUrlMode
+              ),
               ...(part.format ? { format: part.format } : {}),
             },
           };
@@ -1381,14 +1397,22 @@ async function normalizeContentParts(
           return {
             type: "video_url",
             video_url: {
-              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              url: await resolveStorageAssetUrl(
+                part.bucket,
+                part.key,
+                settings.assetUrlMode
+              ),
             },
           };
         case "file_asset":
           return {
             type: "file_url",
             file_url: {
-              url: await resolveStorageAssetUrl(part.bucket, part.key),
+              url: await resolveStorageAssetUrl(
+                part.bucket,
+                part.key,
+                settings.assetUrlMode
+              ),
               ...(part.filename ? { filename: part.filename } : {}),
               ...(part.mimeType ? { mime_type: part.mimeType } : {}),
             },
@@ -1401,14 +1425,31 @@ async function normalizeContentParts(
 /**
  * 将平台存储对象转为受控可访问 URL。
  */
-async function resolveStorageAssetUrl(bucket: string, key: string) {
+async function resolveStorageAssetUrl(
+  bucket: string,
+  key: string,
+  mode: "public" | "proxy" | "signed"
+) {
   const provider = getStorageProvider();
-  const aiUrlMode = process.env.STORAGE_AI_URL_MODE ?? "public";
-  if (aiUrlMode === "proxy") {
+  if (mode === "proxy") {
     return getStorageAssetProxyUrl(bucket, key);
   }
-  if (aiUrlMode === "public") {
+  if (mode === "public") {
     return provider.getPublicUrl(key, bucket);
   }
   return provider.getSignedUrl(key, bucket, 3600);
+}
+
+/**
+ * 解析 AI 资源访问模式。
+ */
+function parseStorageAssetUrlMode(
+  value: string | null
+): "public" | "proxy" | "signed" {
+  if (value === "public" || value === "proxy" || value === "signed") {
+    return value;
+  }
+
+  const fallback = process.env.STORAGE_AI_URL_MODE ?? "public";
+  return fallback === "proxy" || fallback === "signed" ? fallback : "public";
 }

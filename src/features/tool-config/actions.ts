@@ -1,15 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-
-import {
-  saveAdminToolConfig,
-  saveUserToolConfig,
-} from "@/features/tool-config/service";
 import {
   saveAdminToolConfigSchema,
   saveUserToolConfigSchema,
 } from "@/features/tool-config/schema";
+import {
+  saveAdminToolConfig,
+  saveUserToolConfig,
+} from "@/features/tool-config/service";
 import { adminAction, protectedAction } from "@/lib/safe-action";
 
 const withToolConfigAdminAction = (name: string) =>
@@ -33,6 +32,7 @@ export const saveAdminToolConfigAction = withToolConfigAdminAction("saveConfig")
     });
 
     revalidatePath("/admin/tool-config");
+    revalidatePath("/admin/storage");
 
     return {
       message: "工具配置已保存",

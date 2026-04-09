@@ -7,12 +7,15 @@
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { POST as postPresignedImage } from "@/app/api/platform/storage/presigned-image/route";
 import { POST as postSaveResult } from "@/app/api/platform/results/save/route";
+import { POST as postPresignedImage } from "@/app/api/platform/storage/presigned-image/route";
 import { POST as postUploadPresigned } from "@/app/api/upload/presigned/route";
 import { db } from "@/db";
 import { storageObject } from "@/db/schema";
+import {
+  saveAdminToolConfig,
+  seedDefaultToolConfigProject,
+} from "@/features/tool-config";
 import { auth } from "@/lib/auth";
 import { cleanupTestUsers, createTestUser } from "../utils";
 
@@ -35,9 +38,7 @@ vi.mock("@/features/storage/providers", () => ({
 
 afterAll(async () => {
   for (const userId of createdUserIds) {
-    await db
-      .delete(storageObject)
-      .where(eq(storageObject.ownerUserId, userId));
+    await db.delete(storageObject).where(eq(storageObject.ownerUserId, userId));
   }
   await cleanupTestUsers(createdUserIds);
   vi.restoreAllMocks();
@@ -76,19 +77,22 @@ describe("Storage Phase 2 Lifecycle API", () => {
     mockSession(user);
 
     const response = await postPresignedImage(
-      new Request("http://localhost:3000/api/platform/storage/presigned-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          filename: "image.png",
-          contentType: "image/png",
-          fileSize: 1024,
-          purpose: "ai_input_temp",
-          retentionClass: "temporary",
-        }),
-      })
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: "image.png",
+            contentType: "image/png",
+            fileSize: 1024,
+            purpose: "ai_input_temp",
+            retentionClass: "temporary",
+          }),
+        }
+      )
     );
     const data = await response.json();
     const [record] = await db
@@ -175,5 +179,59 @@ describe("Storage Phase 2 Lifecycle API", () => {
     expect(record?.retentionClass).toBe("long_term");
     expect(record?.status).toBe("ready");
     expect(putObjectMock).toHaveBeenCalledOnce();
+  });
+
+  it("后台生命周期策略应影响默认过期时间", async () => {
+    const adminUser = await createTestUser({
+      email: `1183989659+storage-phase2-policy-${Date.now()}@qq.com`,
+      name: "存储阶段二策略用户",
+      role: "admin",
+    });
+    createdUserIds.push(adminUser.id);
+    mockSession(adminUser);
+    await seedDefaultToolConfigProject();
+    await saveAdminToolConfig({
+      toolKey: "storage",
+      actorId: adminUser.id,
+      values: {
+        config1: 2,
+        config2: 5,
+        config3: 120,
+        json1: [
+          {
+            prefix: "platform/ai-assets/request/",
+            retentionClass: "ephemeral",
+            ttlHours: 12,
+            purpose: "ai_input_temp",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    const start = Date.now();
+    const response = await postPresignedImage(
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: "image.png",
+            contentType: "image/png",
+            retentionClass: "temporary",
+            purpose: "policy_check",
+          }),
+        }
+      )
+    );
+    const data = await response.json();
+    const expiresAt = new Date(data.expiresAt).getTime();
+
+    expect(response.status).toBe(200);
+    expect(expiresAt).toBeGreaterThan(start + 4.5 * 24 * 60 * 60 * 1000);
+    expect(expiresAt).toBeLessThan(start + 5.5 * 24 * 60 * 60 * 1000);
   });
 });

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { saveStorageObjectRecord } from "@/features/storage";
 import { getStorageProvider } from "@/features/storage/providers";
-import { getFileTypeFromName } from "@/lib/file-utils";
-import { auth } from "@/lib/auth";
 import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
+import { getFileTypeFromName } from "@/lib/file-utils";
 
 const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
 
@@ -29,10 +29,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     });
 
     if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -43,17 +40,17 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       purpose = "document_upload",
       retentionClass = "long_term",
       expiresAt,
+      requestId,
+      taskId,
     } = body as {
       filename: string;
       contentType: string;
       fileSize: number;
       purpose?: string;
-      retentionClass?:
-        | "permanent"
-        | "long_term"
-        | "temporary"
-        | "ephemeral";
+      retentionClass?: "permanent" | "long_term" | "temporary" | "ephemeral";
       expiresAt?: string;
+      requestId?: string;
+      taskId?: string;
     };
 
     // 验证文件名
@@ -68,7 +65,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     const fileType = getFileTypeFromName(filename);
     if (!fileType) {
       return NextResponse.json(
-        { error: `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}` },
+        {
+          error: `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}`,
+        },
         { status: 400 }
       );
     }
@@ -76,7 +75,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     // 验证文件大小
     if (fileSize > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        {
+          error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+        },
         { status: 400 }
       );
     }
@@ -102,6 +103,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       purpose,
       retentionClass,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
+      requestId: requestId?.trim() || null,
+      taskId: taskId?.trim() || null,
       status: "pending",
     });
 
@@ -112,6 +115,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       purpose: storageRecord.purpose,
       retentionClass: storageRecord.retentionClass,
       expiresAt: storageRecord.expiresAt,
+      requestId: storageRecord.requestId,
+      taskId: storageRecord.taskId,
       expiresIn: 3600,
     });
   } catch (error) {

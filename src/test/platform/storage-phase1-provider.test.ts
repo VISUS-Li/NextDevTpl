@@ -154,7 +154,10 @@ async function seedAIBaseData() {
 /**
  * 初始化工具运行时配置。
  */
-async function seedToolConfig(actorId: string) {
+async function seedToolConfig(
+  actorId: string,
+  assetUrlMode: "public" | "proxy" = "public"
+) {
   await saveUserToolConfig({
     toolKey: "redink",
     actorId,
@@ -162,6 +165,7 @@ async function seedToolConfig(actorId: string) {
       config1: "gpt-4o-mini",
       config2: "primary_only",
       config3: storagePhase1ProviderKey,
+      config10: assetUrlMode,
       json1: ["gpt-4o-mini"],
       json2: {
         [storagePhase1FeatureKey]: {
@@ -193,6 +197,23 @@ describe("Storage Phase 1 Provider API", () => {
     );
   });
 
+  it("OSS profile 应优先使用 virtual-hosted style 公网地址", () => {
+    process.env.STORAGE_PROVIDER = "s3_compatible";
+    process.env.STORAGE_VENDOR = "oss";
+    process.env.STORAGE_ENDPOINT = "https://oss-cn-chengdu.aliyuncs.com";
+    process.env.STORAGE_PUBLIC_BASE_URL =
+      "https://tripai.oss-cn-chengdu.aliyuncs.com";
+
+    const publicUrl = s3Provider.getPublicUrl(
+      "platform/ai-assets/request/demo.png",
+      "tripai"
+    );
+
+    expect(publicUrl).toBe(
+      "https://tripai.oss-cn-chengdu.aliyuncs.com/platform/ai-assets/request/demo.png"
+    );
+  });
+
   it("presigned-image 接口应返回统一公网地址", async () => {
     const creditsUser = await createTestUserWithCredits({
       email: `1183989659+storage-image-${Date.now()}@qq.com`,
@@ -208,17 +229,20 @@ describe("Storage Phase 1 Provider API", () => {
     });
 
     const response = await postPresignedImage(
-      new Request("http://localhost:3000/api/platform/storage/presigned-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          filename: "product.png",
-          contentType: "image/png",
-          fileSize: 1024,
-        }),
-      })
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: "product.png",
+            contentType: "image/png",
+            fileSize: 1024,
+          }),
+        }
+      )
     );
     const data = await response.json();
 
@@ -296,13 +320,13 @@ describe("Storage Phase 1 Provider API", () => {
       })
     );
     const data = await response.json();
-    const providerMessages =
-      chatCompletionWithUsageMock.mock.calls[0]?.[0] as Array<{
-        content: Array<
-          | { type: "text"; text: string }
-          | { type: "image_url"; image_url: { url: string } }
-        >;
-      }>;
+    const providerMessages = chatCompletionWithUsageMock.mock
+      .calls[0]?.[0] as Array<{
+      content: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >;
+    }>;
     const imagePart = providerMessages?.[0]?.content?.find(
       (item) => item.type === "image_url"
     ) as { type: "image_url"; image_url: { url: string } } | undefined;
@@ -311,5 +335,91 @@ describe("Storage Phase 1 Provider API", () => {
     expect(data.success).toBe(true);
     expect(imagePart?.image_url.url).toContain("https://assets.tripai.icu");
     expect(imagePart?.image_url.url).not.toContain("http://localhost:3000");
+  });
+
+  it("管理员配置为 proxy 时应改走平台代理地址", async () => {
+    await seedAIBaseData();
+    const creditsUser = await createTestUserWithCredits({
+      email: `1183989659+storage-ai-proxy-${Date.now()}@qq.com`,
+      name: "存储阶段一代理模式用户",
+      initialCredits: 20,
+    });
+    createdUserIds.push(creditsUser.user.id);
+    await seedToolConfig(creditsUser.user.id, "proxy");
+
+    mockSession({
+      id: creditsUser.user.id,
+      name: creditsUser.user.name,
+      email: creditsUser.user.email,
+    });
+
+    chatCompletionWithUsageMock.mockResolvedValue({
+      content: "图片分析完成",
+      model: "gpt-4o-mini",
+      responseId: "resp_storage_phase1_proxy",
+      status: "completed",
+      output: {
+        text: "图片分析完成",
+      },
+      task: null,
+      usage: {
+        promptTokens: 120,
+        completionTokens: 40,
+        totalTokens: 160,
+        imageInputTokens: 96,
+      },
+      raw: {
+        id: "resp_storage_phase1_proxy",
+        model: "gpt-4o-mini",
+      },
+    });
+
+    const response = await postAIChat(
+      new Request("http://localhost:3000/api/platform/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool: "redink",
+          feature: storagePhase1FeatureKey,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "请分析这张商品图",
+                },
+                {
+                  type: "image_asset",
+                  bucket: "nextdevtpl-uploads",
+                  key: `redink/product-images/${creditsUser.user.id}/demo.png`,
+                  detail: "high",
+                },
+              ],
+            },
+          ],
+        }),
+      })
+    );
+    const data = await response.json();
+    const providerMessages = chatCompletionWithUsageMock.mock
+      .calls[0]?.[0] as Array<{
+      content: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >;
+    }>;
+    const imagePart = providerMessages?.[0]?.content?.find(
+      (item) => item.type === "image_url"
+    ) as { type: "image_url"; image_url: { url: string } } | undefined;
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(imagePart?.image_url.url).toContain(
+      "https://platform.tripai.icu/api/platform/storage/object"
+    );
+    expect(imagePart?.image_url.url).toContain("signature=");
   });
 });

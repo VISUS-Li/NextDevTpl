@@ -245,6 +245,11 @@ export const adminNav: NavGroup[] = [
         href: "/admin/ai",
         icon: Cpu,
       },
+      {
+        title: "对象存储",
+        href: "/admin/storage",
+        icon: HardDrive,
+      },
     ],
   },
 ];

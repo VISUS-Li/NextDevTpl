@@ -1,16 +1,17 @@
-import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { auth } from "@/lib/auth";
-import { withApiLogging } from "@/lib/api-logger";
-import { getStorageProvider } from "@/features/storage/providers";
 import { saveStorageObjectRecord } from "@/features/storage";
+import { getStorageProvider } from "@/features/storage/providers";
+import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 const saveResultSchema = z.object({
   tool: z.string().trim().min(1).max(80),
   type: z.string().trim().min(1).max(80),
   payload: z.record(z.string(), z.unknown()),
+  requestId: z.string().trim().min(1).max(120).optional(),
+  taskId: z.string().trim().min(1).max(120).optional(),
 });
 
 /**
@@ -60,7 +61,12 @@ export const POST = withApiLogging(async (request: Request) => {
     2
   );
 
-  await provider.putObject(key, bucket, body, "application/json; charset=utf-8");
+  await provider.putObject(
+    key,
+    bucket,
+    body,
+    "application/json; charset=utf-8"
+  );
   const storageRecord = await saveStorageObjectRecord({
     bucket,
     key,
@@ -69,6 +75,8 @@ export const POST = withApiLogging(async (request: Request) => {
     toolKey: payload.data.tool,
     purpose: "result_archive",
     retentionClass: "long_term",
+    requestId: payload.data.requestId ?? null,
+    taskId: payload.data.taskId ?? null,
     status: "ready",
   });
 
@@ -78,5 +86,7 @@ export const POST = withApiLogging(async (request: Request) => {
     bucket,
     retentionClass: storageRecord.retentionClass,
     expiresAt: storageRecord.expiresAt,
+    requestId: storageRecord.requestId,
+    taskId: storageRecord.taskId,
   });
 });

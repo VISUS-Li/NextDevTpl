@@ -27,6 +27,11 @@ const SLOT_TEXT_COUNT = 4;
 
 const defaultTools = [
   {
+    toolKey: "storage",
+    name: "Storage",
+    description: "对象存储生命周期策略",
+  },
+  {
     toolKey: "redink",
     name: "RedInk",
     description: "小红书内容工具",
@@ -38,10 +43,16 @@ const defaultTools = [
   },
 ] as const;
 
-const TOOL_SLOT_SETTING_LABELS: Record<
-  string,
-  Record<string, string>
-> = {
+const TOOL_SLOT_SETTING_LABELS: Record<string, Record<string, string>> = {
+  storage: {
+    config1: "短期资源保留小时",
+    config2: "临时资源保留天数",
+    config3: "长期资源保留天数",
+    json1: "前缀生命周期规则",
+  },
+  redink: {
+    config10: "AI 资源访问方式",
+  },
   "jingfang-ai": {
     config1: "聊天平台",
     config2: "火山存储空间名",
@@ -49,6 +60,7 @@ const TOOL_SLOT_SETTING_LABELS: Record<
     config4: "语音识别 App Type",
     config5: "豆包视觉 Endpoint",
     config6: "火山区域 Region",
+    config10: "AI 资源访问方式",
     secret1: "主聊天 API Key",
     secret2: "云雾 API Key",
     secret3: "火山 Access Key ID",
@@ -57,6 +69,42 @@ const TOOL_SLOT_SETTING_LABELS: Record<
     secret6: "高级设置密码",
   },
 };
+
+const STORAGE_DEFAULT_RUNTIME_VALUES = {
+  config1: 6,
+  config2: 3,
+  config3: 90,
+  json1: [
+    {
+      prefix: "platform/ai-assets/request/",
+      retentionClass: "ephemeral",
+      ttlHours: 24,
+      purpose: "ai_input_temp",
+      enabled: true,
+    },
+    {
+      prefix: "platform/ai-assets/task/",
+      retentionClass: "temporary",
+      ttlHours: 72,
+      purpose: "ai_task_temp",
+      enabled: true,
+    },
+    {
+      prefix: "redink/product-images-temp/",
+      retentionClass: "temporary",
+      ttlHours: 168,
+      purpose: "product_image_temp",
+      enabled: true,
+    },
+    {
+      prefix: "redink/product-videos-temp/",
+      retentionClass: "temporary",
+      ttlHours: 168,
+      purpose: "product_video_temp",
+      enabled: true,
+    },
+  ],
+} as const;
 
 const defaultFieldDefinitions: Array<{
   toolKey: string;
@@ -72,7 +120,27 @@ const defaultFieldDefinitions: Array<{
   optionsJson?: string[];
   validationJson?: Record<string, unknown>;
   sortOrder: number;
-}> = defaultTools.flatMap((tool) => buildDefaultSlotFields(tool.toolKey));
+}> = defaultTools.flatMap((tool) =>
+  buildDefaultSlotFields(tool.toolKey).map((field) => {
+    if (tool.toolKey === "storage") {
+      return buildStorageFieldDefinition(field);
+    }
+    if (field.fieldKey !== "config10") {
+      return field;
+    }
+
+    return {
+      ...field,
+      label: "ai.assetUrlMode",
+      description: "控制 AI 上游读取平台资源时走公开 OSS 地址还是平台代理地址",
+      type: "select" as const,
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: "public" as const,
+      optionsJson: ["public", "proxy"],
+    };
+  })
+);
 
 const REDINK_DEFAULT_RUNTIME_VALUES = {
   config1: "gpt-4o-mini",
@@ -171,15 +239,18 @@ export async function seedDefaultToolConfigProject(params?: {
       .limit(1);
 
     if (!existingTool) {
-      await db.insert(toolRegistry).values({
-        id: crypto.randomUUID(),
-        projectId: currentProject.id,
-        toolKey: tool.toolKey,
-        name: tool.name,
-        description: tool.description,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await db
+        .insert(toolRegistry)
+        .values({
+          id: crypto.randomUUID(),
+          projectId: currentProject.id,
+          toolKey: tool.toolKey,
+          name: tool.name,
+          description: tool.description,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
     }
   }
 
@@ -197,25 +268,28 @@ export async function seedDefaultToolConfigProject(params?: {
       .limit(1);
 
     if (!existingField) {
-      await db.insert(toolConfigField).values({
-        id: crypto.randomUUID(),
-        projectId: currentProject.id,
-        toolKey: field.toolKey,
-        fieldKey: field.fieldKey,
-        label: field.label,
-        description: field.description,
-        group: field.group,
-        type: field.type,
-        required: field.required ?? false,
-        adminOnly: field.adminOnly ?? false,
-        userOverridable: field.userOverridable ?? false,
-        defaultValueJson: field.defaultValueJson,
-        optionsJson: field.optionsJson,
-        validationJson: field.validationJson,
-        sortOrder: field.sortOrder,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await db
+        .insert(toolConfigField)
+        .values({
+          id: crypto.randomUUID(),
+          projectId: currentProject.id,
+          toolKey: field.toolKey,
+          fieldKey: field.fieldKey,
+          label: field.label,
+          description: field.description,
+          group: field.group,
+          type: field.type,
+          required: field.required ?? false,
+          adminOnly: field.adminOnly ?? false,
+          userOverridable: field.userOverridable ?? false,
+          defaultValueJson: field.defaultValueJson,
+          optionsJson: field.optionsJson,
+          validationJson: field.validationJson,
+          sortOrder: field.sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
     }
   }
 
@@ -249,6 +323,7 @@ export async function seedDefaultToolConfigProject(params?: {
   }
 
   await seedDefaultRedinkRuntimeConfig(currentProject.id, now);
+  await seedDefaultStorageRuntimeConfig(currentProject.id, now);
 
   return currentProject;
 }
@@ -275,17 +350,20 @@ async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
   for (const [fieldKey, defaultValue] of runtimeFields) {
     const currentRow = rowMap.get(fieldKey);
     if (!currentRow) {
-      await db.insert(toolConfigValue).values({
-        id: crypto.randomUUID(),
-        projectId,
-        toolKey: "redink",
-        fieldKey,
-        scope: "project_admin",
-        valueJson: defaultValue,
-        updatedBy: "system",
-        createdAt: now,
-        updatedAt: now,
-      });
+      await db
+        .insert(toolConfigValue)
+        .values({
+          id: crypto.randomUUID(),
+          projectId,
+          toolKey: "redink",
+          fieldKey,
+          scope: "project_admin",
+          valueJson: defaultValue,
+          updatedBy: "system",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
       continue;
     }
 
@@ -316,6 +394,164 @@ async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
       })
       .where(eq(toolConfigValue.id, currentRow.id));
   }
+}
+
+/**
+ * 补齐 Storage 的默认运行时配置。
+ */
+async function seedDefaultStorageRuntimeConfig(projectId: string, now: Date) {
+  const rows = await db
+    .select()
+    .from(toolConfigValue)
+    .where(
+      and(
+        eq(toolConfigValue.projectId, projectId),
+        eq(toolConfigValue.toolKey, "storage"),
+        eq(toolConfigValue.scope, "project_admin"),
+        isNull(toolConfigValue.userId)
+      )
+    );
+
+  const rowMap = new Map(rows.map((row) => [row.fieldKey, row]));
+  const runtimeFields = Object.entries(STORAGE_DEFAULT_RUNTIME_VALUES);
+
+  for (const [fieldKey, defaultValue] of runtimeFields) {
+    const currentRow = rowMap.get(fieldKey);
+    if (!currentRow) {
+      await db
+        .insert(toolConfigValue)
+        .values({
+          id: crypto.randomUUID(),
+          projectId,
+          toolKey: "storage",
+          fieldKey,
+          scope: "project_admin",
+          valueJson: defaultValue,
+          updatedBy: "system",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
+      continue;
+    }
+
+    if (fieldKey !== "json1") {
+      continue;
+    }
+
+    const currentValue = Array.isArray(currentRow.valueJson)
+      ? currentRow.valueJson
+      : [];
+    const mergedValue = mergeStoragePrefixRules(
+      STORAGE_DEFAULT_RUNTIME_VALUES.json1,
+      currentValue
+    );
+
+    if (JSON.stringify(mergedValue) === JSON.stringify(currentValue)) {
+      continue;
+    }
+
+    await db
+      .update(toolConfigValue)
+      .set({
+        valueJson: mergedValue,
+        revision: currentRow.revision + 1,
+        updatedBy: "system",
+        updatedAt: now,
+      })
+      .where(eq(toolConfigValue.id, currentRow.id));
+  }
+}
+
+function mergeStoragePrefixRules(
+  defaults: readonly Record<string, unknown>[],
+  currentValue: unknown[]
+) {
+  const currentByPrefix = new Map(
+    currentValue
+      .filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
+      )
+      .map((item) => [String(item.prefix ?? ""), item])
+  );
+
+  return defaults.map((item) => {
+    const prefix = String(item.prefix ?? "");
+    return {
+      ...item,
+      ...(currentByPrefix.get(prefix) ?? {}),
+    };
+  });
+}
+
+function buildStorageFieldDefinition(field: {
+  toolKey: string;
+  fieldKey: string;
+  label: string;
+  description?: string;
+  group: string;
+  type: ToolConfigFieldType;
+  required?: boolean;
+  adminOnly?: boolean;
+  userOverridable?: boolean;
+  defaultValueJson?: ToolConfigValueInput;
+  optionsJson?: string[];
+  validationJson?: Record<string, unknown>;
+  sortOrder: number;
+}) {
+  if (field.fieldKey === "config1") {
+    return {
+      ...field,
+      label: "storage.ephemeralHours",
+      description: "请求级短期资源默认保留小时数",
+      type: "number" as const,
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: STORAGE_DEFAULT_RUNTIME_VALUES.config1,
+    };
+  }
+  if (field.fieldKey === "config2") {
+    return {
+      ...field,
+      label: "storage.temporaryDays",
+      description: "会话级临时资源默认保留天数",
+      type: "number" as const,
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: STORAGE_DEFAULT_RUNTIME_VALUES.config2,
+    };
+  }
+  if (field.fieldKey === "config3") {
+    return {
+      ...field,
+      label: "storage.longTermDays",
+      description: "长期资源默认保留天数",
+      type: "number" as const,
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: STORAGE_DEFAULT_RUNTIME_VALUES.config3,
+    };
+  }
+  if (field.fieldKey === "json1") {
+    return {
+      ...field,
+      label: "storage.prefixRules",
+      description:
+        "按对象前缀管理生命周期规则，供平台清理和云厂商生命周期配置参考",
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: STORAGE_DEFAULT_RUNTIME_VALUES.json1.map((item) => ({
+        ...item,
+      })),
+    };
+  }
+
+  return {
+    ...field,
+    adminOnly: true,
+    userOverridable: false,
+  };
 }
 
 function buildDefaultSlotFields(toolKey: string) {

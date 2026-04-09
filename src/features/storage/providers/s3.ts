@@ -247,6 +247,13 @@ export const s3Provider: StorageProvider = {
     await client.send(command);
   },
 
+  async deletePrefix(prefix: string, bucket: string): Promise<void> {
+    const objects = await this.listObjects(prefix, bucket, 1000);
+    for (const item of objects) {
+      await this.deleteObject(item.key, bucket);
+    }
+  },
+
   /**
    * 直接写入对象
    *
@@ -333,7 +340,7 @@ export const s3Provider: StorageProvider = {
       .filter((item) => !!item.Key)
       .map((item) => {
         const result: { key: string; lastModified?: Date; size?: number } = {
-          key: item.Key!,
+          key: item.Key ?? "",
         };
         if (item.LastModified) {
           result.lastModified = item.LastModified;

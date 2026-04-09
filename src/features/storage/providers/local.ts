@@ -100,6 +100,14 @@ export const localProvider: StorageProvider = {
     await fs.rm(await resolveLocalPath(bucket, key), { force: true });
   },
 
+  async deletePrefix(prefix: string, bucket: string): Promise<void> {
+    const { fs } = await getNodeStorageModules();
+    await fs.rm(await resolveLocalPath(bucket, prefix), {
+      recursive: true,
+      force: true,
+    });
+  },
+
   async putObject(
     key: string,
     bucket: string,
