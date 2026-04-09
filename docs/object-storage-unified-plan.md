@@ -47,6 +47,43 @@
 - 当前已支持图片和文件上传时同步写入生命周期元数据
 - 当前已支持 AI 多模态优先使用公网 URL 访问对象资源
 - 当前已支持手动触发过期资源清理
+- 2026-04-09 已完成三家厂商的真实桶连通性验证，当前推荐默认启用火山 TOS
+
+### 真实连通性验证结果
+
+- 火山 TOS
+  - 已用真实密钥和桶 `tripai` 完成 `PutObject / GetObject / DeleteObject` 验证
+  - `endpoint` 使用 `https://tos-s3-cn-guangzhou.volces.com`
+  - 必须使用 `virtual-hosted style`
+  - `path-style` 实测会返回 `403 InvalidPathAccess`
+  - 推荐配置：
+    - `STORAGE_VENDOR=tos`
+    - `STORAGE_REGION=cn-guangzhou`
+    - `STORAGE_ENDPOINT=https://tos-s3-cn-guangzhou.volces.com`
+    - `STORAGE_FORCE_PATH_STYLE=false`
+    - `STORAGE_PUBLIC_BASE_URL=https://tripai.tos-cn-guangzhou.volces.com`
+- 腾讯 COS
+  - 已用真实密钥和桶 `tripai-1315158932` 完成 `PutObject / GetObject / DeleteObject` 验证
+  - `endpoint` 使用 `https://cos.ap-guangzhou.myqcloud.com`
+  - 当前实现可直接复用通用 `s3Provider`
+  - 推荐配置：
+    - `STORAGE_VENDOR=cos`
+    - `STORAGE_REGION=ap-guangzhou`
+    - `STORAGE_ENDPOINT=https://cos.ap-guangzhou.myqcloud.com`
+    - `STORAGE_FORCE_PATH_STYLE=false`
+    - `STORAGE_PUBLIC_BASE_URL=https://tripai-1315158932.cos.ap-guangzhou.myqcloud.com`
+- 阿里 OSS
+  - 已用真实密钥和桶 `tripai` 完成 `PutObject / GetObject / DeleteObject` 验证
+  - `endpoint` 使用 `https://oss-cn-chengdu.aliyuncs.com`
+  - 必须使用 `virtual-hosted style`
+  - 你提供的 CNAME 在当前 HTTPS 证书状态下不可直接用于 SDK 访问，实测会出现证书域名不匹配
+  - 在 CNAME 证书修好前，SDK 和签名 URL 应继续使用官方 bucket 域名
+  - 推荐配置：
+    - `STORAGE_VENDOR=oss`
+    - `STORAGE_REGION=cn-chengdu`
+    - `STORAGE_ENDPOINT=https://oss-cn-chengdu.aliyuncs.com`
+    - `STORAGE_FORCE_PATH_STYLE=false`
+    - `STORAGE_PUBLIC_BASE_URL=https://tripai.oss-cn-chengdu.aliyuncs.com`
 
 ## 2. 当前代码现状
 

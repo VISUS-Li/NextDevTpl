@@ -70,12 +70,12 @@ function parseForcePathStyle(vendor: string) {
   if (explicit === "false") {
     return false;
   }
-  // 阿里 OSS 明确要求 virtual-hosted style。
-  if (vendor === "oss") {
+  // 火山 TOS、腾讯 COS、阿里 OSS 实测都应优先使用 virtual-hosted style。
+  if (vendor === "tos" || vendor === "cos" || vendor === "oss") {
     return false;
   }
-  // TOS、R2、MinIO 默认更适合 path-style。
-  if (vendor === "tos" || vendor === "r2" || vendor === "minio") {
+  // R2、MinIO 默认更适合 path-style。
+  if (vendor === "r2" || vendor === "minio") {
     return true;
   }
   return false;
@@ -128,6 +128,15 @@ function joinPublicUrl(baseUrl: string, bucket: string, key: string) {
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
+  const parsed = new URL(normalizedBaseUrl);
+  const hostPrefix = `${bucket}.`;
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  if (parsed.hostname.startsWith(hostPrefix)) {
+    return `${normalizedBaseUrl}/${encodedKey}`;
+  }
+  if (pathname && pathname !== "/") {
+    return `${normalizedBaseUrl}/${encodedKey}`;
+  }
   return `${normalizedBaseUrl}/${encodeURIComponent(bucket)}/${encodedKey}`;
 }
 

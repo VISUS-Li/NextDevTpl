@@ -16,6 +16,7 @@ import {
   aiRelayProvider,
 } from "@/db/schema";
 import { encryptRelayApiKey } from "@/features/ai-gateway";
+import { s3Provider } from "@/features/storage/providers/s3";
 import {
   saveUserToolConfig,
   seedDefaultToolConfigProject,
@@ -176,6 +177,22 @@ async function seedToolConfig(actorId: string) {
 }
 
 describe("Storage Phase 1 Provider API", () => {
+  it("S3 provider 应正确拼接桶域名公网地址", () => {
+    process.env.STORAGE_PROVIDER = "s3_compatible";
+    process.env.STORAGE_VENDOR = "tos";
+    process.env.STORAGE_PUBLIC_BASE_URL =
+      "https://tripai.tos-cn-guangzhou.volces.com";
+
+    const publicUrl = s3Provider.getPublicUrl(
+      "redink/product-images/demo image.png",
+      "tripai"
+    );
+
+    expect(publicUrl).toBe(
+      "https://tripai.tos-cn-guangzhou.volces.com/redink/product-images/demo%20image.png"
+    );
+  });
+
   it("presigned-image 接口应返回统一公网地址", async () => {
     const creditsUser = await createTestUserWithCredits({
       email: `1183989659+storage-image-${Date.now()}@qq.com`,
