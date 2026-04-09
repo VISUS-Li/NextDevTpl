@@ -33,12 +33,20 @@
   - `presigned-image`、`upload/presigned`、`results/save` 已接入资源记录写入
   - 已新增独立测试文件 `src/test/platform/storage-phase2-lifecycle.test.ts`
   - 已通过接口级测试，覆盖临时上传、超短期上传、长期归档三条链路
+- Phase 3 已完成：
+  - 已新增过期资源清理服务
+  - 已新增管理员接口 `POST /api/platform/storage/admin/cleanup-expired`
+  - 已支持按 `expiresAt` 清理过期资源并标记删除状态
+  - 已新增独立测试文件 `src/test/platform/storage-phase3-cleanup.test.ts`
+  - 已通过接口级测试，覆盖管理员清理过期资源链路
 
-### 待完成
+### 当前状态
 
-- Phase 3：
-  - 增加临时资源清理链路
-  - 补齐平台主动删除和到期清理
+- 对象存储统一接入、生命周期元数据、过期清理闭环已经完成
+- 当前已支持 `local / s3_compatible / oss` 配置收口
+- 当前已支持图片和文件上传时同步写入生命周期元数据
+- 当前已支持 AI 多模态优先使用公网 URL 访问对象资源
+- 当前已支持手动触发过期资源清理
 
 ## 2. 当前代码现状
 

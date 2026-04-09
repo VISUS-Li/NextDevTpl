@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lt, ne } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -20,6 +20,11 @@ type SaveStorageObjectParams = {
   taskId?: string | null;
   status: "pending" | "ready";
   metadata?: Record<string, unknown> | null;
+};
+
+type CleanupExpiredStorageObjectsParams = {
+  limit?: number;
+  dryRun?: boolean;
 };
 
 /**
@@ -137,4 +142,88 @@ export async function saveStorageObjectRecord(params: SaveStorageObjectParams) {
     throw new Error("创建对象存储资源记录失败");
   }
   return created;
+}
+
+/**
+ * 清理过期的对象存储资源。
+ */
+export async function cleanupExpiredStorageObjects(
+  params: CleanupExpiredStorageObjectsParams = {}
+) {
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
+  const expiredObjects = await db
+    .select()
+    .from(storageObject)
+    .where(
+      and(
+        isNull(storageObject.deletedAt),
+        ne(storageObject.status, "deleted"),
+        lt(storageObject.expiresAt, new Date())
+      )
+    )
+    .orderBy(storageObject.expiresAt)
+    .limit(limit);
+
+  if (params.dryRun) {
+    return {
+      total: expiredObjects.length,
+      deleted: 0,
+      items: expiredObjects.map((item) => ({
+        id: item.id,
+        bucket: item.bucket,
+        key: item.key,
+        purpose: item.purpose,
+        retentionClass: item.retentionClass,
+        status: "pending_cleanup",
+      })),
+    };
+  }
+
+  const { getStorageProvider } = await import("./providers");
+  const provider = getStorageProvider();
+  const items: Array<{
+    id: string;
+    bucket: string;
+    key: string;
+    purpose: string;
+    retentionClass: StorageRetentionClass;
+    status: "deleted" | "failed";
+  }> = [];
+
+  for (const item of expiredObjects) {
+    try {
+      await provider.deleteObject(item.key, item.bucket);
+      await db
+        .update(storageObject)
+        .set({
+          status: "deleted",
+          deletedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(storageObject.id, item.id));
+      items.push({
+        id: item.id,
+        bucket: item.bucket,
+        key: item.key,
+        purpose: item.purpose,
+        retentionClass: item.retentionClass,
+        status: "deleted",
+      });
+    } catch {
+      items.push({
+        id: item.id,
+        bucket: item.bucket,
+        key: item.key,
+        purpose: item.purpose,
+        retentionClass: item.retentionClass,
+        status: "failed",
+      });
+    }
+  }
+
+  return {
+    total: expiredObjects.length,
+    deleted: items.filter((item) => item.status === "deleted").length,
+    items,
+  };
 }
