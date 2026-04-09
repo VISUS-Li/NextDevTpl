@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 
+import { saveStorageObjectRecord } from "@/features/storage";
 import { getStorageProvider } from "@/features/storage/providers";
 import { getFileTypeFromName } from "@/lib/file-utils";
 import { auth } from "@/lib/auth";
@@ -35,10 +36,24 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
 
     const body = await request.json();
-    const { filename, contentType, fileSize } = body as {
+    const {
+      filename,
+      contentType,
+      fileSize,
+      purpose = "document_upload",
+      retentionClass = "long_term",
+      expiresAt,
+    } = body as {
       filename: string;
       contentType: string;
       fileSize: number;
+      purpose?: string;
+      retentionClass?:
+        | "permanent"
+        | "long_term"
+        | "temporary"
+        | "ephemeral";
+      expiresAt?: string;
     };
 
     // 验证文件名
@@ -79,11 +94,24 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       3600
     );
     const fileUrl = provider.getPublicUrl(fileKey, BUCKET_NAME);
+    const storageRecord = await saveStorageObjectRecord({
+      bucket: BUCKET_NAME,
+      key: fileKey,
+      contentType,
+      ownerUserId: session.user.id,
+      purpose,
+      retentionClass,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      status: "pending",
+    });
 
     return NextResponse.json({
       presignedUrl,
       fileKey,
       fileUrl,
+      purpose: storageRecord.purpose,
+      retentionClass: storageRecord.retentionClass,
+      expiresAt: storageRecord.expiresAt,
       expiresIn: 3600,
     });
   } catch (error) {

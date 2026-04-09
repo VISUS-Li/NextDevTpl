@@ -316,6 +316,64 @@ export const toolConfigAuditLog = pgTable("tool_config_audit_log", {
 });
 
 // ============================================
+// 对象存储资源表
+// ============================================
+
+/**
+ * 对象存储保留等级枚举
+ */
+export const storageRetentionClassEnum = pgEnum("storage_retention_class", [
+  "permanent",
+  "long_term",
+  "temporary",
+  "ephemeral",
+]);
+
+/**
+ * 对象存储资源状态枚举
+ */
+export const storageObjectStatusEnum = pgEnum("storage_object_status", [
+  "pending",
+  "ready",
+  "deleted",
+]);
+
+/**
+ * 对象存储资源表
+ *
+ * 用于记录上传对象的用途、保留等级和过期时间。
+ */
+export const storageObject = pgTable(
+  "storage_object",
+  {
+    id: text("id").primaryKey(),
+    bucket: text("bucket").notNull(),
+    key: text("key").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size"),
+    ownerUserId: text("owner_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    toolKey: text("tool_key"),
+    purpose: text("purpose").notNull(),
+    retentionClass: storageRetentionClassEnum("retention_class")
+      .notNull()
+      .default("long_term"),
+    expiresAt: timestamp("expires_at"),
+    requestId: text("request_id"),
+    taskId: text("task_id"),
+    status: storageObjectStatusEnum("status").notNull().default("pending"),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("storage_object_bucket_key_idx").on(table.bucket, table.key),
+  ]
+);
+
+// ============================================
 // RedInk 发布草稿表
 // ============================================
 /**
@@ -1464,6 +1522,12 @@ export type AIBillingRecordStatus =
   (typeof aiBillingRecordStatusEnum.enumValues)[number];
 export type AIRouteStrategy = (typeof aiRouteStrategyEnum.enumValues)[number];
 export type AIRelayCostMode = (typeof aiRelayCostModeEnum.enumValues)[number];
+export type StorageObject = typeof storageObject.$inferSelect;
+export type NewStorageObject = typeof storageObject.$inferInsert;
+export type StorageRetentionClass =
+  (typeof storageRetentionClassEnum.enumValues)[number];
+export type StorageObjectStatus =
+  (typeof storageObjectStatusEnum.enumValues)[number];
 
 // ============================================
 // Newsletter 订阅表

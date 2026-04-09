@@ -27,12 +27,15 @@
   - AI 多模态资产 URL 已支持优先使用公网地址
   - 已新增独立测试文件 `src/test/platform/storage-phase1-provider.test.ts`
   - 已通过接口级测试，覆盖上传接口返回公网 URL、AI 资产转公网 URL 两条链路
+- Phase 2 已完成：
+  - 已新增 `storage_object` 表，用于记录对象资源元数据
+  - 已支持 `purpose / retentionClass / expiresAt / status` 落库
+  - `presigned-image`、`upload/presigned`、`results/save` 已接入资源记录写入
+  - 已新增独立测试文件 `src/test/platform/storage-phase2-lifecycle.test.ts`
+  - 已通过接口级测试，覆盖临时上传、超短期上传、长期归档三条链路
 
 ### 待完成
 
-- Phase 2：
-  - 增加资源元数据
-  - 上传时写入 `purpose / retentionClass / expiresAt`
 - Phase 3：
   - 增加临时资源清理链路
   - 补齐平台主动删除和到期清理

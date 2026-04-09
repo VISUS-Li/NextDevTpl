@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { withApiLogging } from "@/lib/api-logger";
 import { getStorageProvider } from "@/features/storage/providers";
+import { saveStorageObjectRecord } from "@/features/storage";
 
 const saveResultSchema = z.object({
   tool: z.string().trim().min(1).max(80),
@@ -60,10 +61,22 @@ export const POST = withApiLogging(async (request: Request) => {
   );
 
   await provider.putObject(key, bucket, body, "application/json; charset=utf-8");
+  const storageRecord = await saveStorageObjectRecord({
+    bucket,
+    key,
+    contentType: "application/json; charset=utf-8",
+    ownerUserId: session.user.id,
+    toolKey: payload.data.tool,
+    purpose: "result_archive",
+    retentionClass: "long_term",
+    status: "ready",
+  });
 
   return NextResponse.json({
     success: true,
     key,
     bucket,
+    retentionClass: storageRecord.retentionClass,
+    expiresAt: storageRecord.expiresAt,
   });
 });

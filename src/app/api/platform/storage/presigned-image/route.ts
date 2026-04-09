@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { auth } from "@/lib/auth";
 import { withApiLogging } from "@/lib/api-logger";
+import { saveStorageObjectRecord } from "@/features/storage";
 import { getStorageProvider } from "@/features/storage/providers";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -15,6 +16,11 @@ const presignedImageSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   contentType: z.enum(ALLOWED_IMAGE_TYPES),
   fileSize: z.number().int().positive().max(MAX_FILE_SIZE).optional(),
+  purpose: z.string().trim().min(1).max(80).default("product_image"),
+  retentionClass: z
+    .enum(["permanent", "long_term", "temporary", "ephemeral"])
+    .default("long_term"),
+  expiresAt: z.string().datetime().optional(),
 });
 
 /**
@@ -58,6 +64,19 @@ export const POST = withApiLogging(async (request: Request) => {
     payload.data.contentType as AllowedImageType
   );
   const publicUrl = provider.getPublicUrl(key, bucket);
+  const storageRecord = await saveStorageObjectRecord({
+    bucket,
+    key,
+    contentType: payload.data.contentType,
+    ownerUserId: session.user.id,
+    toolKey: "redink",
+    purpose: payload.data.purpose,
+    retentionClass: payload.data.retentionClass,
+    expiresAt: payload.data.expiresAt
+      ? new Date(payload.data.expiresAt)
+      : null,
+    status: "pending",
+  });
 
   return NextResponse.json({
     success: true,
@@ -65,6 +84,9 @@ export const POST = withApiLogging(async (request: Request) => {
     publicUrl,
     key,
     bucket,
+    purpose: storageRecord.purpose,
+    retentionClass: storageRecord.retentionClass,
+    expiresAt: storageRecord.expiresAt,
     maxFileSize: MAX_FILE_SIZE,
     contentType: payload.data.contentType,
   });
