@@ -48,6 +48,7 @@
 - 当前已支持 AI 多模态优先使用公网 URL 访问对象资源
 - 当前已支持手动触发过期资源清理
 - 2026-04-09 已完成三家厂商的真实桶连通性验证，当前推荐默认启用火山 TOS
+- 2026-04-09 已新增 AI 资产平台代理回源方案，用于规避上游模型直连对象存储域名不稳定的问题
 
 ### 真实连通性验证结果
 
@@ -84,6 +85,20 @@
     - `STORAGE_ENDPOINT=https://oss-cn-chengdu.aliyuncs.com`
     - `STORAGE_FORCE_PATH_STYLE=false`
     - `STORAGE_PUBLIC_BASE_URL=https://tripai.oss-cn-chengdu.aliyuncs.com`
+
+### AI 多模态取图补充结论
+
+- 2026-04-09 实测发现：
+  - Geek 文本请求正常
+  - Geek 使用官方示例图片的多模态请求正常
+  - Geek 直接读取火山 TOS 公网图片地址时会出现长时间等待后失败
+- 当前判断：
+  - 问题不在平台消息格式
+  - 问题集中在上游模型直接抓取对象存储域名时的兼容性
+- 当前处理方式：
+  - 平台新增 `/api/platform/storage/object` 公开代理路由
+  - AI 资产可改为 `STORAGE_AI_URL_MODE=proxy`
+  - 上游模型统一访问平台域名，由平台回源对象存储并返回 `inline` 内容
 
 ## 2. 当前代码现状
 

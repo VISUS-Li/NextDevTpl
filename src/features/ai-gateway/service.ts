@@ -25,6 +25,7 @@ import {
   InsufficientCreditsError,
 } from "@/features/credits/core";
 import { getStorageProvider } from "@/features/storage/providers";
+import { getStorageAssetProxyUrl } from "@/features/storage/utils";
 import {
   DEFAULT_PROJECT_KEY,
   getResolvedToolConfig,
@@ -446,7 +447,7 @@ export async function executeAIChat(
     requestBody: {
       messages: params.messages,
       providerMessages,
-      model: params.model ?? null,
+      model: settings.requestedModel,
       temperature: params.temperature ?? null,
       stream: params.stream ?? false,
       modalities: params.modalities ?? null,
@@ -1402,7 +1403,11 @@ async function normalizeContentParts(
  */
 async function resolveStorageAssetUrl(bucket: string, key: string) {
   const provider = getStorageProvider();
-  if ((process.env.STORAGE_AI_URL_MODE ?? "public") === "public") {
+  const aiUrlMode = process.env.STORAGE_AI_URL_MODE ?? "public";
+  if (aiUrlMode === "proxy") {
+    return getStorageAssetProxyUrl(bucket, key);
+  }
+  if (aiUrlMode === "public") {
     return provider.getPublicUrl(key, bucket);
   }
   return provider.getSignedUrl(key, bucket, 3600);
