@@ -8,6 +8,8 @@ import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
+  aiRelayModelBinding,
+  aiRelayProvider,
   project,
   type ToolConfigField,
   type ToolConfigFieldType,
@@ -51,6 +53,7 @@ const TOOL_SLOT_SETTING_LABELS: Record<string, Record<string, string>> = {
     json1: "前缀生命周期规则",
   },
   redink: {
+    json4: "用户可见模型目录",
     config10: "AI 资源访问方式",
   },
   "jingfang-ai": {
@@ -125,6 +128,16 @@ const defaultFieldDefinitions: Array<{
     if (tool.toolKey === "storage") {
       return buildStorageFieldDefinition(field);
     }
+    if (tool.toolKey === "redink" && field.fieldKey === "json4") {
+      return {
+        ...field,
+        label: "redink.userModelCatalog",
+        description:
+          "配置 RedInk 对用户展示的模型子集与别名，必须是 AI 网关模型绑定的子集",
+        adminOnly: true,
+        userOverridable: false,
+      };
+    }
     if (field.fieldKey !== "config10") {
       return field;
     }
@@ -193,7 +206,39 @@ const REDINK_DEFAULT_RUNTIME_VALUES = {
     },
   },
   json3: ["geek-default"],
+  json4: {
+    text_generation: {
+      defaultModel: "gpt-4o-mini",
+      options: [
+        {
+          modelKey: "gpt-4o-mini",
+          label: "标准文案模型",
+          description: "适合标题和正文生成",
+        },
+      ],
+    },
+    image_generation: {
+      defaultModel: null,
+      options: [],
+    },
+  },
 } as const;
+
+export type RedinkModelCatalogOption = {
+  modelKey: string;
+  label: string;
+  description: string | null;
+};
+
+export type RedinkModelCatalogGroup = {
+  defaultModel: string | null;
+  options: ReadonlyArray<RedinkModelCatalogOption>;
+};
+
+export type RedinkModelCatalog = {
+  text_generation: RedinkModelCatalogGroup;
+  image_generation: RedinkModelCatalogGroup;
+};
 
 type ConfigValueRow = typeof toolConfigValue.$inferSelect;
 
@@ -820,6 +865,56 @@ export async function getResolvedAIConfig(params: {
   };
 }
 
+/**
+ * 读取 RedInk 用户可见模型目录。
+ */
+export async function getRedinkResolvedModelCatalog(params: {
+  projectKey?: string;
+  userId: string;
+}) {
+  const resolved = await getResolvedToolConfig({
+    toolKey: "redink",
+    userId: params.userId,
+    ...(params.projectKey ? { projectKey: params.projectKey } : {}),
+  });
+  const config = resolved.config as Record<string, unknown>;
+
+  return {
+    projectKey: resolved.projectKey,
+    revision: resolved.revision,
+    allowedModels: normalizeStringArray(config.json1),
+    catalog: normalizeRedinkModelCatalog(config.json4),
+  };
+}
+
+/**
+ * 读取启用中的 AI 模型绑定能力快照。
+ */
+export async function listEnabledAIModelBindingCapabilities() {
+  const rows = await db
+    .select({
+      modelKey: aiRelayModelBinding.modelKey,
+      metadata: aiRelayModelBinding.metadata,
+    })
+    .from(aiRelayModelBinding)
+    .innerJoin(
+      aiRelayProvider,
+      eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
+    )
+    .where(
+      and(
+        eq(aiRelayModelBinding.enabled, true),
+        eq(aiRelayProvider.enabled, true),
+        eq(aiRelayProvider.requestType, "chat")
+      )
+    );
+
+  return rows.map((row) => ({
+    modelKey: row.modelKey,
+    capabilities: normalizeBindingCapabilities(row.metadata),
+  }));
+}
+
 async function saveToolConfigValues(
   params: SaveConfigParams & { scope: ToolConfigScope }
 ) {
@@ -1132,6 +1227,79 @@ function validateRequiredFields(
   }
 }
 
+function normalizeRedinkModelCatalog(value: unknown): RedinkModelCatalog {
+  const record = asRecord(value);
+  return {
+    text_generation: normalizeRedinkModelCatalogGroup(
+      record?.text_generation,
+      REDINK_DEFAULT_RUNTIME_VALUES.json4.text_generation
+    ),
+    image_generation: normalizeRedinkModelCatalogGroup(
+      record?.image_generation,
+      REDINK_DEFAULT_RUNTIME_VALUES.json4.image_generation
+    ),
+  };
+}
+
+function normalizeRedinkModelCatalogGroup(
+  value: unknown,
+  fallback: RedinkModelCatalogGroup
+): RedinkModelCatalogGroup {
+  const record = asRecord(value);
+  const options = Array.isArray(record?.options)
+    ? record.options
+        .map((item) => normalizeRedinkModelCatalogOption(item))
+        .filter((item): item is RedinkModelCatalogOption => item !== null)
+    : fallback.options;
+
+  return {
+    defaultModel:
+      typeof record?.defaultModel === "string" && record.defaultModel.trim()
+        ? record.defaultModel.trim()
+        : fallback.defaultModel,
+    options,
+  };
+}
+
+function normalizeRedinkModelCatalogOption(
+  value: unknown
+): RedinkModelCatalogOption | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const modelKey =
+    typeof record.modelKey === "string" ? record.modelKey.trim() : "";
+  const label = typeof record.label === "string" ? record.label.trim() : "";
+  if (!modelKey || !label) {
+    return null;
+  }
+  return {
+    modelKey,
+    label,
+    description:
+      typeof record.description === "string" ? record.description.trim() : null,
+  };
+}
+
+function normalizeBindingCapabilities(value: unknown) {
+  const metadata = asRecord(value);
+  if (!Array.isArray(metadata?.capabilities)) {
+    return ["text"];
+  }
+  return metadata.capabilities.filter(
+    (item): item is string => typeof item === "string" && item.length > 0
+  );
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string => typeof item === "string" && item.length > 0
+      )
+    : [];
+}
+
 function setNestedConfigValue(
   config: Record<string, unknown>,
   fieldKey: string,
@@ -1165,6 +1333,12 @@ function getNestedConfigValue(
     target = (target as Record<string, unknown>)[part];
   }
   return target;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function encryptToolConfigSecret(value: string) {

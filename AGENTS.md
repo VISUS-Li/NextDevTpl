@@ -29,6 +29,7 @@
 
 ## 最近记录
 
+- 2026-04-10：完成 RedInk 用户可见模型目录 Phase 1，新增管理员专用 `json4` 模型目录配置、用户态 `model-options` 接口和能力过滤测试，原因是需要让 RedInk 只向用户暴露管理员开放且已在 AI 网关启用的模型子集；已通过 `pnpm test:run src/test/platform/redink-model-options.test.ts`、`pnpm exec tsc --noEmit --pretty false` 与 `pnpm exec biome check src/features/tool-config/service.ts src/app/api/platform/redink/model-options/route.ts src/test/platform/redink-model-options.test.ts` 验证
 - 2026-04-09：为 AI 模型绑定新增能力声明并在网关按能力筛选 provider，原因是图片生成、音视频输入输出不能再默认所有模型都支持；已通过 `pnpm test:run src/test/platform/ai-chat.test.ts src/test/platform/ai-chat-multimodal-phase1.test.ts src/test/platform/ai-chat-multimodal-phase2.test.ts src/test/platform/ai-chat-multimodal-phase3.test.ts src/test/platform/ai-admin-management.test.ts src/test/platform/ai-admin-ops.test.ts` 与 `pnpm exec tsc --noEmit --pretty false` 验证
 - 2026-04-09：修复极客智坊图片任务轮询路径与状态映射，并为图片输出请求自动补 `image_generation`，原因是 `product-post-image` 创建后需通过 `/chat/{id}` 轮询且 `succeed` 需要视为完成，否则 `redink` 会在轮询阶段失败或只拿到文本说明；已通过 `pnpm test:run src/test/tool-config/ai-client.test.ts src/test/platform/ai-chat-multimodal-phase3.test.ts`、`pnpm exec tsc --noEmit --pretty false` 和真实上游 `/chat/{id}` 查询验证
 - 2026-04-09：修复 `redink` 图片生成走 AI 网关时把异步 `pending` 任务误判为空响应的问题，并让后台失败请求回填实际尝试的 provider，原因是 `gemini-2.5-flash` 图片请求会先返回仅含任务元信息的 201 响应且管理台此前显示“未命中”容易误导；已通过 `pnpm test:run src/test/tool-config/ai-client.test.ts`、`pnpm test:run src/test/platform/ai-admin-management.test.ts` 和 `pnpm exec tsc --noEmit --pretty false` 验证
