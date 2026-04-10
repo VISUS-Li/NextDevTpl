@@ -55,7 +55,7 @@
 - 文档收尾
 - 最终联调
 
-状态：未开始
+状态：已完成
 
 ## 当前进度
 
@@ -63,4 +63,12 @@
 - 已完成 Phase 2：新增 `redink/request-result` 代理结果接口，`model-options` 已支持 `ETag` 与 `304`，前端可按 revision 与缓存头复用目录
 - 已完成 Phase 3：新增 `redink/text` 代理接口，支持标题、正文、商品文案和商品发布文案按目录选模，并把 `projectKey` 传入 AI 网关解析
 - 已完成 Phase 4：新增 `redink/image` 代理接口，支持商品发布图和通用图片生成按目录选模，并复用 `redink/request-result` 轮询异步出图结果
-- Phase 5 将执行回归测试、整理最终状态并补齐文档收尾
+- 已完成 Phase 5：新增完整回归链路测试，确认目录读取、文本生成、图片任务创建和结果轮询都可直接使用
+
+## 完成态
+
+- 用户可先调用 `GET /api/platform/redink/model-options?projectKey=...` 获取文本和图片模型目录
+- 文本生成走 `POST /api/platform/redink/text`
+- 图片生成走 `POST /api/platform/redink/image`
+- 异步任务轮询走 `GET /api/platform/redink/request-result?requestId=...`
+- 以上接口都会按管理员目录、AI 网关能力声明、工具白名单和当前项目配置共同校验模型可用性
