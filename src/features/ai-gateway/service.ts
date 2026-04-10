@@ -149,6 +149,7 @@ export type ExecuteAIChatParams = {
   userId: string;
   toolKey: string;
   featureKey: string;
+  projectKey?: string;
   messages: AIChatMessage[];
   stream?: boolean;
   model?: string;
@@ -194,11 +195,14 @@ async function resolveToolAISettings(
   userId: string,
   toolKey: string,
   featureKey: string,
+  projectKey?: string,
   model?: string
 ): Promise<ResolvedToolAISettings> {
-  await seedDefaultToolConfigProject({ projectKey: DEFAULT_PROJECT_KEY });
+  await seedDefaultToolConfigProject({
+    projectKey: projectKey ?? DEFAULT_PROJECT_KEY,
+  });
   const resolved = await getResolvedToolConfig({
-    projectKey: DEFAULT_PROJECT_KEY,
+    projectKey: projectKey ?? DEFAULT_PROJECT_KEY,
     toolKey,
     userId,
   });
@@ -438,6 +442,7 @@ export async function executeAIChat(
     params.userId,
     params.toolKey,
     params.featureKey,
+    params.projectKey,
     params.model
   );
   const pricingRule = await getPricingRule(
@@ -1321,22 +1326,13 @@ function getRequiredCapabilities(params: ExecuteAIChatParams) {
       continue;
     }
     for (const part of content) {
-      if (
-        part.type === "image_url" ||
-        part.type === "image_asset"
-      ) {
+      if (part.type === "image_url" || part.type === "image_asset") {
         capabilities.add("image_input");
       }
-      if (
-        part.type === "audio_url" ||
-        part.type === "audio_asset"
-      ) {
+      if (part.type === "audio_url" || part.type === "audio_asset") {
         capabilities.add("audio_input");
       }
-      if (
-        part.type === "video_url" ||
-        part.type === "video_asset"
-      ) {
+      if (part.type === "video_url" || part.type === "video_asset") {
         capabilities.add("video_input");
       }
     }
