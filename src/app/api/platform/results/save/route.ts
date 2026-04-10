@@ -1,8 +1,8 @@
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { saveStorageObjectRecord } from "@/features/storage";
 import { getStorageProvider } from "@/features/storage/providers";
+import { saveStorageObjectRecord } from "@/features/storage/records";
 import { withApiLogging } from "@/lib/api-logger";
 import { auth } from "@/lib/auth";
 

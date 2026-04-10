@@ -35,13 +35,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditUsageSection } from "@/features/credits/components";
 import { updateProfileAction } from "@/features/settings/actions";
 import { updateProfileSchema } from "@/features/settings/schemas";
-import {
-  ALLOWED_IMAGE_TYPES,
-  generateAvatarKey,
-  getAvatarUrl,
-  getSignedUploadUrlAction,
-  MAX_FILE_SIZE,
-} from "@/features/storage";
+import { getSignedUploadUrlAction } from "@/features/storage/actions";
+import { ALLOWED_IMAGE_TYPES, MAX_FILE_SIZE } from "@/features/storage/types";
 import { UserToolConfigSection } from "@/features/tool-config/components/user-tool-config-section";
 import { usePathname, useRouter } from "@/i18n/routing";
 import { BillingSection } from "./billing-section";
@@ -68,6 +63,29 @@ interface SettingsProfileViewProps {
  * 表单数据类型
  */
 type FormValues = z.infer<typeof updateProfileSchema>;
+
+/**
+ * 读取头像展示地址，兼容外部 URL 和本地代理路径。
+ */
+function getAvatarDisplayUrl(image: string | null | undefined) {
+  if (!image) {
+    return undefined;
+  }
+  if (image.startsWith("http://") || image.startsWith("https://")) {
+    return image;
+  }
+  const avatarsBucket =
+    process.env.NEXT_PUBLIC_AVATARS_BUCKET_NAME ?? "avatars";
+  return `/image-proxy/${avatarsBucket}/${image}`;
+}
+
+/**
+ * 生成头像对象键名，避免覆盖旧文件。
+ */
+function generateAvatarObjectKey(userId: string, file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  return `${userId}-${Date.now()}.${extension}`;
+}
 
 /**
  * 设置页面主视图组件
@@ -134,7 +152,7 @@ export function SettingsProfileView({
   /**
    * 获取当前显示的头像 URL
    */
-  const currentAvatarUrl = avatarPreview ?? getAvatarUrl(user.image);
+  const currentAvatarUrl = avatarPreview ?? getAvatarDisplayUrl(user.image);
 
   /**
    * 表单实例
@@ -222,7 +240,7 @@ export function SettingsProfileView({
       setAvatarPreview(localPreviewUrl);
 
       // 2. 生成唯一文件名
-      const key = generateAvatarKey(user.id, file);
+      const key = generateAvatarObjectKey(user.id, file);
 
       // 3. 获取签名上传 URL
       const uploadUrlResult = await getSignedUploadUrlAction({

@@ -1,5 +1,5 @@
-import { getStorageAdminPageData } from "@/features/storage";
 import { AdminStorageView } from "@/features/storage/components/admin-storage-view";
+import { getStorageAdminPageData } from "@/features/storage/records";
 
 export const metadata = {
   title: "Storage Admin | Trip",

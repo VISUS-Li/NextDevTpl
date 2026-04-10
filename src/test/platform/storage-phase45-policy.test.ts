@@ -10,7 +10,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as postCleanupScope } from "@/app/api/platform/storage/admin/cleanup-scope/route";
 import { db } from "@/db";
 import { storageObject } from "@/db/schema";
-import { saveStorageObjectRecord } from "@/features/storage";
+import { saveStorageObjectRecord } from "@/features/storage/records";
 import {
   saveAdminToolConfig,
   seedDefaultToolConfigProject,

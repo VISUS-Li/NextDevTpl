@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { cleanupExpiredStorageObjects } from "@/features/storage";
+import { cleanupExpiredStorageObjects } from "@/features/storage/records";
 import { withApiLogging } from "@/lib/api-logger";
 
 /**

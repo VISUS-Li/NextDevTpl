@@ -5,22 +5,15 @@ set -euo pipefail
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-APP_NAME="${APP_NAME:-NextjsTpl}"
 APP_DIR="${APP_DIR:-$(pwd)}"
-PORT="${PORT:-3303}"
+PORT="${PORT:-3000}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pnpm}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
-SKIP_BUILD="${SKIP_BUILD:-0}"
-TAR_FILE="${TAR_FILE:-deploy.tgz}"
-FORCE_EXTRACT="${FORCE_EXTRACT:-0}"
 START_TUNNEL="${START_TUNNEL:-1}"
-TUNNEL_LOG_FILE="${TUNNEL_LOG_FILE:-/tmp/${APP_NAME}-cloudflared.log}"
-APP_LOG_FILE="${APP_LOG_FILE:-/tmp/${APP_NAME}.log}"
 CF_TUNNEL_HOST="${CF_TUNNEL_HOST:-127.0.0.1}"
+TUNNEL_LOG_FILE="${TUNNEL_LOG_FILE:-/tmp/nextdevtpl-dev-cloudflared.log}"
 
 cd "$APP_DIR"
-export NODE_ENV=production
-export PORT="$PORT"
 
 # 统一选择包管理器，避免分支重复
 pick_package_manager() {
@@ -47,78 +40,28 @@ pick_package_manager() {
   printf '%s\n' "npm"
 }
 
-# 按包管理器执行脚本
-run_package_script() {
-  case "$1" in
-    pnpm) pnpm run "$2" ;;
-    yarn) yarn "$2" ;;
-    *) npm run "$2" ;;
-  esac
-}
-
-# 按锁文件安装依赖，构建时需要完整依赖
+# 按锁文件安装依赖，兼容现有仓库习惯
 install_dependencies() {
   if [ "$SKIP_INSTALL" = "1" ]; then
     return
   fi
 
-  INSTALL_PROD_ONLY="${INSTALL_PROD_ONLY:-$([ "$SKIP_BUILD" = "1" ] && printf '%s' 1 || printf '%s' 0)}"
-
   if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
-    if [ "$INSTALL_PROD_ONLY" = "1" ]; then
-      pnpm install --prod --frozen-lockfile
-    else
-      pnpm install --frozen-lockfile
-    fi
+    pnpm install --frozen-lockfile
     return
   fi
 
   if [ -f yarn.lock ] && command -v yarn >/dev/null 2>&1; then
-    if [ "$INSTALL_PROD_ONLY" = "1" ]; then
-      yarn install --production --frozen-lockfile
-    else
-      yarn install --frozen-lockfile
-    fi
+    yarn install --frozen-lockfile
     return
   fi
 
   if [ -f package-lock.json ]; then
-    if [ "$INSTALL_PROD_ONLY" = "1" ]; then
-      npm ci --omit=dev
-    else
-      npm ci
-    fi
-    return
-  fi
-
-  if [ "$INSTALL_PROD_ONLY" = "1" ]; then
-    npm install --omit=dev
+    npm ci
     return
   fi
 
   npm install
-}
-
-# 准备生产产物，兼容构建和上传产物两种方式
-prepare_build_output() {
-  if [ "$SKIP_BUILD" != "1" ]; then
-    run_package_script "$PACKAGE_MANAGER_CMD" build
-    return
-  fi
-
-  if [ ! -f "$TAR_FILE" ] && [ ! -d .next ]; then
-    printf '%s\n' ".next 不存在，且未找到 $TAR_FILE"
-    exit 1
-  fi
-
-  if [ -f "$TAR_FILE" ] && { [ "$FORCE_EXTRACT" = "1" ] || [ ! -d .next ]; }; then
-    tar -xzf "$TAR_FILE"
-  fi
-
-  if [ ! -d .next ]; then
-    printf '%s\n' "解压 $TAR_FILE 后仍未找到 .next"
-    exit 1
-  fi
 }
 
 # 启动 Cloudflare Tunnel，并尝试打印外网地址
@@ -176,28 +119,26 @@ wait_for_local_http() {
   done
 }
 
-# 启动 next 生产服务
-start_app() {
-  if command -v pm2 >/dev/null 2>&1; then
-    if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-      pm2 restart "$APP_NAME" --update-env
-    else
-      pm2 start node_modules/next/dist/bin/next --name "$APP_NAME" -- start -p "$PORT"
-    fi
-    pm2 save
-    printf '%s\n' "应用已启动: http://127.0.0.1:${PORT} (pm2)"
-    return
+# 退出时同时关闭子进程
+cleanup() {
+  if [ -n "${DEV_PID:-}" ] && kill -0 "$DEV_PID" 2>/dev/null; then
+    kill "$DEV_PID" 2>/dev/null || true
+    wait "$DEV_PID" 2>/dev/null || true
   fi
 
-  nohup node node_modules/next/dist/bin/next start -p "$PORT" > "$APP_LOG_FILE" 2>&1 &
-  APP_PID=$!
-  printf '%s\n' "应用已启动: http://127.0.0.1:${PORT} (pid: ${APP_PID})"
-  printf '%s\n' "应用日志: $APP_LOG_FILE"
+  if [ -n "${TUNNEL_PID:-}" ] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
+    kill "$TUNNEL_PID" 2>/dev/null || true
+    wait "$TUNNEL_PID" 2>/dev/null || true
+  fi
 }
 
 PACKAGE_MANAGER_CMD="$(pick_package_manager)"
 install_dependencies
-prepare_build_output
-start_app
+trap cleanup EXIT INT TERM
+
+printf '%s\n' "调试服务启动中: http://127.0.0.1:${PORT}"
+node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" &
+DEV_PID=$!
 wait_for_local_http
 start_tunnel
+wait "$DEV_PID"

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { cleanupExpiredStorageObjects } from "@/features/storage";
-import { auth } from "@/lib/auth";
+import { cleanupExpiredStorageObjects } from "@/features/storage/records";
 import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 const cleanupExpiredSchema = z.object({
   limit: z.number().int().min(1).max(200).default(50),
