@@ -11,7 +11,7 @@ import {
   redinkMessageSchema,
 } from "@/features/redink/request-schema";
 import {
-  getRedinkTextFeatureKey,
+  getRedinkImageFeatureKey,
   normalizeRedinkMessages,
   resolveRedinkUserModel,
 } from "@/features/redink/service";
@@ -19,21 +19,17 @@ import { toolConfigProjectKeySchema } from "@/features/tool-config/schema";
 import { withApiLogging } from "@/lib/api-logger";
 import { auth } from "@/lib/auth";
 
-const sceneSchema = z.enum([
-  "title",
-  "copywriting",
-  "product_copy",
-  "product_post_content",
-]);
+const sceneSchema = z.enum(["product_post_image", "general_image"]);
 
-const textRequestSchema = z
+const imageRequestSchema = z
   .object({
     projectKey: toolConfigProjectKeySchema.default("nextdevtpl"),
     scene: sceneSchema,
     messages: z.array(redinkMessageSchema).min(1).optional(),
     input: redinkInputSchema.optional(),
     model: z.string().trim().min(1).max(120).optional(),
-    temperature: z.number().min(0).max(2).optional(),
+    image: z.record(z.string(), z.unknown()).optional(),
+    background: z.boolean().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((value, ctx) => {
@@ -47,7 +43,7 @@ const textRequestSchema = z
   });
 
 /**
- * 执行 RedInk 文本生成代理。
+ * 执行 RedInk 图片生成代理。
  */
 export const POST = withApiLogging(async (request: Request) => {
   const session = await auth.api.getSession({
@@ -65,7 +61,7 @@ export const POST = withApiLogging(async (request: Request) => {
     );
   }
 
-  const payload = textRequestSchema.safeParse(await request.json());
+  const payload = imageRequestSchema.safeParse(await request.json());
   if (!payload.success) {
     return NextResponse.json(
       {
@@ -82,7 +78,7 @@ export const POST = withApiLogging(async (request: Request) => {
     payload.data.messages,
     payload.data.input
   );
-  const selectedModel = await resolveTextModel(
+  const selectedModel = await resolveImageModel(
     payload.data.projectKey,
     session.user.id,
     payload.data.model
@@ -92,7 +88,7 @@ export const POST = withApiLogging(async (request: Request) => {
       {
         success: false,
         error: "model_not_allowed",
-        message: "当前文本场景没有可用模型",
+        message: "当前图片场景没有可用模型",
       },
       { status: 403 }
     );
@@ -102,25 +98,27 @@ export const POST = withApiLogging(async (request: Request) => {
     const result = await executeAIChat({
       userId: session.user.id,
       toolKey: "redink",
-      featureKey: getRedinkTextFeatureKey(payload.data.scene),
+      featureKey: getRedinkImageFeatureKey(payload.data.scene),
       projectKey: payload.data.projectKey,
       messages,
       model: selectedModel,
-      ...(payload.data.temperature !== undefined
-        ? { temperature: payload.data.temperature }
+      modalities: ["image"],
+      ...(payload.data.image ? { image: payload.data.image } : {}),
+      ...(payload.data.background !== undefined
+        ? { background: payload.data.background }
         : {}),
       metadata: {
         ...(payload.data.metadata ?? {}),
         projectKey: payload.data.projectKey,
         redinkScene: payload.data.scene,
-        redinkModelGroup: "text_generation",
+        redinkModelGroup: "image_generation",
       },
     });
 
     return NextResponse.json({
       success: true,
       scene: payload.data.scene,
-      modelGroup: "text_generation",
+      modelGroup: "image_generation",
       ...result,
     });
   } catch (error) {
@@ -164,9 +162,9 @@ export const POST = withApiLogging(async (request: Request) => {
 });
 
 /**
- * 校验文本场景允许使用的模型。
+ * 校验图片场景允许使用的模型。
  */
-async function resolveTextModel(
+async function resolveImageModel(
   projectKey: string,
   userId: string,
   requestedModel?: string
@@ -176,13 +174,13 @@ async function resolveTextModel(
       ? {
           projectKey,
           userId,
-          group: "text_generation",
+          group: "image_generation",
           requestedModel,
         }
       : {
           projectKey,
           userId,
-          group: "text_generation",
+          group: "image_generation",
         }
   );
 
