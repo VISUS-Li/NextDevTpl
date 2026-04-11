@@ -1,4 +1,7 @@
-import { DashboardSidebar, DashboardMainWrapper } from "@/features/dashboard/components";
+import {
+  DashboardMainWrapper,
+  DashboardSidebar,
+} from "@/features/dashboard/components";
 import { SidebarProvider } from "@/features/dashboard/context";
 
 export default function DashboardLayout({
@@ -8,7 +11,7 @@ export default function DashboardLayout({
 }) {
   return (
     <SidebarProvider>
-      <div className="min-h-screen bg-[#f5f5f5]">
+      <div className="min-h-screen bg-muted/30">
         <DashboardSidebar />
         <DashboardMainWrapper>{children}</DashboardMainWrapper>
       </div>

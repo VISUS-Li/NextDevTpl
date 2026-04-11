@@ -464,6 +464,9 @@
   "Dashboard": {
     "nav": {
       "dashboard": "控制台",
+      "credits": "积分",
+      "distribution": "分销",
+      "settings": "设置",
       "support": "支持",
       "newTicket": "新建工单"
     },
@@ -479,8 +482,182 @@
       "ticketDetails": "工单详情"
     },
     "sidebar": {
+      "navigation": "导航菜单",
       "settings": "设置",
       "logout": "退出登录"
+    }
+  },
+  "Admin": {
+    "header": {
+      "title": "管理后台",
+      "badge": "管理"
+    },
+    "nav": {
+      "groups": {
+        "management": "管理中心"
+      },
+      "dashboard": "控制面板",
+      "users": "用户管理",
+      "tickets": "工单管理",
+      "distribution": "分销管理",
+      "toolConfig": "工具配置",
+      "aiGateway": "AI 网关",
+      "storage": "对象存储"
+    },
+    "sidebar": {
+      "backToDashboard": "返回用户端",
+      "logout": "退出登录",
+      "openMenu": "打开管理菜单"
+    },
+    "dashboard": {
+      "title": "控制面板",
+      "description": "查看用户、工单、积分和订阅的整体情况。",
+      "stats": {
+        "totalUsers": {
+          "title": "总用户数",
+          "description": "本周新增 {count} 位"
+        },
+        "pendingTickets": {
+          "title": "待处理工单",
+          "description": "今日新增 {count} 个"
+        },
+        "activeSubscriptions": {
+          "title": "活跃订阅",
+          "description": "总订阅 {count} 个"
+        },
+        "creditSupply": {
+          "title": "积分流通",
+          "description": "当前用户持有总积分"
+        }
+      },
+      "panels": {
+        "users": {
+          "title": "用户统计",
+          "total": "总用户",
+          "admins": "管理员",
+          "regularUsers": "普通用户",
+          "banned": "已封禁",
+          "newThisWeek": "本周新增"
+        },
+        "tickets": {
+          "title": "工单统计",
+          "open": "待处理",
+          "inProgress": "处理中",
+          "total": "总工单",
+          "newToday": "今日新增"
+        },
+        "credits": {
+          "title": "积分流水",
+          "current": "当前持有",
+          "earned": "累计发放",
+          "spent": "累计消费",
+          "subscribers": "订阅用户",
+          "subscribersValue": "{count} 活跃"
+        }
+      },
+      "quickActions": {
+        "title": "快速操作",
+        "users": "管理用户",
+        "usersValue": "{count} 位",
+        "tickets": "处理工单",
+        "pendingValue": "{count} 待处理"
+      },
+      "system": {
+        "title": "系统信息",
+        "version": "版本",
+        "environment": "环境",
+        "database": "数据库"
+      }
+    }
+  },
+  "Shared": {
+    "language": {
+      "label": "切换语言",
+      "english": "English",
+      "chinese": "中文"
+    },
+    "theme": {
+      "label": "切换主题",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    }
+  },
+  "Support": {
+    "locale": "zh",
+    "categories": {
+      "billing": "账单问题",
+      "technical": "技术支持",
+      "bug": "Bug 报告",
+      "feature": "功能建议",
+      "other": "其他"
+    },
+    "priorities": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "statuses": {
+      "open": "待处理",
+      "inProgress": "处理中",
+      "resolved": "已解决",
+      "closed": "已关闭"
+    },
+    "list": {
+      "title": "支持中心",
+      "description": "查看和管理您的支持工单",
+      "create": "新建工单",
+      "emptyTitle": "暂无工单",
+      "emptyDescription": "您还没有提交过任何支持工单",
+      "createFirst": "创建第一个工单"
+    },
+    "new": {
+      "title": "新建工单",
+      "description": "描述您遇到的问题，我们会尽快回复",
+      "formTitle": "工单信息",
+      "subject": "主题",
+      "subjectPlaceholder": "简要描述您的问题",
+      "category": "类别",
+      "categoryPlaceholder": "选择类别",
+      "priority": "优先级",
+      "priorityPlaceholder": "选择优先级",
+      "message": "详细描述",
+      "messagePlaceholder": "请详细描述您遇到的问题，包括：\n- 问题发生的时间\n- 具体的错误信息\n- 您已尝试的解决方法",
+      "cancel": "取消",
+      "submit": "提交工单"
+    },
+    "detail": {
+      "conversation": "对话记录",
+      "meta": "{category} · 创建于 {date}",
+      "user": "用户",
+      "supportAgent": "客服",
+      "closedUser": "此工单已关闭，无法添加新消息",
+      "closedAdmin": "此工单已关闭，无法添加新回复"
+    },
+    "reply": {
+      "userTitle": "添加回复",
+      "adminTitle": "回复用户",
+      "placeholder": "输入您的消息...",
+      "adminPlaceholder": "输入您的回复...",
+      "counter": "{count}/5000 字符",
+      "submit": "发送",
+      "adminSubmit": "发送回复"
+    },
+    "statusSelect": {
+      "label": "选择新状态",
+      "loading": "更新中..."
+    },
+    "toasts": {
+      "ticketCreated": "工单创建成功",
+      "ticketCreateFailed": "创建工单失败，请重试",
+      "messageRequired": "请输入消息内容",
+      "messageSent": "消息发送成功",
+      "messageFailed": "发送失败，请重试",
+      "replyRequired": "请输入回复内容",
+      "replySent": "回复成功",
+      "replyFailed": "回复失败，请重试",
+      "statusUpdated": "状态更新成功",
+      "statusUpdateFailed": "状态更新失败"
     }
   },
   "Settings": {

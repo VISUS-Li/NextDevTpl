@@ -29,6 +29,7 @@
 
 ## 最近记录
 
+- 2026-04-11：为 dashboard/admin 布局补齐全局语言与主题切换入口，修复 `AdminSidebar` 未接入 `next-themes` 导致后台无法切换主题，并把支持中心与管理员首页的主要硬编码文案改成 `next-intl` 翻译键，同时给导航配置补 `titleKey` 便于后续新增菜单直接走国际化；已通过 `pnpm exec biome check --write ...`、`pnpm test:run src/test/support/ticket.test.ts src/test/support/admin-users.test.ts`、`pnpm test:run src/test/settings/profile.test.ts` 验证，`pnpm exec tsc --noEmit --pretty false` 仍被仓库既有 `src/app/api/auth/[...all]/route.ts` 的 `baseURL/basePath` 类型错误阻塞
 - 2026-04-11：把 `/zh/admin/tool-config` 的 `json` 配置改成可直接逐项编辑的结构化表单，并保留格式化 JSON 视图切换，原因是后台当前只显示 JSON 字符串，编辑门槛高且容易出错；已通过 `pnpm test:run src/test/tool-config/admin-tool-config-view.test.tsx` 与 `pnpm exec biome check src/features/tool-config/components/admin-tool-config-view.tsx src/test/tool-config/admin-tool-config-view.test.tsx` 验证，`pnpm exec tsc --noEmit --pretty false` 仍被仓库既有 `src/app/api/auth/[...all]/route.ts` 的 `baseURL/basePath` 类型错误阻塞
 - 2026-04-10：把 `geekai` provider 的数据库密钥替换成真实 Geek API Key，并复查 `redink` 当前模型目录与 Geek `/models` 返回结果一致，原因是前一轮清库后发现库里保存的是错误字符串而不是实际密钥；已通过真实请求 `GET https://geekai.co/api/v1/models`、`POST https://geekai.co/api/v1/chat/completions` 与 `psql` 查询验证 key 可用且 `redink` 配置的 9 个模型全部存在
 - 2026-04-10：清理当前数据库里的 RedInk 与 Geek 配置，删除 `geek-default` mock provider、重建 `geekai` 的 9 个模型绑定、收敛 `redink` 管理员模型白名单/前端模型目录/计费规则，并清空 822 条 `redink` 测试用户配置，原因是库内同时混有 mock provider、旧 feature 名和大量测试残留导致实际配置难以判断；已通过 `psql` 实查 provider、binding、`tool_config_value`、`tool_config_field` 与 `ai_pricing_rule` 验证当前仅剩 `geekai` 一套配置且 `redink` 用户态脏数据已为 0，当前唯一阻塞为 `geekai` 的 API Key 字段仍是错误内容，需在后台重填真实密钥

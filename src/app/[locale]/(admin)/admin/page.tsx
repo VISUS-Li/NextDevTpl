@@ -1,12 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { db } from "@/db";
-import {
-  creditsBalance,
-  subscription,
-  ticket,
-  user,
-} from "@/db/schema";
-import { count, eq, sum, gte } from "drizzle-orm";
+import { count, eq, gte, sum } from "drizzle-orm";
 import {
   Coins,
   CreditCard,
@@ -15,6 +7,11 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { db } from "@/db";
+import { creditsBalance, subscription, ticket, user } from "@/db/schema";
+import { Link } from "@/i18n/routing";
 
 /**
  * Admin 控制面板页面
@@ -26,6 +23,7 @@ import {
  * - 订阅统计
  */
 export default async function AdminDashboardPage() {
+  const t = await getTranslations("Admin.dashboard");
   // 获取今天的开始时间
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -60,7 +58,9 @@ export default async function AdminDashboardPage() {
     totalSubscriptionsResult,
   ] = await Promise.all([
     // 用户统计
-    db.select({ count: count() }).from(user),
+    db
+      .select({ count: count() })
+      .from(user),
     db.select({ count: count() }).from(user).where(eq(user.role, "admin")),
     db.select({ count: count() }).from(user).where(eq(user.banned, true)),
     db
@@ -69,7 +69,10 @@ export default async function AdminDashboardPage() {
       .where(gte(user.createdAt, weekStart)),
 
     // 工单统计
-    db.select({ count: count() }).from(ticket).where(eq(ticket.status, "open")),
+    db
+      .select({ count: count() })
+      .from(ticket)
+      .where(eq(ticket.status, "open")),
     db
       .select({ count: count() })
       .from(ticket)
@@ -81,7 +84,9 @@ export default async function AdminDashboardPage() {
       .where(gte(ticket.createdAt, todayStart)),
 
     // 积分统计
-    db.select({ total: sum(creditsBalance.balance) }).from(creditsBalance),
+    db
+      .select({ total: sum(creditsBalance.balance) })
+      .from(creditsBalance),
     db.select({ total: sum(creditsBalance.totalEarned) }).from(creditsBalance),
     db.select({ total: sum(creditsBalance.totalSpent) }).from(creditsBalance),
 
@@ -122,10 +127,8 @@ export default async function AdminDashboardPage() {
     <div className="space-y-6">
       {/* 页面标题 */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">控制面板</h2>
-        <p className="text-muted-foreground">
-          欢迎来到管理后台，这里是系统概览。
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
+        <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
       {/* 主要统计卡片 */}
@@ -133,13 +136,17 @@ export default async function AdminDashboardPage() {
         {/* 总用户数 */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">总用户数</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.totalUsers.title")}
+            </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.users.total}</div>
             <p className="text-xs text-muted-foreground">
-              本周新增 {stats.users.newThisWeek} 位
+              {t("stats.totalUsers.description", {
+                count: stats.users.newThisWeek,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -147,7 +154,9 @@ export default async function AdminDashboardPage() {
         {/* 待处理工单 */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">待处理工单</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.pendingTickets.title")}
+            </CardTitle>
             <Ticket className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -155,7 +164,9 @@ export default async function AdminDashboardPage() {
               {stats.tickets.open + stats.tickets.inProgress}
             </div>
             <p className="text-xs text-muted-foreground">
-              今日新增 {stats.tickets.newToday} 个
+              {t("stats.pendingTickets.description", {
+                count: stats.tickets.newToday,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -163,7 +174,9 @@ export default async function AdminDashboardPage() {
         {/* 活跃订阅 */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">活跃订阅</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.activeSubscriptions.title")}
+            </CardTitle>
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -171,7 +184,9 @@ export default async function AdminDashboardPage() {
               {stats.subscriptions.active}
             </div>
             <p className="text-xs text-muted-foreground">
-              总订阅 {stats.subscriptions.total} 个
+              {t("stats.activeSubscriptions.description", {
+                count: stats.subscriptions.total,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -179,7 +194,9 @@ export default async function AdminDashboardPage() {
         {/* 积分流通量 */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">积分流通</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.creditSupply.title")}
+            </CardTitle>
             <Coins className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -187,7 +204,7 @@ export default async function AdminDashboardPage() {
               {stats.credits.totalBalance.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
-              当前用户持有总积分
+              {t("stats.creditSupply.description")}
             </p>
           </CardContent>
         </Card>
@@ -200,34 +217,44 @@ export default async function AdminDashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              用户统计
+              {t("panels.users.title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">总用户</span>
+              <span className="text-muted-foreground">
+                {t("panels.users.total")}
+              </span>
               <span className="font-medium">{stats.users.total}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">管理员</span>
+              <span className="text-muted-foreground">
+                {t("panels.users.admins")}
+              </span>
               <span className="font-medium text-blue-600">
                 {stats.users.admins}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">普通用户</span>
+              <span className="text-muted-foreground">
+                {t("panels.users.regularUsers")}
+              </span>
               <span className="font-medium">
                 {stats.users.total - stats.users.admins}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">已封禁</span>
+              <span className="text-muted-foreground">
+                {t("panels.users.banned")}
+              </span>
               <span className="font-medium text-red-600">
                 {stats.users.banned}
               </span>
             </div>
             <div className="flex justify-between border-t pt-2">
-              <span className="text-muted-foreground">本周新增</span>
+              <span className="text-muted-foreground">
+                {t("panels.users.newThisWeek")}
+              </span>
               <span className="font-medium text-green-600">
                 +{stats.users.newThisWeek}
               </span>
@@ -240,28 +267,36 @@ export default async function AdminDashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              工单统计
+              {t("panels.tickets.title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">待处理</span>
+              <span className="text-muted-foreground">
+                {t("panels.tickets.open")}
+              </span>
               <span className="font-medium text-blue-600">
                 {stats.tickets.open}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">处理中</span>
+              <span className="text-muted-foreground">
+                {t("panels.tickets.inProgress")}
+              </span>
               <span className="font-medium text-yellow-600">
                 {stats.tickets.inProgress}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">总工单</span>
+              <span className="text-muted-foreground">
+                {t("panels.tickets.total")}
+              </span>
               <span className="font-medium">{stats.tickets.total}</span>
             </div>
             <div className="flex justify-between border-t pt-2">
-              <span className="text-muted-foreground">今日新增</span>
+              <span className="text-muted-foreground">
+                {t("panels.tickets.newToday")}
+              </span>
               <span className="font-medium text-orange-600">
                 +{stats.tickets.newToday}
               </span>
@@ -274,32 +309,42 @@ export default async function AdminDashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
-              积分流水
+              {t("panels.credits.title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">当前持有</span>
+              <span className="text-muted-foreground">
+                {t("panels.credits.current")}
+              </span>
               <span className="font-medium text-yellow-600">
                 {stats.credits.totalBalance.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">累计发放</span>
+              <span className="text-muted-foreground">
+                {t("panels.credits.earned")}
+              </span>
               <span className="font-medium text-green-600">
                 +{stats.credits.totalEarned.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">累计消费</span>
+              <span className="text-muted-foreground">
+                {t("panels.credits.spent")}
+              </span>
               <span className="font-medium text-red-600">
                 -{stats.credits.totalSpent.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between border-t pt-2">
-              <span className="text-muted-foreground">订阅用户</span>
+              <span className="text-muted-foreground">
+                {t("panels.credits.subscribers")}
+              </span>
               <span className="font-medium">
-                {stats.subscriptions.active} 活跃
+                {t("panels.credits.subscribersValue", {
+                  count: stats.subscriptions.active,
+                })}
               </span>
             </div>
           </CardContent>
@@ -310,49 +355,57 @@ export default async function AdminDashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>快速操作</CardTitle>
+            <CardTitle>{t("quickActions.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <a
+            <Link
               href="/admin/users"
               className="flex items-center gap-2 rounded-md p-2 hover:bg-muted transition-colors"
             >
               <Users className="h-4 w-4" />
-              <span>管理用户</span>
+              <span>{t("quickActions.users")}</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {stats.users.total} 位
+                {t("quickActions.usersValue", { count: stats.users.total })}
               </span>
-            </a>
-            <a
+            </Link>
+            <Link
               href="/admin/tickets"
               className="flex items-center gap-2 rounded-md p-2 hover:bg-muted transition-colors"
             >
               <Ticket className="h-4 w-4" />
-              <span>处理工单</span>
+              <span>{t("quickActions.tickets")}</span>
               {stats.tickets.open > 0 && (
                 <span className="ml-auto rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
-                  {stats.tickets.open} 待处理
+                  {t("quickActions.pendingValue", {
+                    count: stats.tickets.open,
+                  })}
                 </span>
               )}
-            </a>
+            </Link>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>系统信息</CardTitle>
+            <CardTitle>{t("system.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">版本</span>
+              <span className="text-muted-foreground">
+                {t("system.version")}
+              </span>
               <span>1.0.0</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">环境</span>
+              <span className="text-muted-foreground">
+                {t("system.environment")}
+              </span>
               <span>{process.env.NODE_ENV}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">数据库</span>
+              <span className="text-muted-foreground">
+                {t("system.database")}
+              </span>
               <span>PostgreSQL</span>
             </div>
           </CardContent>

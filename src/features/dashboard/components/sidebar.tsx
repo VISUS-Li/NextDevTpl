@@ -1,11 +1,9 @@
 "use client";
 
 import { ChevronsUpDown, LogOut, Settings } from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
+import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -14,17 +12,17 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { dashboardConfig } from "@/config";
 import { CreditBalanceBadge } from "@/features/credits/components";
 import { useSidebar } from "@/features/dashboard/context";
 import { ModeToggle } from "@/features/shared/components";
 import { getMyPlanAction } from "@/features/subscription/actions/get-user-plan";
-import { PlanBadge, type PlanType } from "@/features/subscription/components/plan-badge";
+import {
+  PlanBadge,
+  type PlanType,
+} from "@/features/subscription/components/plan-badge";
+import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { signOut, useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +40,10 @@ import { cn } from "@/lib/utils";
 export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isCollapsed, isMobileOpen, setMobileOpen, toggleSidebar } = useSidebar();
+  const { isCollapsed, isMobileOpen, setMobileOpen, toggleSidebar } =
+    useSidebar();
   const t = useTranslations("Dashboard");
+  const tSidebar = useTranslations("Dashboard.sidebar");
 
   // 获取当前用户会话
   const { data: session } = useSession();
@@ -66,13 +66,8 @@ export function DashboardSidebar() {
   /**
    * 导航项标题映射到翻译键
    */
-  const getNavTitle = (title: string): string => {
-    const titleMap: Record<string, string> = {
-      "Dashboard": t("nav.dashboard"),
-      "Support": t("nav.support"),
-      "New Ticket": t("nav.newTicket"),
-    };
-    return titleMap[title] || title;
+  const getNavTitle = (title: string, titleKey?: string): string => {
+    return titleKey ? t(titleKey) : title;
   };
 
   /**
@@ -137,6 +132,7 @@ export function DashboardSidebar() {
               viewBox="0 0 24 24"
               fill="currentColor"
             >
+              <title>Trip</title>
               <rect x="2" y="2" width="9" height="9" rx="2" />
               <rect x="13" y="2" width="9" height="9" rx="2" opacity="0.5" />
               <rect x="2" y="13" width="9" height="9" rx="2" opacity="0.5" />
@@ -145,7 +141,7 @@ export function DashboardSidebar() {
             <span
               className={cn(
                 "text-lg font-bold tracking-tight transition-opacity",
-                collapsed && "opacity-0",
+                collapsed && "opacity-0"
               )}
             >
               Trip<span className="text-primary">.</span>
@@ -160,17 +156,22 @@ export function DashboardSidebar() {
               {/* Group Label - 折叠时隐藏 */}
               {!collapsed && (
                 <p className="mb-1.5 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  {getNavTitle(group.title)}
+                  {getNavTitle(group.title, group.titleKey)}
                 </p>
               )}
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   // 去掉 locale 前缀后比较路径
                   const normalizedPath = pathname.replace(/^\/[a-z]{2}\//, "/");
-                  const isActive = normalizedPath === item.href ||
-                    (item.href !== "/dashboard" && normalizedPath.startsWith(`${item.href}/`));
+                  const isActive =
+                    normalizedPath === item.href ||
+                    (item.href !== "/dashboard" &&
+                      normalizedPath.startsWith(`${item.href}/`));
                   const Icon = item.icon;
-                  const translatedTitle = getNavTitle(item.title);
+                  const translatedTitle = getNavTitle(
+                    item.title,
+                    item.titleKey
+                  );
                   return (
                     <Link
                       key={item.href}
@@ -182,7 +183,7 @@ export function DashboardSidebar() {
                         isActive
                           ? "bg-primary/10 text-primary"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                        collapsed && "justify-center px-0",
+                        collapsed && "justify-center px-0"
                       )}
                     >
                       {Icon && <Icon className="h-4 w-4 shrink-0" />}
@@ -206,11 +207,14 @@ export function DashboardSidebar() {
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-3 rounded-md px-2 py-1.5 hover:bg-sidebar-accent/50 transition-colors",
-                    collapsed && "justify-center px-0",
+                    collapsed && "justify-center px-0"
                   )}
                 >
                   <Avatar className="h-8 w-8 shrink-0">
-                    <AvatarImage src={user.image || undefined} alt={user.name} />
+                    <AvatarImage
+                      src={user.image || undefined}
+                      alt={user.name}
+                    />
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {getInitials(user.name)}
                     </AvatarFallback>
@@ -241,7 +245,10 @@ export function DashboardSidebar() {
                 {/* 用户信息头部 */}
                 <div className="flex items-center gap-3 p-4">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={user.image || undefined} alt={user.name} />
+                    <AvatarImage
+                      src={user.image || undefined}
+                      alt={user.name}
+                    />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {getInitials(user.name)}
                     </AvatarFallback>
@@ -295,7 +302,7 @@ export function DashboardSidebar() {
             <div
               className={cn(
                 "flex items-center gap-3 rounded-md px-2 py-1.5",
-                collapsed && "justify-center px-0",
+                collapsed && "justify-center px-0"
               )}
             >
               <div className="h-8 w-8 animate-pulse rounded-full bg-sidebar-accent shrink-0" />
@@ -318,7 +325,7 @@ export function DashboardSidebar() {
       <aside
         className={cn(
           "fixed left-0 top-0 z-40 hidden h-screen flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 md:flex",
-          isCollapsed ? "w-16" : "w-64",
+          isCollapsed ? "w-16" : "w-64"
         )}
       >
         {renderSidebarContent(false)}
@@ -330,7 +337,7 @@ export function DashboardSidebar() {
           side="left"
           className="w-[min(88vw,22rem)] bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
         >
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SheetTitle className="sr-only">{tSidebar("navigation")}</SheetTitle>
           <div className="flex h-full flex-col">
             {renderSidebarContent(true)}
           </div>

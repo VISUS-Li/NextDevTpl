@@ -468,6 +468,9 @@
   "Dashboard": {
     "nav": {
       "dashboard": "Dashboard",
+      "credits": "Credits",
+      "distribution": "Distribution",
+      "settings": "Settings",
       "support": "Support",
       "newTicket": "New Ticket"
     },
@@ -483,8 +486,182 @@
       "ticketDetails": "Ticket Details"
     },
     "sidebar": {
+      "navigation": "Navigation",
       "settings": "Settings",
       "logout": "Logout"
+    }
+  },
+  "Admin": {
+    "header": {
+      "title": "Admin",
+      "badge": "ADMIN"
+    },
+    "nav": {
+      "groups": {
+        "management": "Management"
+      },
+      "dashboard": "Dashboard",
+      "users": "Users",
+      "tickets": "Tickets",
+      "distribution": "Distribution",
+      "toolConfig": "Tool Config",
+      "aiGateway": "AI Gateway",
+      "storage": "Storage"
+    },
+    "sidebar": {
+      "backToDashboard": "Back to Dashboard",
+      "logout": "Logout",
+      "openMenu": "Open admin menu"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "description": "Overview of users, tickets, credits, and subscriptions.",
+      "stats": {
+        "totalUsers": {
+          "title": "Total Users",
+          "description": "{count} new this week"
+        },
+        "pendingTickets": {
+          "title": "Pending Tickets",
+          "description": "{count} new today"
+        },
+        "activeSubscriptions": {
+          "title": "Active Subscriptions",
+          "description": "{count} total subscriptions"
+        },
+        "creditSupply": {
+          "title": "Credits in Circulation",
+          "description": "Current credits held by users"
+        }
+      },
+      "panels": {
+        "users": {
+          "title": "User Stats",
+          "total": "Total Users",
+          "admins": "Admins",
+          "regularUsers": "Regular Users",
+          "banned": "Banned",
+          "newThisWeek": "New This Week"
+        },
+        "tickets": {
+          "title": "Ticket Stats",
+          "open": "Open",
+          "inProgress": "In Progress",
+          "total": "Total Tickets",
+          "newToday": "New Today"
+        },
+        "credits": {
+          "title": "Credit Flow",
+          "current": "Current Balance",
+          "earned": "Total Earned",
+          "spent": "Total Spent",
+          "subscribers": "Subscribers",
+          "subscribersValue": "{count} active"
+        }
+      },
+      "quickActions": {
+        "title": "Quick Actions",
+        "users": "Manage Users",
+        "usersValue": "{count} users",
+        "tickets": "Handle Tickets",
+        "pendingValue": "{count} pending"
+      },
+      "system": {
+        "title": "System Info",
+        "version": "Version",
+        "environment": "Environment",
+        "database": "Database"
+      }
+    }
+  },
+  "Shared": {
+    "language": {
+      "label": "Switch language",
+      "english": "English",
+      "chinese": "Chinese"
+    },
+    "theme": {
+      "label": "Switch theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
+  "Support": {
+    "locale": "en",
+    "categories": {
+      "billing": "Billing",
+      "technical": "Technical Support",
+      "bug": "Bug Report",
+      "feature": "Feature Request",
+      "other": "Other"
+    },
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "statuses": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "list": {
+      "title": "Support Center",
+      "description": "View and manage your support tickets",
+      "create": "New Ticket",
+      "emptyTitle": "No tickets yet",
+      "emptyDescription": "You have not submitted any support tickets yet",
+      "createFirst": "Create your first ticket"
+    },
+    "new": {
+      "title": "New Ticket",
+      "description": "Describe the issue and we will reply as soon as possible",
+      "formTitle": "Ticket Details",
+      "subject": "Subject",
+      "subjectPlaceholder": "Briefly describe your issue",
+      "category": "Category",
+      "categoryPlaceholder": "Select category",
+      "priority": "Priority",
+      "priorityPlaceholder": "Select priority",
+      "message": "Details",
+      "messagePlaceholder": "Describe the issue in detail, including:\n- when it happened\n- any error messages\n- what you have already tried",
+      "cancel": "Cancel",
+      "submit": "Submit Ticket"
+    },
+    "detail": {
+      "conversation": "Conversation",
+      "meta": "{category} · created on {date}",
+      "user": "User",
+      "supportAgent": "Support",
+      "closedUser": "This ticket is closed and cannot receive new messages",
+      "closedAdmin": "This ticket is closed and cannot receive new replies"
+    },
+    "reply": {
+      "userTitle": "Add Reply",
+      "adminTitle": "Reply to User",
+      "placeholder": "Enter your message...",
+      "adminPlaceholder": "Enter your reply...",
+      "counter": "{count}/5000 characters",
+      "submit": "Send",
+      "adminSubmit": "Send Reply"
+    },
+    "statusSelect": {
+      "label": "Select new status",
+      "loading": "Updating..."
+    },
+    "toasts": {
+      "ticketCreated": "Ticket created",
+      "ticketCreateFailed": "Failed to create ticket",
+      "messageRequired": "Please enter a message",
+      "messageSent": "Message sent",
+      "messageFailed": "Failed to send message",
+      "replyRequired": "Please enter a reply",
+      "replySent": "Reply sent",
+      "replyFailed": "Failed to send reply",
+      "statusUpdated": "Status updated",
+      "statusUpdateFailed": "Failed to update status"
     }
   },
   "Settings": {

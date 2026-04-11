@@ -1,8 +1,8 @@
 "use client";
 
 import { Globe } from "lucide-react";
-import { useLocale } from "next-intl";
 import { useParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ const locales = [
  */
 export function LanguageSwitcher() {
   const locale = useLocale();
+  const t = useTranslations("Shared.language");
   const router = useRouter();
   const pathname = usePathname();
   const params = useParams();
@@ -60,9 +61,10 @@ export function LanguageSwitcher() {
           size="icon"
           disabled={isPending}
           className="relative"
+          title={t("label")}
         >
           <Globe className="h-5 w-5" />
-          <span className="sr-only">切换语言</span>
+          <span className="sr-only">{t("label")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -73,7 +75,7 @@ export function LanguageSwitcher() {
             className={locale === loc.code ? "bg-accent" : ""}
           >
             <span className="mr-2">{loc.flag}</span>
-            {loc.label}
+            {loc.code === "en" ? t("english") : t("chinese")}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

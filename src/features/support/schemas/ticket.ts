@@ -4,30 +4,65 @@ import { z } from "zod";
  * 工单类别选项
  */
 export const ticketCategories = [
-  { value: "billing", label: "账单问题" },
-  { value: "technical", label: "技术支持" },
-  { value: "bug", label: "Bug 报告" },
-  { value: "feature", label: "功能建议" },
-  { value: "other", label: "其他" },
+  { value: "billing", label: "账单问题", labelKey: "categories.billing" },
+  { value: "technical", label: "技术支持", labelKey: "categories.technical" },
+  { value: "bug", label: "Bug 报告", labelKey: "categories.bug" },
+  { value: "feature", label: "功能建议", labelKey: "categories.feature" },
+  { value: "other", label: "其他", labelKey: "categories.other" },
 ] as const;
 
 /**
  * 工单优先级选项
  */
 export const ticketPriorities = [
-  { value: "low", label: "低", color: "bg-green-500" },
-  { value: "medium", label: "中", color: "bg-yellow-500" },
-  { value: "high", label: "高", color: "bg-red-500" },
+  {
+    value: "low",
+    label: "低",
+    labelKey: "priorities.low",
+    color: "bg-green-500",
+  },
+  {
+    value: "medium",
+    label: "中",
+    labelKey: "priorities.medium",
+    color: "bg-yellow-500",
+  },
+  {
+    value: "high",
+    label: "高",
+    labelKey: "priorities.high",
+    color: "bg-red-500",
+  },
 ] as const;
 
 /**
  * 工单状态选项
  */
 export const ticketStatuses = [
-  { value: "open", label: "待处理", color: "bg-blue-500" },
-  { value: "in_progress", label: "处理中", color: "bg-yellow-500" },
-  { value: "resolved", label: "已解决", color: "bg-green-500" },
-  { value: "closed", label: "已关闭", color: "bg-gray-500" },
+  {
+    value: "open",
+    label: "待处理",
+    labelKey: "statuses.open",
+    color: "bg-blue-500",
+  },
+  {
+    value: "in_progress",
+    label: "处理中",
+    labelKey: "statuses.inProgress",
+    color: "bg-yellow-500",
+  },
+  {
+    value: "resolved",
+    label: "已解决",
+    labelKey: "statuses.resolved",
+    color: "bg-green-500",
+  },
+  {
+    value: "closed",
+    label: "已关闭",
+    labelKey: "statuses.closed",
+    color: "bg-gray-500",
+  },
 ] as const;
 
 /**

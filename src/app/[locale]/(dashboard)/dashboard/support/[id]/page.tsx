@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,12 @@ import {
   ticketPriorities,
   ticketStatuses,
 } from "@/features/support/schemas";
+import { Link } from "@/i18n/routing";
 import { getServerSession } from "@/lib/auth/server";
 
 interface TicketDetailPageProps {
   params: Promise<{
+    locale: string;
     id: string;
   }>;
 }
@@ -30,7 +32,8 @@ interface TicketDetailPageProps {
 export default async function TicketDetailPage({
   params,
 }: TicketDetailPageProps) {
-  const { id } = await params;
+  const { id, locale } = await params;
+  const t = await getTranslations("Support");
 
   // 获取当前用户会话
   const session = await getServerSession();
@@ -86,7 +89,7 @@ export default async function TicketDetailPage({
         className={colorMap[status] || colorMap.closed}
         variant="secondary"
       >
-        {statusConfig?.label || status}
+        {statusConfig?.labelKey ? t(statusConfig.labelKey) : status}
       </Badge>
     );
   };
@@ -107,7 +110,7 @@ export default async function TicketDetailPage({
         className={colorMap[priority] || colorMap.medium}
         variant="secondary"
       >
-        {priorityConfig?.label || priority}
+        {priorityConfig?.labelKey ? t(priorityConfig.labelKey) : priority}
       </Badge>
     );
   };
@@ -117,7 +120,7 @@ export default async function TicketDetailPage({
    */
   const getCategoryLabel = (category: string) => {
     const categoryConfig = ticketCategories.find((c) => c.value === category);
-    return categoryConfig?.label || category;
+    return categoryConfig?.labelKey ? t(categoryConfig.labelKey) : category;
   };
 
   /**
@@ -148,8 +151,12 @@ export default async function TicketDetailPage({
             {ticketData.subject}
           </h2>
           <p className="text-muted-foreground">
-            {getCategoryLabel(ticketData.category)} · 创建于{" "}
-            {new Date(ticketData.createdAt).toLocaleDateString("zh-CN")}
+            {t("detail.meta", {
+              category: getCategoryLabel(ticketData.category),
+              date: new Date(ticketData.createdAt).toLocaleDateString(
+                locale === "zh" ? "zh-CN" : "en-US"
+              ),
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -161,7 +168,7 @@ export default async function TicketDetailPage({
       {/* 消息列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>对话记录</CardTitle>
+          <CardTitle>{t("detail.conversation")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {messages.map((msg) => (
@@ -176,7 +183,7 @@ export default async function TicketDetailPage({
               <Avatar className="h-10 w-10">
                 <AvatarImage
                   src={msg.user?.image || undefined}
-                  alt={msg.user?.name || "用户"}
+                  alt={msg.user?.name || t("detail.user")}
                 />
                 <AvatarFallback
                   className={
@@ -191,15 +198,17 @@ export default async function TicketDetailPage({
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">
-                    {msg.user?.name || "用户"}
+                    {msg.user?.name || t("detail.user")}
                   </span>
                   {msg.isAdminResponse && (
                     <Badge variant="secondary" className="text-xs">
-                      客服
+                      {t("detail.supportAgent")}
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground">
-                    {new Date(msg.createdAt).toLocaleString("zh-CN")}
+                    {new Date(msg.createdAt).toLocaleString(
+                      locale === "zh" ? "zh-CN" : "en-US"
+                    )}
                   </span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -213,7 +222,7 @@ export default async function TicketDetailPage({
       {isClosed ? (
         <Card>
           <CardContent className="py-6 text-center text-muted-foreground">
-            此工单已关闭，无法添加新消息
+            {t("detail.closedUser")}
           </CardContent>
         </Card>
       ) : (
