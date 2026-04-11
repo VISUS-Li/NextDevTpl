@@ -61,7 +61,7 @@ describe("AdminToolConfigView", () => {
                     description: null,
                     group: "config",
                     type: "string",
-                    value: "gpt-4o-mini",
+                    value: "deepseek-chat",
                     source: "default",
                     options: null,
                     required: false,
@@ -78,6 +78,36 @@ describe("AdminToolConfigView", () => {
                     source: "project_admin",
                     options: null,
                     required: true,
+                    editable: true,
+                  },
+                  {
+                    fieldKey: "config10",
+                    label: "config10",
+                    settingLabel: "AI 资源访问方式",
+                    description: null,
+                    group: "config",
+                    type: "select",
+                    value: null,
+                    source: "project_admin",
+                    options: ["public", "proxy"],
+                    required: false,
+                    editable: true,
+                  },
+                  {
+                    fieldKey: "json4",
+                    label: "json4",
+                    settingLabel: "用户可见模型目录",
+                    description: null,
+                    group: "json",
+                    type: "json",
+                    value: {
+                      mode: "strict",
+                      enabled: true,
+                      count: 2,
+                    },
+                    source: "project_admin",
+                    options: null,
+                    required: false,
                     editable: true,
                   },
                   {
@@ -110,9 +140,18 @@ describe("AdminToolConfigView", () => {
 
     expect(screen.getByText("槽位：config1")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("聊天平台"), {
-      target: { value: "deepseek-chat" },
+    fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
+      target: { value: "gemini-2.5-pro" },
     });
+    fireEvent.change(screen.getByLabelText("用户可见模型目录.mode 值"), {
+      target: { value: "relaxed" },
+    });
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "用户可见模型目录 JSON 视图切换",
+      })
+    );
+    expect(screen.getByDisplayValue(/"mode": "relaxed"/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("text1"), {
       target: { value: "新的管理员提示词" },
     });
@@ -123,7 +162,12 @@ describe("AdminToolConfigView", () => {
         projectKey: "nextdevtpl",
         tool: "redink",
         values: {
-          config1: "deepseek-chat",
+          config1: "gemini-2.5-pro",
+          json4: {
+            mode: "relaxed",
+            enabled: true,
+            count: 2,
+          },
           text1: "新的管理员提示词",
         },
         clearSecrets: [],
