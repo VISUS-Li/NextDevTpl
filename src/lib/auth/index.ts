@@ -59,10 +59,9 @@ async function getTrustedOrigins(request?: Request) {
  */
 export const auth = betterAuth({
   /**
-   * 基础 URL 配置
-   * 未显式配置时按请求动态识别当前访问域名
+   * 认证回调地址跟随当前请求域名
+   * RedInk 代理登录时必须返回 redink 自己的回调地址
    */
-  ...(process.env.BETTER_AUTH_URL ? { baseURL: process.env.BETTER_AUTH_URL } : {}),
 
   /**
    * 开发环境允许 HTTP 调试登录，生产环境继续使用安全 Cookie
