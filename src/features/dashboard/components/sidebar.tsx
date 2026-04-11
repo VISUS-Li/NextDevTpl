@@ -112,9 +112,20 @@ export function DashboardSidebar() {
     const collapsed = mobile ? false : isCollapsed;
 
     return (
-      <>
+      <div
+        className={cn(
+          "flex h-full flex-col",
+          mobile &&
+            "grid min-h-0 h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+        )}
+      >
         {/* Logo */}
-        <div className="flex h-14 items-center px-4">
+        <div
+          className={cn(
+            "flex h-14 shrink-0 items-center px-4",
+            mobile && "pt-[env(safe-area-inset-top)]"
+          )}
+        >
           <Link
             href="/"
             className="flex items-center gap-2"
@@ -150,7 +161,12 @@ export function DashboardSidebar() {
         </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+        <nav
+          className={cn(
+            "flex-1 space-y-4 overflow-y-auto p-3",
+            mobile && "min-h-0 overscroll-contain pb-4"
+          )}
+        >
           {dashboardConfig.sidebarNav.map((group) => (
             <div key={group.title}>
               {/* Group Label - 折叠时隐藏 */}
@@ -199,7 +215,12 @@ export function DashboardSidebar() {
         </nav>
 
         {/* 用户信息区域 */}
-        <div className="border-t border-sidebar-border p-3">
+        <div
+          className={cn(
+            "shrink-0 border-t border-sidebar-border p-3",
+            mobile && "pb-[env(safe-area-inset-bottom)]"
+          )}
+        >
           {user ? (
             <Popover open={open} onOpenChange={setOpen}>
               <PopoverTrigger asChild>
@@ -315,7 +336,7 @@ export function DashboardSidebar() {
             </div>
           )}
         </div>
-      </>
+      </div>
     );
   };
 
@@ -335,12 +356,10 @@ export function DashboardSidebar() {
       <Sheet open={isMobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="w-[min(88vw,22rem)] bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
+          className="flex h-svh max-h-svh w-[min(88vw,22rem)] flex-col overflow-hidden bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
         >
           <SheetTitle className="sr-only">{tSidebar("navigation")}</SheetTitle>
-          <div className="flex h-full flex-col">
-            {renderSidebarContent(true)}
-          </div>
+          <div className="min-h-0 flex-1">{renderSidebarContent(true)}</div>
         </SheetContent>
       </Sheet>
     </>

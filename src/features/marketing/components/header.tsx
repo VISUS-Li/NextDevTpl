@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher, ModeToggle } from "@/features/shared";
 import { Link } from "@/i18n/routing";
+import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 interface HeaderUser {
@@ -25,7 +26,7 @@ interface HeaderUser {
 }
 
 interface HeaderProps {
-  user: HeaderUser | null;
+  user?: HeaderUser | null;
 }
 
 /**
@@ -38,6 +39,8 @@ export function Header({ user }: HeaderProps) {
   const locale = useLocale();
   const pathname = usePathname();
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const { data: session } = useSession();
+  const currentUser = user ?? session?.user ?? null;
 
   // 桌面端导航项
   const navItems = [
@@ -66,7 +69,7 @@ export function Header({ user }: HeaderProps) {
       href: "/pseo",
       label: "PSEO",
     },
-    ...(user
+    ...(currentUser
       ? [
           {
             key: "support",
@@ -99,7 +102,7 @@ export function Header({ user }: HeaderProps) {
     },
     {
       key: "account",
-      href: user ? "/dashboard" : "/sign-in",
+      href: currentUser ? "/dashboard" : "/sign-in",
       label: locale === "zh" ? "我的" : "My",
       icon: UserRound,
     },
@@ -137,7 +140,7 @@ export function Header({ user }: HeaderProps) {
       label: "PSEO",
       icon: Grid2x2,
     },
-    ...(user
+    ...(currentUser
       ? [
           {
             key: "support",
@@ -272,7 +275,7 @@ export function Header({ user }: HeaderProps) {
           <div className="flex items-center gap-2 sm:gap-3">
             <LanguageSwitcher />
             <ModeToggle />
-            {user ? (
+            {currentUser ? (
               <>
                 <Button
                   asChild
@@ -284,11 +287,11 @@ export function Header({ user }: HeaderProps) {
                 <Link href="/dashboard" className="hidden md:block">
                   <Avatar className="h-9 w-9 ring-1 ring-white/10">
                     <AvatarImage
-                      src={user.image || undefined}
-                      alt={user.name}
+                      src={currentUser.image || undefined}
+                      alt={currentUser.name}
                     />
                     <AvatarFallback className="bg-[#0A84FF] text-xs text-white">
-                      {getInitials(user.name)}
+                      {getInitials(currentUser.name)}
                     </AvatarFallback>
                   </Avatar>
                 </Link>
@@ -321,7 +324,7 @@ export function Header({ user }: HeaderProps) {
           </Link>
 
           <div className="flex items-center gap-2">
-            {user ? (
+            {currentUser ? (
               <Button
                 asChild
                 className="h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064]"

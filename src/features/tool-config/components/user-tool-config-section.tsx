@@ -221,6 +221,8 @@ export function UserToolConfigSection({ data }: UserToolConfigSectionProps) {
                 <Button
                   type="button"
                   disabled={isPending}
+                  loading={isPending}
+                  loadingText={`保存我的 ${toolConfig.tool.name} 配置中...`}
                   onClick={() => submitToolConfig(toolConfig)}
                 >
                   保存我的 {toolConfig.tool.name} 配置

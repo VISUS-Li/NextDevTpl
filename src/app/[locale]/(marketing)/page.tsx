@@ -7,7 +7,6 @@ import {
   HeroSection,
   PricingSection,
 } from "@/features/marketing/components";
-import { getServerSession } from "@/lib/auth/server";
 
 /**
  * 生成首页 Metadata
@@ -69,8 +68,6 @@ export default async function HomePage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const session = await getServerSession();
-  const user = session?.user ?? null;
 
   return (
     <>
@@ -81,8 +78,8 @@ export default async function HomePage({
       {/* Page Sections */}
       <HeroSection />
       <FeatureGrid />
-      <PricingSection currentPriceId={null} user={user} />
-      <CTASection user={user} />
+      <PricingSection currentPriceId={null} />
+      <CTASection />
     </>
   );
 }

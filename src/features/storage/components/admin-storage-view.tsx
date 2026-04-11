@@ -484,9 +484,11 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
             <Button
               type="button"
               disabled={savingToolKey === "storage"}
+              loading={savingToolKey === "storage"}
+              loadingText="保存生命周期策略中..."
               onClick={handleSaveStoragePolicy}
             >
-              {savingToolKey === "storage" ? "保存中..." : "保存生命周期策略"}
+              保存生命周期策略
             </Button>
           </div>
         </CardContent>
@@ -540,9 +542,11 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
                 <Button
                   type="button"
                   disabled={savingToolKey === tool.toolKey}
+                  loading={savingToolKey === tool.toolKey}
+                  loadingText="保存中..."
                   onClick={() => handleSaveToolMode(tool.toolKey)}
                 >
-                  {savingToolKey === tool.toolKey ? "保存中..." : "保存"}
+                  保存
                 </Button>
               </div>
             </div>

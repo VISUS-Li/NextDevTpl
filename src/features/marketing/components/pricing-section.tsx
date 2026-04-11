@@ -11,6 +11,7 @@ import { getPlanPrice, paymentConfig } from "@/config/payment";
 import { createCheckoutSession } from "@/features/payment/actions";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
+import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 import { AnimatedPrice } from "./animated-price";
@@ -91,6 +92,8 @@ export function PricingSection({
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const router = useRouter();
+  const { data: session } = useSession();
+  const currentUser = user ?? session?.user ?? null;
 
   // 获取用户当前订阅状态
   const activePriceId = currentPriceId ?? null;
@@ -181,11 +184,11 @@ export function PricingSection({
    */
   const handleSubscribe = async (planId: string) => {
     if (planId === "free") {
-      router.push(user ? "/dashboard" : "/sign-up");
+      router.push(currentUser ? "/dashboard" : "/sign-up");
       return;
     }
 
-    if (!user) {
+    if (!currentUser) {
       router.push("/sign-in?redirect=/#pricing");
       return;
     }

@@ -1,6 +1,12 @@
 "use client";
 
-import { CircleHelp, Loader2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import {
+  CircleHelp,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { startTransition, useState } from "react";
 import { toast } from "sonner";
 
@@ -273,15 +279,19 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const [alerts, setAlerts] = useState<AlertData | null>(null);
   const [providerForm, setProviderForm] = useState(defaultProviderForm);
   const [bindingForm, setBindingForm] = useState(defaultBindingForm);
-  const [pricingRuleForm, setPricingRuleForm] = useState(defaultPricingRuleForm);
+  const [pricingRuleForm, setPricingRuleForm] = useState(
+    defaultPricingRuleForm
+  );
   const [billingAdjustmentForm, setBillingAdjustmentForm] = useState(
     defaultBillingAdjustmentForm
   );
-  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
-  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
-  const [editingPricingRuleId, setEditingPricingRuleId] = useState<string | null>(
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(
     null
   );
+  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const [editingPricingRuleId, setEditingPricingRuleId] = useState<
+    string | null
+  >(null);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
 
   /**
@@ -290,16 +300,25 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const refreshAll = async () => {
     setLoadingKey("refresh-all");
     try {
-      const [summaryResponse, providersResponse, bindingsResponse, rulesResponse, requestsResponse] =
-        await Promise.all([
-          fetch("/api/platform/ai/summary", { credentials: "include" }),
-          fetch("/api/platform/ai/admin/providers", { credentials: "include" }),
-          fetch("/api/platform/ai/admin/model-bindings", { credentials: "include" }),
-          fetch("/api/platform/ai/admin/pricing-rules", { credentials: "include" }),
-          fetch("/api/platform/ai/admin/requests?limit=20", {
-            credentials: "include",
-          }),
-        ]);
+      const [
+        summaryResponse,
+        providersResponse,
+        bindingsResponse,
+        rulesResponse,
+        requestsResponse,
+      ] = await Promise.all([
+        fetch("/api/platform/ai/summary", { credentials: "include" }),
+        fetch("/api/platform/ai/admin/providers", { credentials: "include" }),
+        fetch("/api/platform/ai/admin/model-bindings", {
+          credentials: "include",
+        }),
+        fetch("/api/platform/ai/admin/pricing-rules", {
+          credentials: "include",
+        }),
+        fetch("/api/platform/ai/admin/requests?limit=20", {
+          credentials: "include",
+        }),
+      ]);
 
       const [summary, providerList, bindingList, ruleList, requestList] =
         await Promise.all([
@@ -425,8 +444,12 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         billingMode: pricingRuleForm.billingMode,
         modelScope: pricingRuleForm.modelScope.trim(),
         fixedCredits: toNullableNumber(pricingRuleForm.fixedCredits),
-        inputTokensPerCredit: toNullableNumber(pricingRuleForm.inputTokensPerCredit),
-        outputTokensPerCredit: toNullableNumber(pricingRuleForm.outputTokensPerCredit),
+        inputTokensPerCredit: toNullableNumber(
+          pricingRuleForm.inputTokensPerCredit
+        ),
+        outputTokensPerCredit: toNullableNumber(
+          pricingRuleForm.outputTokensPerCredit
+        ),
         costUsdPerCredit: toNullableNumber(pricingRuleForm.costUsdPerCredit),
         minimumCredits: toNumber(pricingRuleForm.minimumCredits),
         enabled: pricingRuleForm.enabled === "true",
@@ -462,15 +485,18 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const runHealthCheck = async (providerIds?: string[]) => {
     setLoadingKey(providerIds?.[0] ?? "health-check");
     try {
-      const response = await fetch("/api/platform/ai/admin/providers/health-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          ...(providerIds ? { providerIds } : {}),
-          disableOnFailure: true,
-        }),
-      });
+      const response = await fetch(
+        "/api/platform/ai/admin/providers/health-check",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ...(providerIds ? { providerIds } : {}),
+            disableOnFailure: true,
+          }),
+        }
+      );
 
       const data = await parseResponse<{ results: Array<unknown> }>(response);
       toast.success(`健康检查完成，共 ${data.results.length} 条结果`);
@@ -488,17 +514,20 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const submitBillingAdjustment = async () => {
     setLoadingKey("billing-adjustment");
     try {
-      const response = await fetch("/api/platform/ai/admin/billing-adjustments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          requestId: billingAdjustmentForm.requestId.trim(),
-          direction: billingAdjustmentForm.direction,
-          credits: toNumber(billingAdjustmentForm.credits),
-          reason: billingAdjustmentForm.reason.trim(),
-        }),
-      });
+      const response = await fetch(
+        "/api/platform/ai/admin/billing-adjustments",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            requestId: billingAdjustmentForm.requestId.trim(),
+            direction: billingAdjustmentForm.direction,
+            credits: toNumber(billingAdjustmentForm.credits),
+            reason: billingAdjustmentForm.reason.trim(),
+          }),
+        }
+      );
 
       await parseResponse(response);
       toast.success("调账已提交");
@@ -587,7 +616,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
     const response = await fetch("/api/platform/ai/admin/pricing-rules", {
       credentials: "include",
     });
-    const data = await parseResponse<{ pricingRules: PricingRuleData[] }>(response);
+    const data = await parseResponse<{ pricingRules: PricingRuleData[] }>(
+      response
+    );
     setPricingRules(data.pricingRules);
   };
 
@@ -619,7 +650,11 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         <OverviewCard title="总请求数" value={overview.totalRequests} />
         <OverviewCard title="成功请求" value={overview.successRequests} />
         <OverviewCard title="失败请求" value={overview.failedRequests} />
-        <OverviewCard title="总扣费" value={overview.totalChargedCredits} suffix=" 积分" />
+        <OverviewCard
+          title="总扣费"
+          value={overview.totalChargedCredits}
+          suffix=" 积分"
+        />
       </div>
 
       <Tabs defaultValue="providers" className="space-y-4">
@@ -634,7 +669,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         <TabsContent value="providers" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{editingProviderId ? "编辑 Provider" : "新增 Provider"}</CardTitle>
+              <CardTitle>
+                {editingProviderId ? "编辑 Provider" : "新增 Provider"}
+              </CardTitle>
               <CardDescription>
                 维护上游中转站信息和基础路由参数。
               </CardDescription>
@@ -756,10 +793,13 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                 type="button"
                 onClick={() => startTransition(() => void submitProvider())}
                 disabled={loadingKey === "provider-submit"}
+                loading={loadingKey === "provider-submit"}
+                loadingText={
+                  editingProviderId
+                    ? "保存 Provider 中..."
+                    : "新增 Provider 中..."
+                }
               >
-                {loadingKey === "provider-submit" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
                 {editingProviderId ? "保存 Provider" : "新增 Provider"}
               </Button>
               {editingProviderId ? (
@@ -796,10 +836,14 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{provider.name}</span>
-                        <Badge variant={provider.enabled ? "default" : "secondary"}>
+                        <Badge
+                          variant={provider.enabled ? "default" : "secondary"}
+                        >
                           {provider.enabled ? "启用" : "停用"}
                         </Badge>
-                        <Badge variant="outline">{provider.lastHealthStatus}</Badge>
+                        <Badge variant="outline">
+                          {provider.lastHealthStatus}
+                        </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {provider.key} · {provider.baseUrl}
@@ -808,7 +852,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         <span>优先级：{provider.priority}</span>
                         <span>权重：{provider.weight}</span>
                         <span>尝试数：{provider.totalAttempts}</span>
-                        <span>平均延迟：{provider.averageLatencyMs.toFixed(0)} ms</span>
+                        <span>
+                          平均延迟：{provider.averageLatencyMs.toFixed(0)} ms
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -834,7 +880,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         type="button"
                         variant="outline"
                         onClick={() =>
-                          startTransition(() => void runHealthCheck([provider.id]))
+                          startTransition(
+                            () => void runHealthCheck([provider.id])
+                          )
                         }
                         disabled={loadingKey === provider.id}
                       >
@@ -844,14 +892,18 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         type="button"
                         variant="destructive"
                         onClick={() =>
-                          startTransition(() =>
-                            void deleteResource(
-                              `/api/platform/ai/admin/providers/${provider.id}`,
-                              "Provider 已删除"
-                            )
+                          startTransition(
+                            () =>
+                              void deleteResource(
+                                `/api/platform/ai/admin/providers/${provider.id}`,
+                                "Provider 已删除"
+                              )
                           )
                         }
-                        disabled={loadingKey === `/api/platform/ai/admin/providers/${provider.id}`}
+                        disabled={
+                          loadingKey ===
+                          `/api/platform/ai/admin/providers/${provider.id}`
+                        }
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         删除
@@ -867,7 +919,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         <TabsContent value="bindings" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{editingBindingId ? "编辑模型绑定" : "新增模型绑定"}</CardTitle>
+              <CardTitle>
+                {editingBindingId ? "编辑模型绑定" : "新增模型绑定"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field
@@ -933,7 +987,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {AI_MODEL_CAPABILITY_OPTIONS.map((option) => {
                       const inputId = `binding-capability-${option.value}`;
-                      const checked = bindingForm.capabilities.includes(option.value);
+                      const checked = bindingForm.capabilities.includes(
+                        option.value
+                      );
                       return (
                         <label
                           key={option.value}
@@ -955,7 +1011,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                             }
                           />
                           <div className="space-y-1">
-                            <div className="text-sm font-medium">{option.label}</div>
+                            <div className="text-sm font-medium">
+                              {option.label}
+                            </div>
                             <div className="text-sm text-muted-foreground">
                               {option.description}
                             </div>
@@ -1044,10 +1102,7 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   }
                 />
               </Field>
-              <Field
-                label="权重"
-                info="同一模型在 weighted 路由中的选择权重。"
-              >
+              <Field label="权重" info="同一模型在 weighted 路由中的选择权重。">
                 <Input
                   value={bindingForm.weight}
                   onChange={(event) =>
@@ -1114,6 +1169,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                 type="button"
                 onClick={() => startTransition(() => void submitBinding())}
                 disabled={loadingKey === "binding-submit"}
+                loading={loadingKey === "binding-submit"}
+                loadingText={
+                  editingBindingId ? "保存模型绑定中..." : "新增模型绑定中..."
+                }
               >
                 {editingBindingId ? "保存模型绑定" : "新增模型绑定"}
               </Button>
@@ -1145,7 +1204,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         <span className="font-medium">
                           {binding.modelKey} → {binding.modelAlias}
                         </span>
-                        <Badge variant={binding.enabled ? "default" : "secondary"}>
+                        <Badge
+                          variant={binding.enabled ? "default" : "secondary"}
+                        >
                           {binding.enabled ? "启用" : "停用"}
                         </Badge>
                       </div>
@@ -1185,11 +1246,12 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         type="button"
                         variant="destructive"
                         onClick={() =>
-                          startTransition(() =>
-                            void deleteResource(
-                              `/api/platform/ai/admin/model-bindings/${binding.id}`,
-                              "模型绑定已删除"
-                            )
+                          startTransition(
+                            () =>
+                              void deleteResource(
+                                `/api/platform/ai/admin/model-bindings/${binding.id}`,
+                                "模型绑定已删除"
+                              )
                           )
                         }
                       >
@@ -1207,7 +1269,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         <TabsContent value="pricing" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{editingPricingRuleId ? "编辑计费规则" : "新增计费规则"}</CardTitle>
+              <CardTitle>
+                {editingPricingRuleId ? "编辑计费规则" : "新增计费规则"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field
@@ -1378,6 +1442,12 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                 type="button"
                 onClick={() => startTransition(() => void submitPricingRule())}
                 disabled={loadingKey === "pricing-submit"}
+                loading={loadingKey === "pricing-submit"}
+                loadingText={
+                  editingPricingRuleId
+                    ? "保存计费规则中..."
+                    : "新增计费规则中..."
+                }
               >
                 {editingPricingRuleId ? "保存计费规则" : "新增计费规则"}
               </Button>
@@ -1414,7 +1484,8 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        模型范围 {rule.modelScope} · 最低扣费 {rule.minimumCredits}
+                        模型范围 {rule.modelScope} · 最低扣费{" "}
+                        {rule.minimumCredits}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1428,7 +1499,9 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                             featureKey: rule.featureKey,
                             billingMode: rule.billingMode,
                             modelScope: rule.modelScope,
-                            fixedCredits: stringifyNullableNumber(rule.fixedCredits),
+                            fixedCredits: stringifyNullableNumber(
+                              rule.fixedCredits
+                            ),
                             inputTokensPerCredit: stringifyNullableNumber(
                               rule.inputTokensPerCredit
                             ),
@@ -1449,11 +1522,12 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         type="button"
                         variant="destructive"
                         onClick={() =>
-                          startTransition(() =>
-                            void deleteResource(
-                              `/api/platform/ai/admin/pricing-rules/${rule.id}`,
-                              "计费规则已删除"
-                            )
+                          startTransition(
+                            () =>
+                              void deleteResource(
+                                `/api/platform/ai/admin/pricing-rules/${rule.id}`,
+                                "计费规则已删除"
+                              )
                           )
                         }
                       >
@@ -1487,21 +1561,28 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         </span>
                         <Badge
                           variant={
-                            request.status === "success" ? "default" : "secondary"
+                            request.status === "success"
+                              ? "default"
+                              : "secondary"
                           }
                         >
                           {request.status}
                         </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        用户：{request.userEmail} · Provider：{request.providerKey ?? "未命中"}
+                        用户：{request.userEmail} · Provider：
+                        {request.providerKey ?? "未命中"}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        模型：{request.resolvedModel ?? request.requestedModel ?? "-"} ·
-                        Token：{request.totalTokens ?? 0} · 扣费：{request.chargedCredits ?? 0}
+                        模型：
+                        {request.resolvedModel ?? request.requestedModel ?? "-"}{" "}
+                        · Token：{request.totalTokens ?? 0} · 扣费：
+                        {request.chargedCredits ?? 0}
                       </div>
                       {request.errorMessage ? (
-                        <div className="text-sm text-red-600">{request.errorMessage}</div>
+                        <div className="text-sm text-red-600">
+                          {request.errorMessage}
+                        </div>
                       ) : null}
                     </div>
                     <div className="text-sm text-muted-foreground">
@@ -1621,26 +1702,38 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                 <div className="text-sm font-medium">Provider 告警</div>
                 {alerts?.providers?.length ? (
                   alerts.providers.map((item) => (
-                    <div key={item.providerKey} className="rounded-lg border p-3 text-sm">
+                    <div
+                      key={item.providerKey}
+                      className="rounded-lg border p-3 text-sm"
+                    >
                       {item.providerKey} · 状态 {item.healthStatus} · 失败率{" "}
-                      {(item.failureRate * 100).toFixed(1)}% · 总尝试 {item.totalAttempts}
+                      {(item.failureRate * 100).toFixed(1)}% · 总尝试{" "}
+                      {item.totalAttempts}
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-muted-foreground">暂无 provider 告警</div>
+                  <div className="text-sm text-muted-foreground">
+                    暂无 provider 告警
+                  </div>
                 )}
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium">高成本请求</div>
                 {alerts?.highCostRequests?.length ? (
                   alerts.highCostRequests.map((item) => (
-                    <div key={item.requestId} className="rounded-lg border p-3 text-sm">
+                    <div
+                      key={item.requestId}
+                      className="rounded-lg border p-3 text-sm"
+                    >
                       {item.requestId} · {item.toolKey}/{item.featureKey} · 成本{" "}
-                      {item.providerCostUsd ?? 0} 微美元 · {formatDateTime(item.createdAt)}
+                      {item.providerCostUsd ?? 0} 微美元 ·{" "}
+                      {formatDateTime(item.createdAt)}
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-muted-foreground">暂无高成本请求</div>
+                  <div className="text-sm text-muted-foreground">
+                    暂无高成本请求
+                  </div>
                 )}
               </div>
             </CardContent>

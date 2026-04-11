@@ -147,24 +147,37 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
    * 提交当前工具配置
    */
   const submitToolConfig = (toolConfig: AdminToolConfig) => {
-    const values = Object.fromEntries(
-      toolConfig.editor.fields
-        .map((field) => {
-          const rawValue =
-            formValues[toolConfig.tool.toolKey]?.[field.fieldKey] ?? "";
-          // 空密钥和空下拉不应提交，否则会把未修改的字段写成无效值。
-          if (
-            (field.type === "secret" || field.type === "select") &&
-            rawValue === ""
-          ) {
-            return null;
-          }
-          return [field.fieldKey, parseFieldValue(field, rawValue)];
-        })
-        .filter((entry): entry is [string, string | number | boolean | null] =>
-          Array.isArray(entry)
-        )
-    );
+    let values: Record<string, string | number | boolean | null | JsonValue>;
+    try {
+      values = Object.fromEntries(
+        toolConfig.editor.fields
+          .map((field) => {
+            const rawValue =
+              formValues[toolConfig.tool.toolKey]?.[field.fieldKey] ?? "";
+            // 空密钥和空下拉不应提交，否则会把未修改的字段写成无效值。
+            if (
+              (field.type === "secret" || field.type === "select") &&
+              rawValue === ""
+            ) {
+              return null;
+            }
+            return [field.fieldKey, parseFieldValue(field, rawValue)];
+          })
+          .filter(
+            (
+              entry
+            ): entry is [
+              string,
+              string | number | boolean | null | JsonValue,
+            ] => Array.isArray(entry)
+          )
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "工具配置格式不正确，无法保存"
+      );
+      return;
+    }
 
     execute({
       projectKey: data.project.key,
@@ -257,7 +270,7 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
                               jsonViewMode:
                                 jsonViewModes[
                                   `${toolConfig.tool.toolKey}.${field.fieldKey}`
-                                ] ?? "form",
+                                ] ?? "json",
                               updateJsonViewMode,
                             })}
                             {field.description ? (
@@ -280,6 +293,8 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
                 <Button
                   type="button"
                   disabled={isPending}
+                  loading={isPending}
+                  loadingText={`保存 ${toolConfig.tool.name} 配置中...`}
                   onClick={() => submitToolConfig(toolConfig)}
                 >
                   保存 {toolConfig.tool.name} 配置
@@ -325,8 +340,13 @@ function parseFieldValue(field: AdminToolConfigField, value: string) {
   if (value === "") return null;
   if (field.type === "number") return Number(value);
   if (field.type === "boolean") return value === "true";
-  if (field.type === "json")
-    return JSON.parse(value) as Record<string, unknown>;
+  if (field.type === "json") {
+    try {
+      return JSON.parse(value) as JsonValue;
+    } catch {
+      throw new Error(`${field.settingLabel} 不是有效的 JSON`);
+    }
+  }
   return value;
 }
 

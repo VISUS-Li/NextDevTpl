@@ -4,25 +4,28 @@ import { useLocale } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Link, useRouter } from "@/i18n/routing";
+import { useSession } from "@/lib/auth/client";
 
 interface CTAUser {
   id: string;
 }
 
 interface CTASectionProps {
-  user: CTAUser | null;
+  user?: CTAUser | null;
 }
 
 export function CTASection({ user }: CTASectionProps) {
   const locale = useLocale();
   const router = useRouter();
   const isZh = locale === "zh";
+  const { data: session } = useSession();
+  const currentUser = user ?? session?.user ?? null;
 
   /**
    * 跳转到订阅区域
    */
   const handleSubscriptionEntry = () => {
-    if (!user) {
+    if (!currentUser) {
       router.push("/sign-up");
       return;
     }
@@ -56,7 +59,7 @@ export function CTASection({ user }: CTASectionProps) {
                 : "We believe tools should remove friction from creative work. Trip Traveler AI wraps generative workflows into clear, direct actions that stay usable on the go."}
             </p>
             <div className="flex flex-col gap-3">
-              {user ? (
+              {currentUser ? (
                 <>
                   <Button
                     asChild
@@ -110,7 +113,7 @@ export function CTASection({ user }: CTASectionProps) {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            {user ? (
+            {currentUser ? (
               <>
                 <Button
                   asChild

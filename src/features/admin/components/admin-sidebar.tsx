@@ -80,9 +80,20 @@ export function AdminSidebar() {
    * 渲染桌面端和移动端共用的导航内容
    */
   const renderSidebarContent = (mobile: boolean) => (
-    <>
+    <div
+      className={cn(
+        "flex h-full flex-col",
+        mobile &&
+          "grid min-h-0 h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+      )}
+    >
       {/* Logo - Admin 标识 */}
-      <div className="flex h-14 items-center border-b border-border px-4">
+      <div
+        className={cn(
+          "flex h-14 shrink-0 items-center border-b border-border px-4",
+          mobile && "pt-[env(safe-area-inset-top)]"
+        )}
+      >
         <Link
           href="/admin"
           className="flex items-center gap-2 text-lg font-bold tracking-tight text-foreground"
@@ -111,7 +122,12 @@ export function AdminSidebar() {
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 space-y-6 overflow-y-auto p-4">
+      <nav
+        className={cn(
+          "flex-1 space-y-6 overflow-y-auto p-4",
+          mobile && "min-h-0 overscroll-contain pb-4"
+        )}
+      >
         {adminConfig.sidebarNav.map((group) => (
           <div key={group.title}>
             <p className="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -159,7 +175,12 @@ export function AdminSidebar() {
       </nav>
 
       {/* 用户信息区域 */}
-      <div className="border-t border-border p-4">
+      <div
+        className={cn(
+          "shrink-0 border-t border-border p-4",
+          mobile && "pb-[env(safe-area-inset-bottom)]"
+        )}
+      >
         {user ? (
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -245,7 +266,7 @@ export function AdminSidebar() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -269,12 +290,10 @@ export function AdminSidebar() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="w-[88vw] max-w-xs border-r-0 bg-background p-0"
+          className="flex h-svh max-h-svh w-[88vw] max-w-xs flex-col overflow-hidden border-r-0 bg-background p-0"
         >
           <SheetTitle className="sr-only">{t("sidebar.openMenu")}</SheetTitle>
-          <div className="flex h-full flex-col">
-            {renderSidebarContent(true)}
-          </div>
+          <div className="min-h-0 flex-1">{renderSidebarContent(true)}</div>
         </SheetContent>
       </Sheet>
     </>
