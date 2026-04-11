@@ -882,7 +882,6 @@ export async function getRedinkResolvedModelCatalog(params: {
   return {
     projectKey: resolved.projectKey,
     revision: resolved.revision,
-    allowedModels: normalizeStringArray(config.json1),
     catalog: normalizeRedinkModelCatalog(config.json4),
   };
 }
@@ -1290,14 +1289,6 @@ function normalizeBindingCapabilities(value: unknown) {
   return metadata.capabilities.filter(
     (item): item is string => typeof item === "string" && item.length > 0
   );
-}
-
-function normalizeStringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is string => typeof item === "string" && item.length > 0
-      )
-    : [];
 }
 
 function setNestedConfigValue(

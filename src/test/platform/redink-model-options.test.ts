@@ -97,7 +97,7 @@ async function seedRelayBinding(
 }
 
 describe("RedInk model options API", () => {
-  it("应只返回管理员配置且通过能力校验的用户可见模型子集", async () => {
+  it("应只返回目录中配置且通过能力校验的用户可见模型子集", async () => {
     const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const adminUser = await createTestUser({
       // 使用 QQ 邮箱前缀模拟真实测试用户，避免共享测试库邮箱冲突。
@@ -125,7 +125,7 @@ describe("RedInk model options API", () => {
       toolKey: "redink",
       actorId: adminUser.id,
       values: {
-        json1: ["gpt-4o-mini", "gemini-3-pro-image", "ghost-model"],
+        json1: ["gpt-4o-mini", "ghost-model"],
         json4: {
           text_generation: {
             defaultModel: "gpt-4o-mini",
@@ -194,6 +194,74 @@ describe("RedInk model options API", () => {
           modelKey: "gemini-3-pro-image",
           label: "商品发布图模型",
           description: "适合发布图出图",
+        },
+      ],
+    });
+  }, 120_000);
+
+  it("应允许目录中的图片模型绕过 json1 白名单直接返回", async () => {
+    const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const adminUser = await createTestUser({
+      role: "admin",
+      email: `1183989659+redink-model-admin2-${testSuffix}@qq.com`,
+      name: "RedInk 模型管理员 2",
+    });
+    const normalUser = await createTestUser({
+      email: `1183989659+redink-model-user2-${testSuffix}@qq.com`,
+      name: "RedInk 模型测试用户 2",
+    });
+    createdUserIds.push(adminUser.id, normalUser.id);
+
+    await seedDefaultToolConfigProject({ projectKey });
+    await seedRelayBinding("nano-banana", ["text", "image_generation"], 3);
+
+    await saveAdminToolConfig({
+      projectKey,
+      toolKey: "redink",
+      actorId: adminUser.id,
+      values: {
+        json1: ["gpt-4o-mini"],
+        json4: {
+          text_generation: {
+            defaultModel: null,
+            options: [],
+          },
+          image_generation: {
+            defaultModel: "nano-banana",
+            options: [
+              {
+                modelKey: "nano-banana",
+                label: "Nano Banana",
+                description: "图片模型应直接可见",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    mockSession({
+      id: normalUser.id,
+      name: normalUser.name,
+      email: normalUser.email,
+      role: "user",
+    });
+
+    const response = await getRedinkModelOptions(
+      new Request(
+        `http://localhost:3000/api/platform/redink/model-options?projectKey=${projectKey}`
+      )
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.image_generation).toEqual({
+      defaultModel: "nano-banana",
+      options: [
+        {
+          modelKey: "nano-banana",
+          label: "Nano Banana",
+          description: "图片模型应直接可见",
         },
       ],
     });

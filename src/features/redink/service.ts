@@ -41,7 +41,7 @@ export async function getRedinkUserModelCatalog(params: {
   projectKey?: string;
   userId: string;
 }) {
-  const [{ revision, catalog, allowedModels }, bindings] = await Promise.all([
+  const [{ revision, catalog }, bindings] = await Promise.all([
     getRedinkResolvedModelCatalog(params),
     listEnabledAIModelBindingCapabilities(),
   ]);
@@ -51,13 +51,11 @@ export async function getRedinkUserModelCatalog(params: {
     revision,
     text_generation: filterCatalogGroup(
       catalog.text_generation,
-      allowedModels,
       bindingMap,
       MODEL_GROUP_REQUIRED_CAPABILITIES.text_generation
     ),
     image_generation: filterCatalogGroup(
       catalog.image_generation,
-      allowedModels,
       bindingMap,
       MODEL_GROUP_REQUIRED_CAPABILITIES.image_generation
     ),
@@ -191,18 +189,14 @@ function buildBindingCapabilityMap(
 }
 
 /**
- * 按管理员白名单和模型能力过滤目录项。
+ * 按目录配置和模型能力过滤目录项。
  */
 function filterCatalogGroup(
   group: RedinkModelCatalog[RedinkModelGroupKey],
-  allowedModels: string[],
   bindingMap: Map<string, Set<string>>,
   requiredCapabilities: string[]
 ) {
   const options = group.options.filter((option) => {
-    if (allowedModels.length > 0 && !allowedModels.includes(option.modelKey)) {
-      return false;
-    }
     const capabilities = bindingMap.get(option.modelKey);
     if (!capabilities) {
       return false;
