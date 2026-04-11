@@ -513,6 +513,88 @@
       "logout": "Logout",
       "openMenu": "Open admin menu"
     },
+    "users": {
+      "title": "User Management",
+      "description": "View and manage all users in the system",
+      "loading": "Updating...",
+      "roles": {
+        "admin": "Admin",
+        "user": "User"
+      },
+      "stats": {
+        "total": "Total Users",
+        "admins": "Admins",
+        "subscribers": "Subscribers",
+        "banned": "Banned"
+      },
+      "search": {
+        "placeholder": "Search by email or username...",
+        "submit": "Search",
+        "clear": "Clear"
+      },
+      "list": {
+        "title": "User List",
+        "searching": "Search: \"{query}\"",
+        "emptySearch": "No matching users found",
+        "empty": "No users yet"
+      },
+      "table": {
+        "user": "User",
+        "status": "Status",
+        "credits": "Credits",
+        "subscription": "Subscription",
+        "role": "Role",
+        "actions": "Actions"
+      },
+      "status": {
+        "banned": "Banned",
+        "verified": "Verified",
+        "unverified": "Unverified"
+      },
+      "subscription": {
+        "none": "No Subscription",
+        "active": "Active",
+        "canceled": "Canceled",
+        "pastDue": "Past Due",
+        "incomplete": "Incomplete"
+      },
+      "actions": {
+        "grant": "Grant Credits",
+        "ban": "Ban",
+        "unban": "Unban",
+        "banUser": "Ban User",
+        "unbanUser": "Unban User"
+      },
+      "banDialog": {
+        "banTitle": "Ban User",
+        "unbanTitle": "Unban User",
+        "banDescription": "Ban user {name}? They will no longer be able to sign in.",
+        "unbanDescription": "Unban user {name}?",
+        "reason": "Ban Reason (Optional)",
+        "reasonPlaceholder": "Enter a reason...",
+        "confirmBan": "Confirm Ban",
+        "confirmUnban": "Confirm Unban"
+      },
+      "grantDialog": {
+        "title": "Grant Credits",
+        "description": "Grant credits to {name}",
+        "amount": "Credit Amount",
+        "amountPlaceholder": "Enter amount",
+        "reason": "Reason",
+        "reasonPlaceholder": "Enter a reason such as support compensation or campaign reward",
+        "confirm": "Confirm"
+      },
+      "common": {
+        "cancel": "Cancel"
+      },
+      "toasts": {
+        "loadFailed": "Failed to load users",
+        "invalidAmount": "Please enter a valid amount",
+        "reasonRequired": "Please enter a reason",
+        "roleUpdated": "Role updated",
+        "roleUpdateFailed": "Failed to update role"
+      }
+    },
     "dashboard": {
       "title": "Dashboard",
       "description": "Overview of users, tickets, credits, and subscriptions.",
@@ -662,6 +744,24 @@
       "replyFailed": "Failed to send reply",
       "statusUpdated": "Status updated",
       "statusUpdateFailed": "Failed to update status"
+    }
+  },
+  "DashboardCreditsBuy": {
+    "title": "Purchase Credits",
+    "description": "Choose a credit package to unlock AI features and capabilities",
+    "popular": "Most Popular",
+    "creditsUnit": "credits",
+    "processing": "Processing...",
+    "buy": "Buy {name}",
+    "back": "← Back to Usage",
+    "features": {
+      "instant": "Instant delivery",
+      "validity": "Valid for 90 days",
+      "usage": "Use for all AI features"
+    },
+    "toasts": {
+      "checkoutFailed": "Failed to create checkout session",
+      "canceled": "Payment canceled"
     }
   },
   "Settings": {

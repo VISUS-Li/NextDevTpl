@@ -8,13 +8,21 @@
 
 import { Check, Coins, Loader2, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { createCreditsPurchaseCheckout } from "@/features/credits/actions";
 import { CREDIT_PACKAGES } from "@/features/credits/config";
@@ -25,6 +33,7 @@ import { cn } from "@/lib/utils";
  */
 export function BuyCreditPackagesView() {
   const router = useRouter();
+  const t = useTranslations("DashboardCreditsBuy");
   const searchParams = useSearchParams();
   const canceled = searchParams.get("canceled");
 
@@ -36,18 +45,18 @@ export function BuyCreditPackagesView() {
       }
     },
     onError: ({ error }) => {
-      toast.error(error.serverError ?? "创建支付会话失败");
+      toast.error(error.serverError ?? t("toasts.checkoutFailed"));
     },
   });
 
   // 显示取消提示
   useEffect(() => {
     if (canceled) {
-      toast.info("支付已取消");
+      toast.info(t("toasts.canceled"));
       // 清除 URL 参数
       router.replace("/dashboard/credits/buy");
     }
-  }, [canceled, router]);
+  }, [canceled, router, t]);
 
   /**
    * 处理购买按钮点击
@@ -60,10 +69,8 @@ export function BuyCreditPackagesView() {
     <div className="max-w-4xl mx-auto space-y-8">
       {/* 页面标题 */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Purchase Credits</h1>
-        <p className="text-muted-foreground">
-          Choose a credit package to unlock AI features and capabilities
-        </p>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
       {/* 套餐列表 */}
@@ -81,11 +88,9 @@ export function BuyCreditPackagesView() {
             >
               {/* 热门标签 */}
               {isPopular && (
-                <Badge
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 gap-1"
-                >
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 gap-1">
                   <Sparkles className="h-3 w-3" />
-                  Most Popular
+                  {t("popular")}
                 </Badge>
               )}
 
@@ -99,7 +104,9 @@ export function BuyCreditPackagesView() {
                 <div className="flex items-center justify-center gap-2">
                   <Coins className="h-6 w-6 text-amber-500" />
                   <span className="text-4xl font-bold">{pkg.credits}</span>
-                  <span className="text-muted-foreground">credits</span>
+                  <span className="text-muted-foreground">
+                    {t("creditsUnit")}
+                  </span>
                 </div>
 
                 <Separator />
@@ -114,15 +121,15 @@ export function BuyCreditPackagesView() {
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Instant delivery</span>
+                    <span>{t("features.instant")}</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Valid for 90 days</span>
+                    <span>{t("features.validity")}</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Use for all AI features</span>
+                    <span>{t("features.usage")}</span>
                   </li>
                 </ul>
               </CardContent>
@@ -132,15 +139,17 @@ export function BuyCreditPackagesView() {
                   className="w-full"
                   variant={isPopular ? "default" : "outline"}
                   disabled={isPending}
-                  onClick={() => handlePurchase(pkg.id as "lite" | "standard" | "pro")}
+                  onClick={() =>
+                    handlePurchase(pkg.id as "lite" | "standard" | "pro")
+                  }
                 >
                   {isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
+                      {t("processing")}
                     </>
                   ) : (
-                    `Buy ${pkg.name}`
+                    t("buy", { name: pkg.name })
                   )}
                 </Button>
               </CardFooter>
@@ -151,8 +160,11 @@ export function BuyCreditPackagesView() {
 
       {/* 返回链接 */}
       <div className="text-center">
-        <Button variant="ghost" onClick={() => router.push("/dashboard/settings?tab=usage")}>
-          ← Back to Usage
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/dashboard/settings?tab=usage")}
+        >
+          {t("back")}
         </Button>
       </div>
     </div>
