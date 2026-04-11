@@ -10,11 +10,14 @@ PORT="${PORT:-3000}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pnpm}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 START_TUNNEL="${START_TUNNEL:-1}"
+DETACH="${DETACH:-0}"
+KILL_EXISTING_PORT="${KILL_EXISTING_PORT:-1}"
 CF_TUNNEL_HOST="${CF_TUNNEL_HOST:-127.0.0.1}"
 CF_CONFIG_FILE="${CF_CONFIG_FILE:-$HOME/.cloudflared/config.yml}"
 TUNNEL_NAME="${TUNNEL_NAME:-redink-tripai}"
 TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-platform.tripai.icu}"
 PUBLIC_URL="${PUBLIC_URL:-https://platform.tripai.icu}"
+APP_LOG_FILE="${APP_LOG_FILE:-/tmp/nextdevtpl-dev.log}"
 TUNNEL_LOG_FILE="${TUNNEL_LOG_FILE:-/tmp/nextdevtpl-dev-cloudflared.log}"
 NGROK_LOG_FILE="${NGROK_LOG_FILE:-/tmp/nextdevtpl-dev-ngrok.log}"
 
@@ -67,6 +70,63 @@ install_dependencies() {
   fi
 
   npm install
+}
+
+# 启动前释放目标端口，避免旧的 dev 进程占用导致启动失败。
+kill_existing_port_processes() {
+  [ "$KILL_EXISTING_PORT" = "1" ] || return
+
+  # 先用系统命令直接查监听进程，避免 set -e 和子命令细节影响启动流程。
+  if [ "$(uname -s 2>/dev/null)" = "Linux" ] || [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+    LSOF_PIDS="$(lsof -ti tcp:${PORT} -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' | xargs 2>/dev/null || true)"
+    SS_PIDS="$(ss -ltnp 2>/dev/null | rg ":${PORT}\\b" | rg -o 'pid=[0-9]+' | sed 's/pid=//' | tr '\n' ' ' | xargs 2>/dev/null || true)"
+    EXISTING_PIDS="$(printf '%s\n%s\n' "$LSOF_PIDS" "$SS_PIDS" | tr ' ' '\n' | awk 'NF&&!seen[$0]++{printf("%s ",$0)}' | sed 's/[[:space:]]*$//' || true)"
+  else
+    EXISTING_PIDS="$(
+      PORT_TO_FREE="$PORT" node - <<'EOF'
+const { execSync } = require("node:child_process");
+
+const port = process.env.PORT_TO_FREE;
+
+try {
+  const output = execSync(
+    `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -State Listen | Select-Object -ExpandProperty OwningProcess"`,
+    { stdio: ["ignore", "pipe", "ignore"] }
+  )
+    .toString()
+    .trim();
+  process.stdout.write(output.replace(/\s+/g, " ").trim());
+} catch {}
+EOF
+    )" || true
+  fi
+
+  if [ -z "$EXISTING_PIDS" ]; then
+    return 0
+  fi
+
+  printf '%s\n' "检测到端口 ${PORT} 已被占用，先停止旧进程: ${EXISTING_PIDS}"
+  PORT_TO_FREE="$PORT" PIDS_TO_KILL="$EXISTING_PIDS" node - <<'EOF'
+const { execSync } = require("node:child_process");
+
+const platform = process.platform;
+const pids = (process.env.PIDS_TO_KILL || "")
+  .split(/\s+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+for (const pid of pids) {
+  try {
+    if (platform === "win32") {
+      execSync(`taskkill /PID ${pid} /F`, { stdio: "ignore" });
+    } else {
+      process.kill(Number(pid), "SIGTERM");
+    }
+  } catch {}
+}
+EOF
+
+  sleep 1
 }
 
 # 统一检查 HTTP 是否已可访问。
@@ -165,7 +225,7 @@ start_tunnel() {
 
 # 输出本地与局域网地址，后续直接复制即可。
 print_local_access() {
-  LAN_IP="$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); ip='';\ntry:\n s.connect(('8.8.8.8',80)); ip=s.getsockname()[0]\nexcept Exception:\n pass\nfinally:\n s.close()\nprint(ip)" 2>/dev/null | tr -d '\n')"
+  LAN_IP="$(node -e "const os=require('node:os');const items=Object.values(os.networkInterfaces()).flat().filter(Boolean);const item=items.find((entry)=>entry.family==='IPv4'&&!entry.internal);process.stdout.write(item?.address||'')" 2>/dev/null | tr -d '\n')"
   printf '%s\n' "本地地址: http://127.0.0.1:${PORT}"
   if [ -n "$LAN_IP" ]; then
     printf '%s\n' "局域网地址: http://${LAN_IP}:${PORT}"
@@ -187,7 +247,7 @@ wait_for_local_http() {
   done
 }
 
-# 退出时同时关闭子进程
+# 前台模式退出时同时关闭子进程
 cleanup() {
   if [ -n "${DEV_PID:-}" ] && kill -0 "$DEV_PID" 2>/dev/null; then
     kill "$DEV_PID" 2>/dev/null || true
@@ -207,12 +267,36 @@ cleanup() {
 
 PACKAGE_MANAGER_CMD="$(pick_package_manager)"
 install_dependencies
-trap cleanup EXIT INT TERM
+kill_existing_port_processes
+
+if [ "$DETACH" != "1" ]; then
+  trap cleanup EXIT INT TERM
+fi
 
 printf '%s\n' "调试服务启动中: http://127.0.0.1:${PORT}"
-node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" &
-DEV_PID=$!
+if [ "$DETACH" = "1" ]; then
+  : > "$APP_LOG_FILE"
+  setsid node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" </dev/null > "$APP_LOG_FILE" 2>&1 &
+  DEV_PID=$!
+else
+  node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" &
+  DEV_PID=$!
+fi
+
 wait_for_local_http
 print_local_access
 start_tunnel
+
+if [ "$DETACH" = "1" ]; then
+  printf '%s\n' "调试服务已转入后台: PID=${DEV_PID}"
+  printf '%s\n' "应用日志: ${APP_LOG_FILE}"
+  if [ -n "${TUNNEL_PID:-}" ]; then
+    printf '%s\n' "隧道日志: ${TUNNEL_LOG_FILE}"
+  fi
+  if [ -n "${NGROK_PID:-}" ]; then
+    printf '%s\n' "隧道日志: ${NGROK_LOG_FILE}"
+  fi
+  exit 0
+fi
+
 wait "$DEV_PID"
