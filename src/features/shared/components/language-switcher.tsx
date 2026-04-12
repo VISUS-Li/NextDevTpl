@@ -3,9 +3,8 @@
 import { Globe } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePathname, useRouter } from "@/i18n/routing";
+import { cn } from "@/lib/utils";
 
 /**
  * 支持的语言配置
@@ -37,6 +37,12 @@ export function LanguageSwitcher() {
   const pathname = usePathname();
   const params = useParams();
   const [isPending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+
+  // 首屏先渲染稳定占位，避免服务端和客户端的 Radix id 序列错位
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   /**
    * 切换语言
@@ -53,19 +59,35 @@ export function LanguageSwitcher() {
     });
   };
 
+  if (!mounted) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={t("label")}
+        className="relative inline-flex size-9 items-center justify-center rounded-md opacity-50"
+      >
+        <Globe className="h-5 w-5" />
+        <span className="sr-only">{t("label")}</span>
+      </button>
+    );
+  }
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={isPending}
-          className="relative"
-          title={t("label")}
-        >
+      <DropdownMenuTrigger
+        disabled={isPending}
+        title={t("label")}
+        className={cn(
+          "relative inline-flex size-9 items-center justify-center rounded-md transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+          isPending && "pointer-events-none opacity-50"
+        )}
+      >
+        {/* 直接渲染触发器，避免 asChild 对单子节点的限制 */}
+        <span className="contents">
           <Globe className="h-5 w-5" />
           <span className="sr-only">{t("label")}</span>
-        </Button>
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {locales.map((loc) => (

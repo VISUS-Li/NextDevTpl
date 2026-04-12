@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ChevronsUpDown, LogOut, Menu } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -38,11 +38,17 @@ export function AdminSidebar() {
 
   // 获取当前用户会话
   const { data: session } = useSession();
-  const user = session?.user;
+  const [mounted, setMounted] = useState(false);
+  const user = mounted ? session?.user : undefined;
 
   // Popover 开关状态
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // 首屏保持和服务端一致，避免 session 返回后重排 Radix 组件树
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   /**
    * 获取用户名首字母作为头像回退

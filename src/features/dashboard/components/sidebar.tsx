@@ -47,10 +47,16 @@ export function DashboardSidebar() {
 
   // 获取当前用户会话
   const { data: session } = useSession();
-  const user = session?.user;
+  const [mounted, setMounted] = useState(false);
+  const user = mounted ? session?.user : undefined;
 
   // Popover 开关状态
   const [open, setOpen] = useState(false);
+
+  // 首屏先和服务端保持一致，避免 session 立即回填后打乱 hydration 顺序
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 获取用户订阅计划
   const { execute: fetchPlan, result: planResult } = useAction(getMyPlanAction);
@@ -58,10 +64,10 @@ export function DashboardSidebar() {
 
   // 用户登录后获取计划
   useEffect(() => {
-    if (user) {
+    if (mounted && user) {
       fetchPlan();
     }
-  }, [user, fetchPlan]);
+  }, [mounted, user, fetchPlan]);
 
   /**
    * 导航项标题映射到翻译键

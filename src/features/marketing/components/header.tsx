@@ -13,7 +13,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { LanguageSwitcher, ModeToggle } from "@/features/shared";
 import { Link } from "@/i18n/routing";
 import { useSession } from "@/lib/auth/client";
@@ -39,8 +39,14 @@ export function Header({ user }: HeaderProps) {
   const locale = useLocale();
   const pathname = usePathname();
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const { data: session } = useSession();
-  const currentUser = user ?? session?.user ?? null;
+  const currentUser = user ?? (mounted ? (session?.user ?? null) : null);
+
+  // 首屏只使用服务端快照，避免客户端 session 改变导航节点数量
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 桌面端导航项
   const navItems = [
@@ -277,13 +283,16 @@ export function Header({ user }: HeaderProps) {
             <ModeToggle />
             {currentUser ? (
               <>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex"
+                <Link
+                  href="/dashboard"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex",
+                  })}
                 >
-                  <Link href="/dashboard">{t("dashboard")}</Link>
-                </Button>
+                  {t("dashboard")}
+                </Link>
                 <Link href="/dashboard" className="hidden md:block">
                   <Avatar className="h-9 w-9 ring-1 ring-white/10">
                     <AvatarImage
@@ -298,19 +307,25 @@ export function Header({ user }: HeaderProps) {
               </>
             ) : (
               <>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex"
+                <Link
+                  href="/sign-in"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex",
+                  })}
                 >
-                  <Link href="/sign-in">{t("login")}</Link>
-                </Button>
-                <Button
-                  asChild
-                  className="hidden h-11 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-6 text-sm font-bold text-[#003064] shadow-lg shadow-blue-500/20 transition-transform hover:scale-105 hover:shadow-blue-500/30 md:inline-flex"
+                  {t("login")}
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className={buttonVariants({
+                    className:
+                      "hidden h-11 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-6 text-sm font-bold text-[#003064] shadow-lg shadow-blue-500/20 transition-transform hover:scale-105 hover:shadow-blue-500/30 md:inline-flex",
+                  })}
                 >
-                  <Link href="/sign-up">{t("getStarted")}</Link>
-                </Button>
+                  {t("getStarted")}
+                </Link>
               </>
             )}
           </div>
@@ -325,27 +340,36 @@ export function Header({ user }: HeaderProps) {
 
           <div className="flex items-center gap-2">
             {currentUser ? (
-              <Button
-                asChild
-                className="h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064]"
+              <Link
+                href="/dashboard"
+                className={buttonVariants({
+                  className:
+                    "h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064]",
+                })}
               >
-                <Link href="/dashboard">{t("dashboard")}</Link>
-              </Button>
+                {t("dashboard")}
+              </Link>
             ) : (
               <>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-10 rounded-full px-4 text-sm font-bold text-[#e1e2eb]/72 hover:bg-white/5 hover:text-[#e1e2eb]"
+                <Link
+                  href="/sign-in"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "h-10 rounded-full px-4 text-sm font-bold text-[#e1e2eb]/72 hover:bg-white/5 hover:text-[#e1e2eb]",
+                  })}
                 >
-                  <Link href="/sign-in">{t("login")}</Link>
-                </Button>
-                <Button
-                  asChild
-                  className="h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064]"
+                  {t("login")}
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className={buttonVariants({
+                    className:
+                      "h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064]",
+                  })}
                 >
-                  <Link href="/sign-up">{t("getStarted")}</Link>
-                </Button>
+                  {t("getStarted")}
+                </Link>
               </>
             )}
           </div>

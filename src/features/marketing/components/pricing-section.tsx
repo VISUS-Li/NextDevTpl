@@ -2,7 +2,7 @@
 
 import { BookOpen, Check, Coins, Layers, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -91,9 +91,15 @@ export function PricingSection({
   const [isYearly, setIsYearly] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
-  const currentUser = user ?? session?.user ?? null;
+  const currentUser = user ?? (mounted ? (session?.user ?? null) : null);
+
+  // 首屏先使用服务端用户快照，避免订阅按钮在 hydration 前后切换
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 获取用户当前订阅状态
   const activePriceId = currentPriceId ?? null;
