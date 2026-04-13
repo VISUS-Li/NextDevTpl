@@ -397,10 +397,15 @@ describe("Creem Webhook: checkout.completed", () => {
 
       const orders = await getUserSalesOrders(testUser.id);
       expect(orders).toHaveLength(1);
-      expect(orders[0]!.order.orderType).toBe("subscription");
-      expect(orders[0]!.items).toHaveLength(1);
-      expect(orders[0]!.items[0]!.productType).toBe("subscription");
-      expect(orders[0]!.items[0]!.priceId).toBe(proMonthlyPriceId);
+      const [order] = orders;
+      expect(order).toMatchObject({
+        order: { orderType: "subscription" },
+      });
+      expect(order?.items).toHaveLength(1);
+      expect(order?.items[0]).toMatchObject({
+        productType: "subscription",
+        priceId: proMonthlyPriceId,
+      });
     });
 
     it("应该为新用户创建订阅记录", async () => {
@@ -423,9 +428,10 @@ describe("Creem Webhook: checkout.completed", () => {
       });
 
       const sub = await getUserSubscription(testUser.id);
-      expect(sub).toBeDefined();
-      expect(sub!.status).toBe("active");
-      expect(sub!.priceId).toBe(proMonthlyPriceId);
+      expect(sub).toMatchObject({
+        status: "active",
+        priceId: proMonthlyPriceId,
+      });
 
       const orders = await getUserSalesOrders(testUser.id);
       expect(orders).toHaveLength(0);
@@ -1295,7 +1301,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 7,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     const attributionId = `attr_commission_${Date.now()}`;
@@ -1396,7 +1402,7 @@ describe("Creem Webhook: commission", () => {
       freezeDays: 2,
       appliesToFirstPurchase: true,
       appliesToRenewal: true,
-      priority: 20,
+      priority: 200,
     });
 
     const attributionId = `attr_subscription_${Date.now()}`;
@@ -1500,7 +1506,9 @@ describe("Creem Webhook: commission", () => {
     ]);
     expect(subscriptionRecords).toHaveLength(2);
     expect(
-      subscriptionRecords.every((item) => item.amount === expectedCommissionAmount)
+      subscriptionRecords.every(
+        (item) => item.amount === expectedCommissionAmount
+      )
     ).toBe(true);
     expect(balance?.totalEarned).toBe(expectedCommissionAmount * 2);
     expect(balance?.frozenAmount).toBe(expectedCommissionAmount * 2);
@@ -1523,7 +1531,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 7,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     const event = {
@@ -1582,7 +1590,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 7,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     await handleCheckoutCompleted({
@@ -1653,7 +1661,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 7,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     await handleCheckoutCompleted({
@@ -1717,7 +1725,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 0,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     await handleCheckoutCompleted({
@@ -1781,7 +1789,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 0,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
 
     await handleCheckoutCompleted({
@@ -1888,7 +1896,7 @@ describe("Creem Webhook: commission", () => {
       rate: 10,
       freezeDays: 7,
       appliesToCreditPackage: true,
-      priority: 10,
+      priority: 200,
     });
     await testDb.insert(commissionBalance).values({
       id: crypto.randomUUID(),

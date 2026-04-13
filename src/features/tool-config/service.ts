@@ -223,6 +223,16 @@ const REDINK_DEFAULT_RUNTIME_VALUES = {
     },
   },
 } as const;
+const REDINK_EMPTY_MODEL_CATALOG: RedinkModelCatalog = {
+  text_generation: {
+    defaultModel: null,
+    options: [],
+  },
+  image_generation: {
+    defaultModel: null,
+    options: [],
+  },
+};
 
 export type RedinkModelCatalogOption = {
   modelKey: string;
@@ -335,6 +345,33 @@ export async function seedDefaultToolConfigProject(params?: {
           updatedAt: now,
         })
         .onConflictDoNothing();
+      continue;
+    }
+
+    if (
+      existingField.label !== field.label ||
+      existingField.description !== (field.description ?? null) ||
+      existingField.group !== field.group ||
+      existingField.type !== field.type ||
+      existingField.required !== (field.required ?? false) ||
+      existingField.adminOnly !== (field.adminOnly ?? false) ||
+      existingField.userOverridable !== (field.userOverridable ?? false) ||
+      existingField.sortOrder !== field.sortOrder
+    ) {
+      await db
+        .update(toolConfigField)
+        .set({
+          label: field.label,
+          description: field.description ?? null,
+          group: field.group,
+          type: field.type,
+          required: field.required ?? false,
+          adminOnly: field.adminOnly ?? false,
+          userOverridable: field.userOverridable ?? false,
+          sortOrder: field.sortOrder,
+          updatedAt: now,
+        })
+        .where(eq(toolConfigField.id, existingField.id));
     }
   }
 
@@ -377,6 +414,14 @@ export async function seedDefaultToolConfigProject(params?: {
  * 补齐 RedInk 的默认运行时配置，避免新接入功能缺槽位。
  */
 async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
+  const [currentProject] = await db
+    .select({ key: project.key })
+    .from(project)
+    .where(eq(project.id, projectId))
+    .limit(1);
+  const runtimeDefaults = getRedinkRuntimeDefaults(
+    currentProject?.key ?? DEFAULT_PROJECT_KEY
+  );
   const rows = await db
     .select()
     .from(toolConfigValue)
@@ -390,7 +435,7 @@ async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
     );
 
   const rowMap = new Map(rows.map((row) => [row.fieldKey, row]));
-  const runtimeFields = Object.entries(REDINK_DEFAULT_RUNTIME_VALUES);
+  const runtimeFields = Object.entries(runtimeDefaults);
 
   for (const [fieldKey, defaultValue] of runtimeFields) {
     const currentRow = rowMap.get(fieldKey);
@@ -421,7 +466,7 @@ async function seedDefaultRedinkRuntimeConfig(projectId: string, now: Date) {
         ? (currentRow.valueJson as Record<string, unknown>)
         : {};
     const mergedValue = {
-      ...REDINK_DEFAULT_RUNTIME_VALUES.json2,
+      ...runtimeDefaults.json2,
       ...currentValue,
     };
 
@@ -812,8 +857,11 @@ export async function getResolvedToolConfig(params: {
   toolKey: string;
   userId?: string;
 }) {
+  // 先补齐项目和默认字段，避免显式 projectKey 首次访问时直接报项目不存在。
+  const projectKey = params.projectKey ?? DEFAULT_PROJECT_KEY;
+  await seedDefaultToolConfigProject({ projectKey });
   const { currentProject, fields } = await getProjectFields(
-    params.projectKey ?? DEFAULT_PROJECT_KEY,
+    projectKey,
     params.toolKey
   );
   const valuesParams: {
@@ -872,6 +920,7 @@ export async function getRedinkResolvedModelCatalog(params: {
   projectKey?: string;
   userId: string;
 }) {
+  const projectKey = params.projectKey ?? DEFAULT_PROJECT_KEY;
   const resolved = await getResolvedToolConfig({
     toolKey: "redink",
     userId: params.userId,
@@ -882,7 +931,10 @@ export async function getRedinkResolvedModelCatalog(params: {
   return {
     projectKey: resolved.projectKey,
     revision: resolved.revision,
-    catalog: normalizeRedinkModelCatalog(config.json4),
+    catalog: normalizeRedinkModelCatalog(
+      config.json4,
+      getRedinkDefaultModelCatalog(projectKey)
+    ),
   };
 }
 
@@ -1226,18 +1278,37 @@ function validateRequiredFields(
   }
 }
 
-function normalizeRedinkModelCatalog(value: unknown): RedinkModelCatalog {
+function normalizeRedinkModelCatalog(
+  value: unknown,
+  fallbackCatalog: RedinkModelCatalog
+) {
   const record = asRecord(value);
   return {
     text_generation: normalizeRedinkModelCatalogGroup(
       record?.text_generation,
-      REDINK_DEFAULT_RUNTIME_VALUES.json4.text_generation
+      fallbackCatalog.text_generation
     ),
     image_generation: normalizeRedinkModelCatalogGroup(
       record?.image_generation,
-      REDINK_DEFAULT_RUNTIME_VALUES.json4.image_generation
+      fallbackCatalog.image_generation
     ),
   };
+}
+
+function getRedinkRuntimeDefaults(projectKey: string) {
+  if (projectKey === DEFAULT_PROJECT_KEY) {
+    return REDINK_DEFAULT_RUNTIME_VALUES;
+  }
+
+  return {
+    json2: REDINK_DEFAULT_RUNTIME_VALUES.json2,
+  } as const;
+}
+
+function getRedinkDefaultModelCatalog(projectKey: string): RedinkModelCatalog {
+  return projectKey === DEFAULT_PROJECT_KEY
+    ? REDINK_DEFAULT_RUNTIME_VALUES.json4
+    : REDINK_EMPTY_MODEL_CATALOG;
 }
 
 function normalizeRedinkModelCatalogGroup(

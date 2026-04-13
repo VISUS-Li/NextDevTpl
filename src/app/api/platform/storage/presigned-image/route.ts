@@ -25,6 +25,20 @@ const presignedImageSchema = z.object({
 });
 
 /**
+ * 返回上传后可访问的资源地址。
+ */
+function resolvePublicUrl(
+  provider: ReturnType<typeof getStorageProvider>,
+  uploadUrl: string,
+  key: string,
+  bucket: string
+) {
+  return typeof provider.getPublicUrl === "function"
+    ? provider.getPublicUrl(key, bucket)
+    : uploadUrl;
+}
+
+/**
  * 获取商品图的预签名上传地址
  */
 export const POST = withApiLogging(async (request: Request) => {
@@ -64,7 +78,7 @@ export const POST = withApiLogging(async (request: Request) => {
     bucket,
     payload.data.contentType as AllowedImageType
   );
-  const publicUrl = provider.getPublicUrl(key, bucket);
+  const publicUrl = resolvePublicUrl(provider, uploadUrl, key, bucket);
   const storageRecord = await saveStorageObjectRecord({
     bucket,
     key,

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 type OverviewData = {
   totalRequests: number;
@@ -254,6 +255,11 @@ const AI_MODEL_CAPABILITY_OPTIONS = [
     value: "audio_generation",
     label: "音频生成",
     description: "支持语音或音频结果输出",
+  },
+  {
+    value: "file_input",
+    label: "文件输入",
+    description: "支持文件 URL、文件资产输入",
   },
   {
     value: "video_input",
@@ -982,9 +988,10 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
               <Field
                 label="能力声明"
                 info="直接勾选模型已确认支持的能力。图片生成模型至少要声明图片生成，支持参考图还应声明图片输入。"
+                className="md:col-span-2 xl:col-span-3"
               >
-                <div className="rounded-md border p-3">
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                  <div className="grid gap-3 lg:grid-cols-2">
                     {AI_MODEL_CAPABILITY_OPTIONS.map((option) => {
                       const inputId = `binding-capability-${option.value}`;
                       const checked = bindingForm.capabilities.includes(
@@ -994,10 +1001,11 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                         <label
                           key={option.value}
                           htmlFor={inputId}
-                          className="flex cursor-pointer items-start gap-3 rounded-md border p-3"
+                          className="flex min-h-20 cursor-pointer items-start gap-3 rounded-lg border border-border/60 bg-background px-4 py-3 transition-colors hover:border-primary/40 hover:bg-accent/20"
                         >
                           <Checkbox
                             id={inputId}
+                            className="mt-0.5"
                             checked={checked}
                             onCheckedChange={(nextChecked) =>
                               setBindingForm((current) => ({
@@ -1010,11 +1018,11 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                               }))
                             }
                           />
-                          <div className="space-y-1">
+                          <div className="min-w-0 flex-1 space-y-1">
                             <div className="text-sm font-medium">
                               {option.label}
                             </div>
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-sm leading-6 text-muted-foreground">
                               {option.description}
                             </div>
                           </div>
@@ -1750,10 +1758,11 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
 function Field(props: {
   label: string;
   info?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", props.className)}>
       <Label className="space-y-2">
         <span className="flex items-center gap-2">
           <span>{props.label}</span>
@@ -1771,14 +1780,14 @@ function Field(props: {
 function InfoTip(props: { content: string }) {
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="查看字段说明"
-        >
+      <PopoverTrigger
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="查看字段说明"
+      >
+        {/* 直接使用默认触发器，避免 asChild 对单子节点的限制 */}
+        <span className="contents">
           <CircleHelp className="h-4 w-4" />
-        </button>
+        </span>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 text-xs leading-6">
         {props.content}

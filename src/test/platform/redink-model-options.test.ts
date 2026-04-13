@@ -97,8 +97,44 @@ async function seedRelayBinding(
 }
 
 describe("RedInk model options API", () => {
+  it("显式 projectKey 首次访问时应自动补齐默认项目配置", async () => {
+    const freshProjectKey = generateTestId("redink_model_catalog_seed");
+    const normalUser = await createTestUser({
+      email: `1183989659+redink-model-seed-${Date.now()}@qq.com`,
+      name: "RedInk 首次访问用户",
+    });
+    createdUserIds.push(normalUser.id);
+
+    mockSession({
+      id: normalUser.id,
+      name: normalUser.name,
+      email: normalUser.email,
+      role: "user",
+    });
+
+    const response = await getRedinkModelOptions(
+      new Request(
+        `http://localhost:3000/api/platform/redink/model-options?projectKey=${freshProjectKey}`
+      )
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.text_generation).toEqual({
+      defaultModel: null,
+      options: [],
+    });
+    expect(data.image_generation.defaultModel).toBeNull();
+    expect(Array.isArray(data.image_generation.options)).toBe(true);
+
+    await db.delete(project).where(eq(project.key, freshProjectKey));
+  }, 120_000);
+
   it("应只返回目录中配置且通过能力校验的用户可见模型子集", async () => {
     const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const textModelKey = `redink-text-${testSuffix}`;
+    const imageModelKey = `redink-image-${testSuffix}`;
     const adminUser = await createTestUser({
       // 使用 QQ 邮箱前缀模拟真实测试用户，避免共享测试库邮箱冲突。
       role: "admin",
@@ -113,9 +149,9 @@ describe("RedInk model options API", () => {
     createdUserIds.push(adminUser.id, normalUser.id);
 
     await seedDefaultToolConfigProject({ projectKey });
-    await seedRelayBinding("gpt-4o-mini", ["text"], 1);
+    await seedRelayBinding(textModelKey, ["text"], 1);
     await seedRelayBinding(
-      "gemini-3-pro-image",
+      imageModelKey,
       ["text", "image_input", "image_generation"],
       2
     );
@@ -125,13 +161,13 @@ describe("RedInk model options API", () => {
       toolKey: "redink",
       actorId: adminUser.id,
       values: {
-        json1: ["gpt-4o-mini", "ghost-model"],
+        json1: [textModelKey, "ghost-model"],
         json4: {
           text_generation: {
-            defaultModel: "gpt-4o-mini",
+            defaultModel: textModelKey,
             options: [
               {
-                modelKey: "gpt-4o-mini",
+                modelKey: textModelKey,
                 label: "标题文案标准模型",
                 description: "适合标题和文案",
               },
@@ -143,15 +179,15 @@ describe("RedInk model options API", () => {
             ],
           },
           image_generation: {
-            defaultModel: "gemini-3-pro-image",
+            defaultModel: imageModelKey,
             options: [
               {
-                modelKey: "gemini-3-pro-image",
+                modelKey: imageModelKey,
                 label: "商品发布图模型",
                 description: "适合发布图出图",
               },
               {
-                modelKey: "gpt-4o-mini",
+                modelKey: textModelKey,
                 label: "错误图片模型",
                 description: "没有出图能力不应该返回",
               },
@@ -178,20 +214,20 @@ describe("RedInk model options API", () => {
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.text_generation).toEqual({
-      defaultModel: "gpt-4o-mini",
+      defaultModel: textModelKey,
       options: [
         {
-          modelKey: "gpt-4o-mini",
+          modelKey: textModelKey,
           label: "标题文案标准模型",
           description: "适合标题和文案",
         },
       ],
     });
     expect(data.image_generation).toEqual({
-      defaultModel: "gemini-3-pro-image",
+      defaultModel: imageModelKey,
       options: [
         {
-          modelKey: "gemini-3-pro-image",
+          modelKey: imageModelKey,
           label: "商品发布图模型",
           description: "适合发布图出图",
         },

@@ -435,4 +435,114 @@ describe("RedInk Phase 4 image API", () => {
     expect(data.error).toBe("model_not_allowed");
     expect(chatCompletionWithUsageMock).not.toHaveBeenCalled();
   }, 120_000);
+
+  it("目录中的图片模型即使不在 json1 里也应允许执行", async () => {
+    const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const adminUser = await createTestUser({
+      role: "admin",
+      email: `1183989659+redink-phase4-catalog-admin-${testSuffix}@qq.com`,
+      name: "RedInk Phase4 目录管理员",
+    });
+    const creditsUser = await createTestUserWithCredits({
+      email: `1183989659+redink-phase4-catalog-user-${testSuffix}@qq.com`,
+      name: "RedInk Phase4 目录用户",
+      initialCredits: 20,
+    });
+    createdUserIds.push(adminUser.id, creditsUser.user.id);
+
+    await seedDefaultToolConfigProject({ projectKey });
+    await seedBinding("nano-banana", ["text", "image_generation"], 2);
+
+    await saveAdminToolConfig({
+      projectKey,
+      toolKey: "redink",
+      actorId: adminUser.id,
+      values: {
+        json1: ["gpt-4o-mini"],
+        json4: {
+          text_generation: {
+            defaultModel: "gpt-4o-mini",
+            options: [
+              {
+                modelKey: "gpt-4o-mini",
+                label: "标准文案模型",
+                description: "适合标题与正文",
+              },
+            ],
+          },
+          image_generation: {
+            defaultModel: "nano-banana",
+            options: [
+              {
+                modelKey: "nano-banana",
+                label: "Nano Banana",
+                description: "目录专用图片模型",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    await saveUserToolConfig({
+      projectKey,
+      toolKey: "redink",
+      actorId: creditsUser.user.id,
+      values: {
+        config1: "gpt-4o-mini",
+        config2: "priority_failover",
+        config3: "nano-banana-phase4-provider",
+        json1: ["gpt-4o-mini"],
+        json3: ["nano-banana-phase4-provider"],
+      },
+    });
+
+    mockSession({
+      id: creditsUser.user.id,
+      name: creditsUser.user.name,
+      email: creditsUser.user.email,
+    });
+
+    chatCompletionWithUsageMock.mockResolvedValue({
+      content: "",
+      model: "nano-banana",
+      responseId: "task_phase4_catalog_model",
+      status: "pending",
+      output: {},
+      task: {
+        id: "task_phase4_catalog_model",
+        status: "pending",
+      },
+      usage: {
+        promptTokens: 70,
+        completionTokens: 0,
+        totalTokens: 70,
+      },
+      raw: {
+        id: "task_phase4_catalog_model",
+        status: "pending",
+        model: "nano-banana",
+      },
+    });
+
+    const response = await postRedinkImage(
+      new Request("http://localhost:3000/api/platform/redink/image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectKey,
+          scene: "product_post_image",
+          model: "nano-banana",
+          input: "请生成一张适合小红书封面的旅行水杯发布图",
+        }),
+      })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.model).toBe("nano-banana");
+  }, 120_000);
 });

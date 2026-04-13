@@ -85,6 +85,19 @@ const chatRequestSchema = z
       .optional(),
     stream: z.boolean().optional(),
     model: z.string().trim().min(1).max(120).optional(),
+    operation: z
+      .enum([
+        "text.generate",
+        "image.understand",
+        "image.generate",
+        "image.edit",
+        "video.understand",
+        "video.generate",
+        "audio.understand",
+        "audio.generate",
+        "file.understand",
+      ])
+      .optional(),
     temperature: z.number().min(0).max(2).optional(),
     modalities: z
       .array(z.enum(["text", "image", "audio", "video"]))
@@ -92,7 +105,11 @@ const chatRequestSchema = z
       .optional(),
     audio: z.record(z.string(), z.unknown()).optional(),
     image: z.record(z.string(), z.unknown()).optional(),
-    background: z.boolean().optional(),
+    video: z.record(z.string(), z.unknown()).optional(),
+    background: z
+      .union([z.boolean(), z.enum(["transparent", "opaque", "auto"])])
+      .optional(),
+    async: z.boolean().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((value, ctx) => {
@@ -148,6 +165,7 @@ export const POST = withApiLogging(async (request: Request) => {
       featureKey: payload.data.feature,
       messages: normalizedMessages,
       ...(payload.data.model ? { model: payload.data.model } : {}),
+      ...(payload.data.operation ? { operation: payload.data.operation } : {}),
       ...(payload.data.temperature !== undefined
         ? { temperature: payload.data.temperature }
         : {}),
@@ -156,8 +174,12 @@ export const POST = withApiLogging(async (request: Request) => {
         : {}),
       ...(payload.data.audio ? { audio: payload.data.audio } : {}),
       ...(payload.data.image ? { image: payload.data.image } : {}),
+      ...(payload.data.video ? { video: payload.data.video } : {}),
       ...(payload.data.background !== undefined
         ? { background: payload.data.background }
+        : {}),
+      ...(payload.data.async !== undefined
+        ? { async: payload.data.async }
         : {}),
       ...(payload.data.metadata ? { metadata: payload.data.metadata } : {}),
     });

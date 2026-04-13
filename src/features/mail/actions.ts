@@ -35,6 +35,7 @@ export const subscribeNewsletter = withMailAction("subscribeNewsletter")
   .action(async ({ parsedInput }) => {
     const { email } = parsedInput;
     const normalizedEmail = email.toLowerCase().trim();
+    const now = new Date();
 
     // 检查是否已存在
     const [existing] = await db
@@ -58,9 +59,9 @@ export const subscribeNewsletter = withMailAction("subscribeNewsletter")
         .update(newsletterSubscriber)
         .set({
           isSubscribed: true,
-          subscribedAt: new Date(),
+          subscribedAt: now,
           unsubscribedAt: null,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(newsletterSubscriber.id, existing.id));
 
@@ -76,6 +77,9 @@ export const subscribeNewsletter = withMailAction("subscribeNewsletter")
       id: crypto.randomUUID(),
       email: normalizedEmail,
       isSubscribed: true,
+      subscribedAt: now,
+      createdAt: now,
+      updatedAt: now,
     });
 
     return {

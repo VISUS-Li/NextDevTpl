@@ -28,8 +28,12 @@ const imageRequestSchema = z
     messages: z.array(redinkMessageSchema).min(1).optional(),
     input: redinkInputSchema.optional(),
     model: z.string().trim().min(1).max(120).optional(),
+    operation: z.enum(["image.generate", "image.edit"]).optional(),
     image: z.record(z.string(), z.unknown()).optional(),
-    background: z.boolean().optional(),
+    background: z
+      .union([z.boolean(), z.enum(["transparent", "opaque", "auto"])])
+      .optional(),
+    async: z.boolean().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((value, ctx) => {
@@ -102,10 +106,16 @@ export const POST = withApiLogging(async (request: Request) => {
       projectKey: payload.data.projectKey,
       messages,
       model: selectedModel,
+      operation:
+        payload.data.operation ??
+        inferImageOperation(messages, payload.data.image),
       modalities: ["image"],
       ...(payload.data.image ? { image: payload.data.image } : {}),
       ...(payload.data.background !== undefined
         ? { background: payload.data.background }
+        : {}),
+      ...(payload.data.async !== undefined
+        ? { async: payload.data.async }
         : {}),
       metadata: {
         ...(payload.data.metadata ?? {}),
@@ -189,4 +199,29 @@ async function resolveImageModel(
   }
 
   return resolved.selectedModel;
+}
+
+function inferImageOperation(
+  messages: Awaited<ReturnType<typeof normalizeRedinkMessages>>,
+  image: Record<string, unknown> | undefined
+) {
+  const hasImageInput = messages.some((message) =>
+    Array.isArray(message.content)
+      ? message.content.some(
+          (part) => part.type === "image_url" || part.type === "image_asset"
+        )
+      : false
+  );
+
+  if (
+    hasImageInput &&
+    image &&
+    (typeof image.mask === "string" ||
+      image.mode === "edit" ||
+      image.operation === "edit")
+  ) {
+    return "image.edit" as const;
+  }
+
+  return "image.generate" as const;
 }

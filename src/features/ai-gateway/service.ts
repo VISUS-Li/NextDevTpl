@@ -28,14 +28,18 @@ import { getStorageProvider } from "@/features/storage/providers";
 import { getStorageAssetProxyUrl } from "@/features/storage/utils";
 import {
   DEFAULT_PROJECT_KEY,
+  getRedinkResolvedModelCatalog,
   getResolvedToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config/service";
 import {
   type AIChatMessage,
   type AIChatResult,
+  type AIEndpointType,
   type AIInputPart,
+  type AIOperation,
   type AIOutput,
+  type AIPollType,
   type AIProviderMessage,
   type AITaskState,
   chatCompletionWithUsage,
@@ -49,6 +53,7 @@ const AI_MODEL_CAPABILITIES = [
   "image_generation",
   "audio_input",
   "audio_generation",
+  "file_input",
   "video_input",
   "video_generation",
 ] as const;
@@ -143,6 +148,13 @@ type ResolvedToolAISettings = {
 type CandidateBinding = {
   binding: AIRelayModelBinding;
   provider: typeof aiRelayProvider.$inferSelect;
+  profile: BindingRequestProfile;
+};
+
+type BindingRequestProfile = {
+  endpointType: AIEndpointType;
+  pollType: AIPollType;
+  operations: AIOperation[];
 };
 
 export type ExecuteAIChatParams = {
@@ -153,11 +165,14 @@ export type ExecuteAIChatParams = {
   messages: AIChatMessage[];
   stream?: boolean;
   model?: string;
+  operation?: AIOperation;
   temperature?: number;
   modalities?: string[];
   audio?: Record<string, unknown>;
   image?: Record<string, unknown>;
-  background?: boolean;
+  video?: Record<string, unknown>;
+  background?: boolean | "transparent" | "opaque" | "auto";
+  async?: boolean;
   metadata?: Record<string, unknown>;
 };
 
@@ -225,7 +240,12 @@ async function resolveToolAISettings(
   const routeStrategy = parseRouteStrategy(asString(config.config2));
   const preferredProviderKey = asString(config.config3);
   const assetUrlMode = parseStorageAssetUrlMode(asString(config.config10));
-  const allowedModels = asStringArray(config.json1);
+  const allowedModels = await resolveAllowedModels({
+    toolKey,
+    userId,
+    projectKey: projectKey ?? DEFAULT_PROJECT_KEY,
+    config,
+  });
   const allowedProviderKeys = asStringArray(config.json3);
 
   if (allowedModels.length > 0 && !allowedModels.includes(requestedModel)) {
@@ -245,6 +265,28 @@ async function resolveToolAISettings(
     assetUrlMode,
     featureConfig,
   };
+}
+
+async function resolveAllowedModels(params: {
+  toolKey: string;
+  userId: string;
+  projectKey: string;
+  config: Record<string, unknown>;
+}) {
+  const allowedModels = asStringArray(params.config.json1);
+  if (params.toolKey !== "redink") {
+    return allowedModels;
+  }
+
+  const { catalog } = await getRedinkResolvedModelCatalog({
+    projectKey: params.projectKey,
+    userId: params.userId,
+  });
+  const catalogModels = [
+    ...catalog.text_generation.options,
+    ...catalog.image_generation.options,
+  ].map((option) => option.modelKey);
+  return Array.from(new Set([...allowedModels, ...catalogModels]));
 }
 
 /**
@@ -347,41 +389,41 @@ async function seedDefaultPricingRules(toolKey: string) {
 async function getCandidateBindings(
   modelKey: string,
   settings: ResolvedToolAISettings,
+  operation: AIOperation,
   requiredCapabilities: AIModelCapability[]
 ): Promise<CandidateBinding[]> {
-  const rows = await db
-    .select({
-      binding: aiRelayModelBinding,
-      provider: aiRelayProvider,
-    })
-    .from(aiRelayModelBinding)
-    .innerJoin(
-      aiRelayProvider,
-      eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
-    )
-    .where(
-      and(
-        eq(aiRelayModelBinding.modelKey, modelKey),
-        eq(aiRelayModelBinding.enabled, true),
-        eq(aiRelayProvider.enabled, true),
-        eq(aiRelayProvider.requestType, "chat")
+  const rows = (
+    await db
+      .select({
+        binding: aiRelayModelBinding,
+        provider: aiRelayProvider,
+      })
+      .from(aiRelayModelBinding)
+      .innerJoin(
+        aiRelayProvider,
+        eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
       )
-    )
-    .orderBy(
-      asc(aiRelayModelBinding.priority),
-      asc(aiRelayProvider.priority),
-      desc(aiRelayModelBinding.weight),
-      desc(aiRelayProvider.weight)
-    );
+      .where(
+        and(
+          eq(aiRelayModelBinding.modelKey, modelKey),
+          eq(aiRelayModelBinding.enabled, true),
+          eq(aiRelayProvider.enabled, true),
+          eq(aiRelayProvider.requestType, "chat")
+        )
+      )
+      .orderBy(
+        asc(aiRelayModelBinding.priority),
+        asc(aiRelayProvider.priority),
+        desc(aiRelayModelBinding.weight),
+        desc(aiRelayProvider.weight)
+      )
+  ).map((row) => ({
+    ...row,
+    profile: readBindingRequestProfile(row.binding),
+  }));
 
-  const capabilityMatchedRows = rows.filter((row) => {
-    const capabilities = readBindingCapabilities(row.binding.metadata);
-    return !requiredCapabilities.some(
-      (capability) => !capabilities.includes(capability)
-    );
-  });
-
-  const filtered = capabilityMatchedRows.filter((row) => {
+  // 先按当前工具可用的 provider 范围收窄，再判断模型能力。
+  const providerMatchedRows = rows.filter((row) => {
     if (
       settings.allowedProviderKeys.length > 0 &&
       !settings.allowedProviderKeys.includes(row.provider.key)
@@ -398,19 +440,32 @@ async function getCandidateBindings(
     return true;
   });
 
+  const filtered = providerMatchedRows.filter((row) => {
+    const capabilities = readBindingCapabilities(row.binding.metadata);
+    if (!row.profile.operations.includes(operation)) {
+      return false;
+    }
+    return !requiredCapabilities.some(
+      (capability) => !capabilities.includes(capability)
+    );
+  });
+
   if (filtered.length === 0) {
-    if (requiredCapabilities.length > 0 && capabilityMatchedRows.length === 0) {
+    if (providerMatchedRows.length === 0) {
+      throw new AIGatewayError(
+        "provider_unavailable",
+        "没有可用的 AI 中转站",
+        503
+      );
+    }
+    if (requiredCapabilities.length > 0) {
       throw new AIGatewayError(
         "model_not_allowed",
         `当前模型未声明所需能力: ${requiredCapabilities.join(", ")}`,
         403
       );
     }
-    throw new AIGatewayError(
-      "provider_unavailable",
-      "没有可用的 AI 中转站",
-      503
-    );
+    throw new AIGatewayError("model_not_allowed", "当前模型不可用", 403);
   }
 
   if (settings.preferredProviderKey && settings.routeStrategy !== "weighted") {
@@ -469,7 +524,8 @@ export async function executeAIChat(
     params.messages,
     settings
   );
-  const requiredCapabilities = getRequiredCapabilities(params);
+  const operation = resolveRequestOperation(params);
+  const requiredCapabilities = getRequiredCapabilities(params, operation);
 
   await db.insert(aiRequestLog).values({
     id: crypto.randomUUID(),
@@ -488,10 +544,13 @@ export async function executeAIChat(
       model: settings.requestedModel,
       temperature: params.temperature ?? null,
       stream: params.stream ?? false,
+      operation,
       modalities: params.modalities ?? null,
       audio: params.audio ?? null,
       image: params.image ?? null,
-      background: params.background ?? false,
+      video: params.video ?? null,
+      background: params.background ?? null,
+      async: params.async ?? null,
     },
     metadata: params.metadata,
   });
@@ -499,6 +558,7 @@ export async function executeAIChat(
   const candidates = await getCandidateBindings(
     settings.requestedModel,
     settings,
+    operation,
     requiredCapabilities
   );
   const attempts: Array<{
@@ -519,26 +579,19 @@ export async function executeAIChat(
         ...(params.temperature !== undefined
           ? { temperature: params.temperature }
           : {}),
-        extraBody: {
-          ...(params.modalities ? { modalities: params.modalities } : {}),
-          ...(params.modalities?.includes("image")
-            ? { image_generation: true }
-            : {}),
-          ...(params.audio ? { audio: params.audio } : {}),
-          ...(params.image ? { image: params.image } : {}),
-          ...(params.background !== undefined
-            ? { background: params.background }
-            : {}),
-        },
+        extraBody: buildProviderExtraBody(params, operation),
         aiConfig: {
           provider: "openai",
           apiKey: decryptRelayApiKey(candidate.provider.apiKeyEncrypted),
           baseUrl: candidate.provider.baseUrl,
           model: candidate.binding.modelAlias,
+          endpointType: candidate.profile.endpointType,
+          pollType: candidate.profile.pollType,
+          operation,
         },
       });
       const latencyMs = Date.now() - attemptStartedAt;
-      const pendingTask = isPendingTaskResult(result, params.background);
+      const pendingTask = isPendingTaskResult(result, params.async);
       const providerCostMicros = pendingTask
         ? 0
         : calculateProviderCostMicros(candidate.binding, result);
@@ -722,6 +775,7 @@ export async function getAIChatResult(params: {
       apiKey: decryptRelayApiKey(providerBinding.provider.apiKeyEncrypted),
       baseUrl: providerBinding.provider.baseUrl,
       model: providerBinding.binding.modelAlias,
+      pollType: readBindingRequestProfile(providerBinding.binding).pollType,
     },
   });
 
@@ -766,7 +820,10 @@ export async function getAIChatResult(params: {
     modelKey: requestLog.requestedModel ?? winningAttempt.modelKey,
     startedAt: requestLog.createdAt.getTime(),
     attemptNo: requestLog.winningAttemptNo ?? 1,
-    candidate: providerBinding,
+    candidate: {
+      ...providerBinding,
+      profile: readBindingRequestProfile(providerBinding.binding),
+    },
     result,
   });
 }
@@ -1278,8 +1335,10 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "未知错误";
 }
 
-function isPendingTaskResult(result: AIChatResult, background?: boolean) {
-  return background === true || !!result.task || result.status === "pending";
+function isPendingTaskResult(result: AIChatResult, asyncRequested?: boolean) {
+  return (
+    asyncRequested === true || !!result.task || result.status === "pending"
+  );
 }
 
 function asString(value: unknown) {
@@ -1292,6 +1351,98 @@ function asRecord(value: unknown) {
     : null;
 }
 
+function resolveRequestOperation(params: ExecuteAIChatParams): AIOperation {
+  if (params.operation) {
+    return params.operation;
+  }
+
+  const hasImageInput = hasInputPart(params.messages, [
+    "image_url",
+    "image_asset",
+  ]);
+  const hasAudioInput = hasInputPart(params.messages, [
+    "audio_url",
+    "audio_asset",
+  ]);
+  const hasVideoInput = hasInputPart(params.messages, [
+    "video_url",
+    "video_asset",
+  ]);
+  const hasFileInput = hasInputPart(params.messages, ["file_asset"]);
+  const shouldGenerateImage =
+    params.featureKey === "product-post-image" ||
+    params.featureKey === "image-generation" ||
+    params.modalities?.includes("image");
+  const shouldGenerateVideo = params.modalities?.includes("video") === true;
+  const shouldGenerateAudio = params.modalities?.includes("audio") === true;
+
+  if (
+    shouldGenerateImage &&
+    hasImageInput &&
+    isImageEditRequest(params.image)
+  ) {
+    return "image.edit";
+  }
+  if (shouldGenerateImage) {
+    return "image.generate";
+  }
+  if (shouldGenerateVideo) {
+    return hasVideoInput ? "video.understand" : "video.generate";
+  }
+  if (shouldGenerateAudio) {
+    return hasAudioInput ? "audio.understand" : "audio.generate";
+  }
+  if (hasFileInput) {
+    return "file.understand";
+  }
+  if (hasVideoInput) {
+    return "video.understand";
+  }
+  if (hasAudioInput) {
+    return "audio.understand";
+  }
+  if (hasImageInput) {
+    return "image.understand";
+  }
+  return "text.generate";
+}
+
+function hasInputPart(messages: AIChatMessage[], types: AIInputPart["type"][]) {
+  return messages.some((message) =>
+    Array.isArray(message.content)
+      ? message.content.some((part) => types.includes(part.type))
+      : false
+  );
+}
+
+function isImageEditRequest(image: Record<string, unknown> | undefined) {
+  return !!(
+    image &&
+    (typeof image.mask === "string" ||
+      image.mode === "edit" ||
+      image.operation === "edit")
+  );
+}
+
+function buildProviderExtraBody(
+  params: ExecuteAIChatParams,
+  operation: AIOperation
+) {
+  return {
+    ...(params.modalities ? { modalities: params.modalities } : {}),
+    ...(operation === "image.generate" || operation === "image.edit"
+      ? { image_generation: true }
+      : {}),
+    ...(params.audio ? { audio: params.audio } : {}),
+    ...(params.image ? { image: params.image } : {}),
+    ...(params.video ? { video: params.video } : {}),
+    ...(params.async !== undefined ? { async: params.async } : {}),
+    ...(params.background !== undefined
+      ? { background: params.background }
+      : {}),
+  };
+}
+
 function asStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter(
@@ -1300,23 +1451,28 @@ function asStringArray(value: unknown) {
     : [];
 }
 
-function getRequiredCapabilities(params: ExecuteAIChatParams) {
+function getRequiredCapabilities(
+  params: ExecuteAIChatParams,
+  operation: AIOperation
+) {
   const capabilities = new Set<AIModelCapability>();
 
-  if (!params.modalities || params.modalities.includes("text")) {
+  if (
+    operation === "text.generate" ||
+    operation === "image.understand" ||
+    operation === "video.understand" ||
+    operation === "audio.understand" ||
+    operation === "file.understand"
+  ) {
     capabilities.add("text");
   }
-  if (
-    params.featureKey === "product-post-image" ||
-    params.featureKey === "image-generation" ||
-    params.modalities?.includes("image")
-  ) {
+  if (operation === "image.generate" || operation === "image.edit") {
     capabilities.add("image_generation");
   }
-  if (params.modalities?.includes("audio")) {
+  if (operation === "audio.generate") {
     capabilities.add("audio_generation");
   }
-  if (params.modalities?.includes("video")) {
+  if (operation === "video.generate") {
     capabilities.add("video_generation");
   }
 
@@ -1331,6 +1487,9 @@ function getRequiredCapabilities(params: ExecuteAIChatParams) {
       }
       if (part.type === "audio_url" || part.type === "audio_asset") {
         capabilities.add("audio_input");
+      }
+      if (part.type === "file_asset") {
+        capabilities.add("file_input");
       }
       if (part.type === "video_url" || part.type === "video_asset") {
         capabilities.add("video_input");
@@ -1353,6 +1512,110 @@ function readBindingCapabilities(value: unknown): AIModelCapability[] {
   );
 }
 
+function readBindingRequestProfile(
+  binding: AIRelayModelBinding
+): BindingRequestProfile {
+  const metadata = asRecord(binding.metadata);
+  const endpointType = readEndpointType(metadata?.endpointType);
+  const pollType = readPollType(metadata?.pollType);
+  const operations = readBindingOperations(metadata?.operations);
+
+  if (endpointType && pollType && operations.length > 0) {
+    return { endpointType, pollType, operations };
+  }
+
+  return inferLegacyBindingRequestProfile(binding);
+}
+
+function readEndpointType(value: unknown): AIEndpointType | null {
+  return value === "chat_completions" ||
+    value === "images_generations" ||
+    value === "images_edits" ||
+    value === "videos_generations"
+    ? value
+    : null;
+}
+
+function readPollType(value: unknown): AIPollType | null {
+  return value === "chat" || value === "image" || value === "video"
+    ? value
+    : null;
+}
+
+function readBindingOperations(value: unknown): AIOperation[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (item): item is AIOperation =>
+      item === "text.generate" ||
+      item === "image.understand" ||
+      item === "image.generate" ||
+      item === "image.edit" ||
+      item === "video.understand" ||
+      item === "video.generate" ||
+      item === "audio.understand" ||
+      item === "audio.generate" ||
+      item === "file.understand"
+  );
+}
+
+function inferLegacyBindingRequestProfile(
+  binding: AIRelayModelBinding
+): BindingRequestProfile {
+  const capabilities = readBindingCapabilities(binding.metadata);
+  const fingerprint = `${binding.modelKey} ${binding.modelAlias}`.toLowerCase();
+
+  if (/sora|veo|kling|cogvideo|wanx|hunyuan.*video/.test(fingerprint)) {
+    return {
+      endpointType: "videos_generations",
+      pollType: "video",
+      operations: ["video.generate"],
+    };
+  }
+  if (/nano-banana|gpt-image-1/.test(fingerprint)) {
+    return {
+      endpointType: "images_generations",
+      pollType: "image",
+      operations: ["image.generate", "image.edit"],
+    };
+  }
+
+  const operations = new Set<AIOperation>();
+  if (capabilities.includes("text")) {
+    operations.add("text.generate");
+  }
+  if (capabilities.includes("image_input")) {
+    operations.add("image.understand");
+  }
+  if (capabilities.includes("audio_input")) {
+    operations.add("audio.understand");
+  }
+  if (capabilities.includes("video_input")) {
+    operations.add("video.understand");
+  }
+  if (capabilities.includes("file_input")) {
+    operations.add("file.understand");
+  }
+  if (capabilities.includes("image_generation")) {
+    operations.add("image.generate");
+  }
+  if (capabilities.includes("audio_generation")) {
+    operations.add("audio.generate");
+  }
+  if (capabilities.includes("video_generation")) {
+    operations.add("video.generate");
+  }
+
+  return {
+    endpointType: "chat_completions",
+    pollType: "chat",
+    operations: Array.from(
+      operations.size > 0 ? operations : ["text.generate"]
+    ),
+  };
+}
+
 function readOutputFromMeta(value: unknown): AIOutput {
   const record = asRecord(value);
   if (!record) {
@@ -1360,6 +1623,16 @@ function readOutputFromMeta(value: unknown): AIOutput {
   }
 
   const audioRecord = asRecord(record.audio);
+  const images = Array.isArray(record.images)
+    ? record.images
+        .map((item) => {
+          const current = asRecord(item);
+          return asString(current?.url)
+            ? { url: asString(current?.url) ?? "" }
+            : null;
+        })
+        .filter((item): item is { url: string } => !!item)
+    : undefined;
 
   return {
     ...(asString(record.text)
@@ -1368,6 +1641,7 @@ function readOutputFromMeta(value: unknown): AIOutput {
     ...(typeof record.image === "string" || record.image === null
       ? { image: record.image as string | null }
       : {}),
+    ...(images?.length ? { images } : {}),
     ...(typeof record.video === "string" || record.video === null
       ? { video: record.video as string | null }
       : {}),

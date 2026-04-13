@@ -6,10 +6,9 @@
 
 import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it, vi } from "vitest";
-
-import { GET as getPlatformSession } from "@/app/api/platform/session/route";
 import { POST as postCreditsCheck } from "@/app/api/platform/credits/check/route";
 import { POST as postCreditsConsume } from "@/app/api/platform/credits/consume/route";
+import { GET as getPlatformSession } from "@/app/api/platform/session/route";
 import { POST as postPresignedImage } from "@/app/api/platform/storage/presigned-image/route";
 import { db } from "@/db";
 import { creditsTransaction } from "@/db/schema";
@@ -24,8 +23,12 @@ import {
 
 vi.mock("@/features/storage/providers", () => ({
   getStorageProvider: () => ({
-    getSignedUploadUrl: vi.fn(async (key: string, bucket: string) =>
-      `https://storage.test/${bucket}/${key}`
+    getSignedUploadUrl: vi.fn(
+      async (key: string, bucket: string) =>
+        `https://storage.test/${bucket}/${key}`
+    ),
+    getPublicUrl: vi.fn(
+      (key: string, bucket: string) => `https://assets.test/${bucket}/${key}`
     ),
   }),
 }));
@@ -68,7 +71,8 @@ describe("Platform API", () => {
     createdUserIds.push(creditsUser.user.id);
     await createTestSubscription({
       userId: creditsUser.user.id,
-      priceId: process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_MONTHLY || "price_pro_monthly",
+      priceId:
+        process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_MONTHLY || "price_pro_monthly",
       status: "active",
     });
 
@@ -180,23 +184,26 @@ describe("Platform API", () => {
     });
 
     const response = await postPresignedImage(
-      new Request("http://localhost:3000/api/platform/storage/presigned-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          filename: "product.png",
-          contentType: "image/png",
-          fileSize: 1024,
-        }),
-      })
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: "product.png",
+            contentType: "image/png",
+            fileSize: 1024,
+          }),
+        }
+      )
     );
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
-    expect(data.key).toContain(`/`); 
+    expect(data.key).toContain(`/`);
     expect(data.contentType).toBe("image/png");
     expect(data.uploadUrl).toContain("https://storage.test/");
   });

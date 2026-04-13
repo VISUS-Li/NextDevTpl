@@ -18,6 +18,7 @@ import {
 import { encryptRelayApiKey } from "@/features/ai-gateway";
 import { s3Provider } from "@/features/storage/providers/s3";
 import {
+  saveAdminToolConfig,
   saveUserToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config";
@@ -161,6 +162,14 @@ async function seedToolConfig(
   actorId: string,
   assetUrlMode: "public" | "proxy" = "public"
 ) {
+  await saveAdminToolConfig({
+    toolKey: "redink",
+    actorId,
+    values: {
+      config10: assetUrlMode,
+    },
+  });
+
   await saveUserToolConfig({
     toolKey: "redink",
     actorId,
@@ -168,7 +177,6 @@ async function seedToolConfig(
       config1: "gpt-4o-mini",
       config2: "primary_only",
       config3: storagePhase1ProviderKey,
-      config10: assetUrlMode,
       json1: ["gpt-4o-mini"],
       json2: {
         [storagePhase1FeatureKey]: {

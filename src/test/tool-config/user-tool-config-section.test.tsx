@@ -105,10 +105,10 @@ describe("UserToolConfigSection", () => {
 
     expect(screen.getByText("槽位：config1")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("聊天平台"), {
+    fireEvent.change(screen.getByLabelText(/聊天平台/), {
       target: { value: "user-model" },
     });
-    fireEvent.change(screen.getByLabelText("text1"), {
+    fireEvent.change(screen.getByLabelText(/text1/), {
       target: { value: "用户提示词" },
     });
     fireEvent.click(

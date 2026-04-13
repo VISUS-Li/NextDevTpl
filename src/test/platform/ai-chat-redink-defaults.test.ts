@@ -21,7 +21,9 @@ beforeEach(() => {
 
 afterAll(async () => {
   for (const bindingId of createdBindingIds) {
-    await db.delete(aiRelayModelBinding).where(eq(aiRelayModelBinding.id, bindingId));
+    await db
+      .delete(aiRelayModelBinding)
+      .where(eq(aiRelayModelBinding.id, bindingId));
   }
 
   await cleanupTestUsers(createdUserIds);
@@ -51,14 +53,14 @@ function mockSession(user: { id: string; name: string; email: string }) {
 async function ensureDefaultRelayBinding() {
   await seedDefaultToolConfigProject();
 
-  let [provider] = await db
+  const [provider] = await db
     .select()
     .from(aiRelayProvider)
-    .where(eq(aiRelayProvider.key, "geek-default"))
+    .where(eq(aiRelayProvider.key, "geekai"))
     .limit(1);
 
   if (!provider) {
-    throw new Error("缺少 geek-default provider，请先完成 Geek provider 配置");
+    throw new Error("缺少 geekai provider，请先完成 Geek provider 配置");
   }
 
   if (!provider) {
@@ -104,7 +106,9 @@ describe("Platform AI Chat RedInk Defaults", () => {
   it("应自动补齐 redink 的默认 feature 配置和计费规则", async () => {
     await ensureDefaultRelayBinding();
     process.env.OPENAI_API_KEY ??= "test";
-    const { POST: postAIChat } = await import("@/app/api/platform/ai/chat/route");
+    const { POST: postAIChat } = await import(
+      "@/app/api/platform/ai/chat/route"
+    );
 
     await db
       .delete(aiPricingRule)

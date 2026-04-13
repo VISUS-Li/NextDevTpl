@@ -4,7 +4,7 @@
  * 验证管理员可以清理已过期的对象资源。
  */
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as postCleanupExpired } from "@/app/api/platform/storage/admin/cleanup-expired/route";
@@ -67,6 +67,16 @@ describe("Storage Phase 3 Cleanup API", () => {
     createdUserIds.push(adminUser.id);
     mockAdminSession(adminUser);
 
+    await db
+      .delete(storageObject)
+      .where(
+        and(
+          isNull(storageObject.deletedAt),
+          ne(storageObject.status, "deleted"),
+          lt(storageObject.expiresAt, new Date())
+        )
+      );
+
     const expiredId = crypto.randomUUID();
     const futureId = crypto.randomUUID();
     createdObjectIds.push(expiredId, futureId);
@@ -97,16 +107,19 @@ describe("Storage Phase 3 Cleanup API", () => {
     ]);
 
     const response = await postCleanupExpired(
-      new Request("http://localhost:3000/api/platform/storage/admin/cleanup-expired", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          limit: 10,
-          dryRun: false,
-        }),
-      })
+      new Request(
+        "http://localhost:3000/api/platform/storage/admin/cleanup-expired",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            limit: 10,
+            dryRun: false,
+          }),
+        }
+      )
     );
     const data = await response.json();
     const [expiredRecord] = await db

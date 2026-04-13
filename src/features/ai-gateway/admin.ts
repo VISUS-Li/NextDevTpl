@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
+  type AIBillingMode,
   aiBillingRecord,
   aiPricingRule,
   aiRelayModelBinding,
@@ -9,7 +10,6 @@ import {
   aiRequestAttempt,
   aiRequestLog,
   user,
-  type AIBillingMode,
 } from "@/db/schema";
 import { consumeCredits, grantCredits } from "@/features/credits/core";
 import { chatCompletionWithUsage } from "@/lib/ai";
@@ -22,6 +22,7 @@ export const AI_MODEL_CAPABILITIES = [
   "image_generation",
   "audio_input",
   "audio_generation",
+  "file_input",
   "video_input",
   "video_generation",
 ] as const;
@@ -197,17 +198,16 @@ export async function listAIProviders(): Promise<ProviderStatsRow[]> {
       createdAt: aiRelayProvider.createdAt,
       updatedAt: aiRelayProvider.updatedAt,
       totalAttempts: sql<number>`count(${aiRequestAttempt.id})`,
-      successAttempts:
-        sql<number>`count(${aiRequestAttempt.id}) filter (where ${aiRequestAttempt.status} = 'success')`,
-      failedAttempts:
-        sql<number>`count(${aiRequestAttempt.id}) filter (where ${aiRequestAttempt.status} <> 'success')`,
-      averageLatencyMs:
-        sql<number>`coalesce(avg(${aiRequestAttempt.latencyMs}), 0)`,
-      totalProviderCostMicros:
-        sql<number>`coalesce(sum(${aiRequestAttempt.providerCostUsd}), 0)`,
+      successAttempts: sql<number>`count(${aiRequestAttempt.id}) filter (where ${aiRequestAttempt.status} = 'success')`,
+      failedAttempts: sql<number>`count(${aiRequestAttempt.id}) filter (where ${aiRequestAttempt.status} <> 'success')`,
+      averageLatencyMs: sql<number>`coalesce(avg(${aiRequestAttempt.latencyMs}), 0)`,
+      totalProviderCostMicros: sql<number>`coalesce(sum(${aiRequestAttempt.providerCostUsd}), 0)`,
     })
     .from(aiRelayProvider)
-    .leftJoin(aiRequestAttempt, eq(aiRequestAttempt.providerId, aiRelayProvider.id))
+    .leftJoin(
+      aiRequestAttempt,
+      eq(aiRequestAttempt.providerId, aiRelayProvider.id)
+    )
     .groupBy(aiRelayProvider.id)
     .orderBy(
       aiRelayProvider.priority,
@@ -329,6 +329,10 @@ export async function applyGeekPreset(input: ApplyGeekPresetInput) {
           metadata: {
             preset: "geek",
             tier: bindingValues.tier,
+            capabilities: bindingValues.capabilities,
+            endpointType: bindingValues.transport.endpointType,
+            pollType: bindingValues.transport.pollType,
+            operations: bindingValues.transport.operations,
           },
           updatedAt: new Date(),
         })
@@ -349,6 +353,10 @@ export async function applyGeekPreset(input: ApplyGeekPresetInput) {
         metadata: {
           preset: "geek",
           tier: bindingValues.tier,
+          capabilities: bindingValues.capabilities,
+          endpointType: bindingValues.transport.endpointType,
+          pollType: bindingValues.transport.pollType,
+          operations: bindingValues.transport.operations,
         },
       });
     }
@@ -482,10 +490,16 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
   const capabilities =
     model.capabilities ??
     inferCapabilitiesFromModelName(model.modelKey, model.modelAlias);
+  const transport = inferBindingTransportMetadata(
+    model.modelKey,
+    model.modelAlias,
+    capabilities
+  );
   const tier = model.tier ?? "standard";
   if (tier === "cheap") {
     return {
       capabilities,
+      transport,
       tier,
       priority: 10,
       weight: 100,
@@ -497,6 +511,7 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
   if (tier === "premium") {
     return {
       capabilities,
+      transport,
       tier,
       priority: 10,
       weight: 100,
@@ -507,6 +522,7 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
   }
   return {
     capabilities,
+    transport,
     tier,
     priority: 10,
     weight: 100,
@@ -519,7 +535,9 @@ function getGeekBindingPreset(model: GeekPresetModelInput) {
 /**
  * 按业务场景生成平台侧默认计费规则。
  */
-function getGeekPricingPreset(profile: GeekPresetPricingProfile = "text_basic") {
+function getGeekPricingPreset(
+  profile: GeekPresetPricingProfile = "text_basic"
+) {
   if (profile === "text_long") {
     return {
       billingMode: "token_based" as const,
@@ -603,8 +621,15 @@ export async function listAIModelBindings() {
       updatedAt: aiRelayModelBinding.updatedAt,
     })
     .from(aiRelayModelBinding)
-    .innerJoin(aiRelayProvider, eq(aiRelayModelBinding.providerId, aiRelayProvider.id))
-    .orderBy(aiRelayProvider.priority, aiRelayModelBinding.priority, aiRelayModelBinding.modelKey);
+    .innerJoin(
+      aiRelayProvider,
+      eq(aiRelayModelBinding.providerId, aiRelayProvider.id)
+    )
+    .orderBy(
+      aiRelayProvider.priority,
+      aiRelayModelBinding.priority,
+      aiRelayModelBinding.modelKey
+    );
 
   return rows.map((row) => ({
     ...row,
@@ -634,6 +659,11 @@ export async function createAIModelBinding(input: SaveModelBindingInput) {
       timeoutMs: input.timeoutMs,
       metadata: {
         capabilities: input.capabilities,
+        ...inferBindingTransportMetadata(
+          input.modelKey,
+          input.modelAlias,
+          input.capabilities
+        ),
       },
     })
     .returning();
@@ -668,6 +698,11 @@ export async function updateAIModelBinding(
   const metadata = {
     ...(isRecord(current.metadata) ? current.metadata : {}),
     ...(input.capabilities ? { capabilities: input.capabilities } : {}),
+    ...inferBindingTransportMetadata(
+      input.modelKey ?? current.modelKey,
+      input.modelAlias ?? current.modelAlias,
+      input.capabilities ?? readBindingCapabilities(current.metadata)
+    ),
   };
 
   const [updated] = await db
@@ -689,7 +724,9 @@ export async function updateAIModelBinding(
       ...(input.fixedCostUsd !== undefined
         ? { fixedCostUsd: input.fixedCostUsd }
         : {}),
-      ...(input.maxRetries !== undefined ? { maxRetries: input.maxRetries } : {}),
+      ...(input.maxRetries !== undefined
+        ? { maxRetries: input.maxRetries }
+        : {}),
       ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
       metadata,
       updatedAt: new Date(),
@@ -712,9 +749,10 @@ function readBindingCapabilities(value: unknown): AIModelCapability[] {
   if (!Array.isArray(capabilities)) {
     return ["text"];
   }
-  return capabilities.filter((item): item is AIModelCapability =>
-    typeof item === "string" &&
-    (AI_MODEL_CAPABILITIES as readonly string[]).includes(item)
+  return capabilities.filter(
+    (item): item is AIModelCapability =>
+      typeof item === "string" &&
+      (AI_MODEL_CAPABILITIES as readonly string[]).includes(item)
   );
 }
 
@@ -735,11 +773,71 @@ function inferCapabilitiesFromModelName(modelKey: string, modelAlias: string) {
   if (fingerprint.includes("audio")) {
     capabilities.push("audio_input", "audio_generation");
   }
+  if (fingerprint.includes("file") || fingerprint.includes("pdf")) {
+    capabilities.push("file_input");
+  }
   if (fingerprint.includes("video")) {
     capabilities.push("video_input", "video_generation");
   }
 
   return Array.from(new Set(capabilities));
+}
+
+function inferBindingTransportMetadata(
+  modelKey: string,
+  modelAlias: string,
+  capabilities: AIModelCapability[]
+) {
+  const fingerprint = `${modelKey} ${modelAlias}`.toLowerCase();
+
+  if (/sora|veo|kling|cogvideo|wanx|hunyuan.*video/.test(fingerprint)) {
+    return {
+      endpointType: "videos_generations" as const,
+      pollType: "video" as const,
+      operations: ["video.generate"],
+    };
+  }
+  if (/nano-banana|gpt-image-1/.test(fingerprint)) {
+    return {
+      endpointType: "images_generations" as const,
+      pollType: "image" as const,
+      operations: ["image.generate", "image.edit"],
+    };
+  }
+
+  const operations = new Set<string>();
+  if (capabilities.includes("text")) {
+    operations.add("text.generate");
+  }
+  if (capabilities.includes("image_input")) {
+    operations.add("image.understand");
+  }
+  if (capabilities.includes("audio_input")) {
+    operations.add("audio.understand");
+  }
+  if (capabilities.includes("file_input")) {
+    operations.add("file.understand");
+  }
+  if (capabilities.includes("video_input")) {
+    operations.add("video.understand");
+  }
+  if (capabilities.includes("image_generation")) {
+    operations.add("image.generate");
+  }
+  if (capabilities.includes("audio_generation")) {
+    operations.add("audio.generate");
+  }
+  if (capabilities.includes("video_generation")) {
+    operations.add("video.generate");
+  }
+
+  return {
+    endpointType: "chat_completions" as const,
+    pollType: "chat" as const,
+    operations: Array.from(
+      operations.size > 0 ? operations : ["text.generate"]
+    ),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -762,7 +860,11 @@ export async function listAIPricingRules() {
   return db
     .select()
     .from(aiPricingRule)
-    .orderBy(aiPricingRule.toolKey, aiPricingRule.featureKey, aiPricingRule.modelScope);
+    .orderBy(
+      aiPricingRule.toolKey,
+      aiPricingRule.featureKey,
+      aiPricingRule.modelScope
+    );
 }
 
 /**
@@ -795,7 +897,9 @@ export async function updateAIPricingRule(
       ...(input.requestType ? { requestType: input.requestType } : {}),
       ...(input.billingMode ? { billingMode: input.billingMode } : {}),
       ...(input.modelScope ? { modelScope: input.modelScope } : {}),
-      ...(input.fixedCredits !== undefined ? { fixedCredits: input.fixedCredits } : {}),
+      ...(input.fixedCredits !== undefined
+        ? { fixedCredits: input.fixedCredits }
+        : {}),
       ...(input.inputTokensPerCredit !== undefined
         ? { inputTokensPerCredit: input.inputTokensPerCredit }
         : {}),
@@ -895,16 +999,16 @@ export async function listAIRequestLogs(params: ListRequestLogParams = {}) {
 
   return requests.map((item) => ({
     ...item,
-    providerKey: (
-      item.winningAttemptNo === null
+    providerKey:
+      (item.winningAttemptNo === null
         ? latestAttemptMap.get(item.requestId)
         : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)
-    )?.providerKey ?? null,
-    providerModel: (
-      item.winningAttemptNo === null
+      )?.providerKey ?? null,
+    providerModel:
+      (item.winningAttemptNo === null
         ? latestAttemptMap.get(item.requestId)
         : winningAttemptMap.get(`${item.requestId}:${item.winningAttemptNo}`)
-    )?.modelAlias ?? null,
+      )?.modelAlias ?? null,
   }));
 }
 
@@ -961,19 +1065,16 @@ export async function runAIProviderHealthCheck(params: HealthCheckParams = {}) {
     }
 
     try {
-      await chatCompletionWithUsage(
-        [{ role: "user", content: "reply ok" }],
-        {
-          temperature: 0,
-          maxTokens: 16,
-          aiConfig: {
-            provider: "openai",
-            apiKey: decryptRelayApiKey(provider.apiKeyEncrypted),
-            baseUrl: provider.baseUrl,
-            model: binding.modelAlias,
-          },
-        }
-      );
+      await chatCompletionWithUsage([{ role: "user", content: "reply ok" }], {
+        temperature: 0,
+        maxTokens: 16,
+        aiConfig: {
+          provider: "openai",
+          apiKey: decryptRelayApiKey(provider.apiKeyEncrypted),
+          baseUrl: provider.baseUrl,
+          model: binding.modelAlias,
+        },
+      });
 
       await db
         .update(aiRelayProvider)
@@ -1018,7 +1119,9 @@ export async function runAIProviderHealthCheck(params: HealthCheckParams = {}) {
 /**
  * 执行管理员手工调账。
  */
-export async function createAIBillingAdjustment(params: BillingAdjustmentParams) {
+export async function createAIBillingAdjustment(
+  params: BillingAdjustmentParams
+) {
   const [request] = await db
     .select()
     .from(aiRequestLog)
@@ -1119,14 +1222,21 @@ export async function getAIOperationAlerts(params: AlertQueryParams = {}) {
     providers: providers
       .filter((item) => {
         const failureRate =
-          item.totalAttempts === 0 ? 0 : item.failedAttempts / item.totalAttempts;
-        return item.lastHealthStatus === "down" || failureRate >= failureRateThreshold;
+          item.totalAttempts === 0
+            ? 0
+            : item.failedAttempts / item.totalAttempts;
+        return (
+          item.lastHealthStatus === "down" ||
+          failureRate >= failureRateThreshold
+        );
       })
       .map((item) => ({
         providerKey: item.key,
         healthStatus: item.lastHealthStatus,
         failureRate:
-          item.totalAttempts === 0 ? 0 : item.failedAttempts / item.totalAttempts,
+          item.totalAttempts === 0
+            ? 0
+            : item.failedAttempts / item.totalAttempts,
         totalAttempts: item.totalAttempts,
       })),
     highCostRequests,
