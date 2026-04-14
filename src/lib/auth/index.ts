@@ -1,10 +1,14 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { captcha } from "better-auth/plugins";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import {
+  ResetPasswordEmail,
+  VerifyEmailEmail,
+} from "@/features/mail/templates/primary-action-email";
 import { sendEmail } from "@/features/mail/utils";
-import { VerifyEmailEmail, ResetPasswordEmail } from "@/features/mail/templates/primary-action-email";
 
 const STATIC_TRUSTED_ORIGINS = [
   process.env.NEXT_PUBLIC_APP_URL,
@@ -47,6 +51,10 @@ async function getTrustedOrigins(request?: Request) {
 
   return [...new Set(origins.filter(Boolean))];
 }
+
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY?.trim();
+const turnstileEnabled = Boolean(turnstileSiteKey && turnstileSecretKey);
 
 /**
  * Better Auth 服务端配置
@@ -191,6 +199,20 @@ export const auth = betterAuth({
       maxAge: 60 * 5, // 5 分钟缓存
     },
   },
+
+  /**
+   * 登录前的人机校验
+   * 仅拦邮箱密码登录，避免影响现有 OAuth 流程
+   */
+  plugins: turnstileEnabled
+    ? [
+        captcha({
+          provider: "cloudflare-turnstile",
+          secretKey: turnstileSecretKey || "",
+          endpoints: ["/sign-in/email"],
+        }),
+      ]
+    : [],
 });
 
 /**

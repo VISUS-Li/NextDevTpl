@@ -187,6 +187,8 @@
       "emailLabel": "Email address",
       "emailPlaceholder": "jane@example.com",
       "passwordLabel": "Password",
+      "rememberAccount": "Remember me",
+      "captchaLabel": "Bot verification",
       "forgotPassword": "Forgot my password",
       "loading": "Signing in...",
       "submit": "Continue",
@@ -200,6 +202,8 @@
         "github": "GitHub sign-in failed. Please try again.",
         "missingFields": "Please enter email and password.",
         "invalidCredentials": "Invalid email or password.",
+        "captchaRequired": "Please complete bot verification first.",
+        "captchaFailed": "Bot verification failed. Please try again.",
         "emailNotVerified": "This account is not verified yet.",
         "sessionExpired": "Your session has expired. Please sign in again.",
         "serverUnavailable": "Auth service is unavailable. Check the database connection settings."

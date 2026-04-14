@@ -53,7 +53,10 @@ export const {
  * @param email - 用户邮箱
  * @param redirectTo - 重置链接的跳转地址
  */
-export async function forgetPassword(email: string, redirectTo = "/reset-password") {
+export async function forgetPassword(
+  email: string,
+  redirectTo = "/reset-password"
+) {
   const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/forget-password`, {
@@ -135,12 +138,24 @@ export async function signInWithGoogle(callbackURL = "/dashboard") {
 export async function signInWithEmail(
   email: string,
   password: string,
-  callbackURL = "/dashboard"
+  callbackURL = "/dashboard",
+  options?: {
+    rememberMe?: boolean;
+    captchaToken?: string;
+  }
 ) {
   return signIn.email({
     email,
     password,
     callbackURL,
+    rememberMe: options?.rememberMe,
+    fetchOptions: options?.captchaToken
+      ? {
+          headers: {
+            "x-captcha-response": options.captchaToken,
+          },
+        }
+      : undefined,
   });
 }
 
@@ -167,7 +182,10 @@ export async function signUpWithEmail(
  * @param currentPassword - 当前密码
  * @param newPassword - 新密码
  */
-export async function changePassword(currentPassword: string, newPassword: string) {
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+) {
   const baseURL = getAuthBaseUrl();
 
   const response = await fetch(`${baseURL}/api/auth/change-password`, {
