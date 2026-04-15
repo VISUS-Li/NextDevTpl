@@ -7,7 +7,7 @@ import {
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { startTransition, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -234,6 +234,10 @@ const defaultBillingAdjustmentForm: BillingAdjustmentFormState = {
   reason: "",
 };
 
+const AI_ADMIN_ACTIVE_TAB_STORAGE_KEY = "ai-admin-active-tab";
+const AI_ADMIN_BINDING_FORM_STORAGE_KEY = "ai-admin-binding-form";
+const AI_ADMIN_EDITING_BINDING_STORAGE_KEY = "ai-admin-editing-binding-id";
+
 const AI_MODEL_CAPABILITY_OPTIONS = [
   { value: "text", label: "文本", description: "支持普通文本输入与输出" },
   {
@@ -284,7 +288,13 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const [requests, setRequests] = useState(props.initialRequests);
   const [alerts, setAlerts] = useState<AlertData | null>(null);
   const [providerForm, setProviderForm] = useState(defaultProviderForm);
-  const [bindingForm, setBindingForm] = useState(defaultBindingForm);
+  const [bindingForm, setBindingForm] = useState<BindingFormState>(() =>
+    readSessionStorageJson(
+      AI_ADMIN_BINDING_FORM_STORAGE_KEY,
+      defaultBindingForm,
+      isBindingFormState
+    )
+  );
   const [pricingRuleForm, setPricingRuleForm] = useState(
     defaultPricingRuleForm
   );
@@ -294,11 +304,49 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
   const [editingProviderId, setEditingProviderId] = useState<string | null>(
     null
   );
-  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const [editingBindingId, setEditingBindingId] = useState<string | null>(() =>
+    readSessionStorageJson(
+      AI_ADMIN_EDITING_BINDING_STORAGE_KEY,
+      null,
+      (value): value is string | null =>
+        value === null || typeof value === "string"
+    )
+  );
   const [editingPricingRuleId, setEditingPricingRuleId] = useState<
     string | null
   >(null);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(() =>
+    readSessionStorageTab(AI_ADMIN_ACTIVE_TAB_STORAGE_KEY)
+  );
+
+  /**
+   * 持久化当前 Tab，避免页面重挂载后跳回默认页签。
+   */
+  useEffect(() => {
+    writeSessionStorageValue(AI_ADMIN_ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  /**
+   * 持久化模型绑定表单草稿，避免开发环境整页刷新时输入丢失。
+   */
+  useEffect(() => {
+    writeSessionStorageValue(AI_ADMIN_BINDING_FORM_STORAGE_KEY, bindingForm);
+  }, [bindingForm]);
+
+  /**
+   * 持久化当前编辑中的模型绑定 id，保证刷新后仍能续填。
+   */
+  useEffect(() => {
+    if (!editingBindingId) {
+      clearSessionStorageValue(AI_ADMIN_EDITING_BINDING_STORAGE_KEY);
+      return;
+    }
+    writeSessionStorageValue(
+      AI_ADMIN_EDITING_BINDING_STORAGE_KEY,
+      editingBindingId
+    );
+  }, [editingBindingId]);
 
   /**
    * 刷新整个管理台数据。
@@ -429,6 +477,7 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
       toast.success(editingBindingId ? "模型绑定已更新" : "模型绑定已创建");
       setBindingForm(defaultBindingForm);
       setEditingBindingId(null);
+      clearBindingDraft();
       await refreshBindings();
     } catch (error) {
       toast.error(getErrorMessage(error, "模型绑定保存失败"));
@@ -663,7 +712,11 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
         />
       </div>
 
-      <Tabs defaultValue="providers" className="space-y-4">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
         <TabsList className="flex h-auto flex-wrap gap-2 bg-transparent p-0">
           <TabsTrigger value="providers">Provider</TabsTrigger>
           <TabsTrigger value="bindings">模型绑定</TabsTrigger>
@@ -1191,6 +1244,7 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
                   onClick={() => {
                     setEditingBindingId(null);
                     setBindingForm(defaultBindingForm);
+                    clearBindingDraft();
                   }}
                 >
                   取消编辑
@@ -1750,6 +1804,14 @@ export function AdminAIGatewayView(props: AdminAIGatewayViewProps) {
       </Tabs>
     </div>
   );
+
+  /**
+   * 清理模型绑定草稿，提交成功或手动取消后不再恢复旧值。
+   */
+  function clearBindingDraft() {
+    clearSessionStorageValue(AI_ADMIN_BINDING_FORM_STORAGE_KEY);
+    clearSessionStorageValue(AI_ADMIN_EDITING_BINDING_STORAGE_KEY);
+  }
 }
 
 /**
@@ -1816,6 +1878,104 @@ function OverviewCard(props: {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * 从 sessionStorage 读取字符串。
+ */
+function readSessionStorageString(key: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.sessionStorage.getItem(key);
+}
+
+/**
+ * 从 sessionStorage 读取 JSON，并在校验失败时回退默认值。
+ */
+function readSessionStorageJson<T>(
+  key: string,
+  fallback: T,
+  isValid: (value: unknown) => value is T
+) {
+  const rawValue = readSessionStorageString(key);
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+    return isValid(parsedValue) ? parsedValue : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * 读取 AI 管理页当前激活的 Tab。
+ */
+function readSessionStorageTab(key: string) {
+  const value = readSessionStorageJson(
+    key,
+    "providers",
+    (current): current is string => typeof current === "string"
+  );
+  return value && AI_ADMIN_TABS.has(value) ? value : "providers";
+}
+
+/**
+ * 写入 sessionStorage。
+ */
+function writeSessionStorageValue(key: string, value: unknown) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(key, JSON.stringify(value));
+}
+
+/**
+ * 清理 sessionStorage 中的指定键。
+ */
+function clearSessionStorageValue(key: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(key);
+}
+
+const AI_ADMIN_TABS = new Set([
+  "providers",
+  "bindings",
+  "pricing",
+  "requests",
+  "ops",
+]);
+
+/**
+ * 校验模型绑定草稿结构，避免旧缓存污染当前表单。
+ */
+function isBindingFormState(value: unknown): value is BindingFormState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.providerId === "string" &&
+    typeof candidate.modelKey === "string" &&
+    typeof candidate.modelAlias === "string" &&
+    Array.isArray(candidate.capabilities) &&
+    candidate.capabilities.every((item) => typeof item === "string") &&
+    typeof candidate.enabled === "string" &&
+    typeof candidate.priority === "string" &&
+    typeof candidate.weight === "string" &&
+    (candidate.costMode === "manual" || candidate.costMode === "fixed") &&
+    typeof candidate.inputCostPer1k === "string" &&
+    typeof candidate.outputCostPer1k === "string" &&
+    typeof candidate.fixedCostUsd === "string" &&
+    typeof candidate.maxRetries === "string" &&
+    typeof candidate.timeoutMs === "string"
   );
 }
 

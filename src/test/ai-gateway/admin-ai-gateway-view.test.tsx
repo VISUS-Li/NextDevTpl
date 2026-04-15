@@ -31,77 +31,83 @@ describe("AdminAIGatewayView", () => {
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
     vi.restoreAllMocks();
+    window.sessionStorage.clear();
   });
 
   it("应支持通过界面新增 Provider 并执行健康检查", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const method = init?.method ?? "GET";
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
 
-      if (url === "/api/platform/ai/admin/providers" && method === "POST") {
-        return createJsonResponse({
-          success: true,
-          provider: {
-            id: "provider_new",
-          },
-        });
-      }
+        if (url === "/api/platform/ai/admin/providers" && method === "POST") {
+          return createJsonResponse({
+            success: true,
+            provider: {
+              id: "provider_new",
+            },
+          });
+        }
 
-      if (url === "/api/platform/ai/summary" && method === "GET") {
-        return createJsonResponse({
-          success: true,
-          overview: {
-            totalRequests: 2,
-            successRequests: 2,
-            failedRequests: 0,
-            insufficientCredits: 0,
-            totalProviderCostMicros: 500,
-            totalChargedCredits: 6,
-          },
-        });
-      }
-
-      if (url === "/api/platform/ai/admin/providers" && method === "GET") {
-        return createJsonResponse({
-          success: true,
-          providers: [
-            {
-              id: "provider_1",
-              key: "geek-default",
-              name: "Geek Default",
-              baseUrl: "https://geek.test/v1",
-              enabled: true,
-              priority: 1,
-              weight: 100,
-              requestType: "chat",
-              lastHealthStatus: "healthy",
-              totalAttempts: 2,
-              successAttempts: 2,
-              failedAttempts: 0,
-              averageLatencyMs: 300,
+        if (url === "/api/platform/ai/summary" && method === "GET") {
+          return createJsonResponse({
+            success: true,
+            overview: {
+              totalRequests: 2,
+              successRequests: 2,
+              failedRequests: 0,
+              insufficientCredits: 0,
               totalProviderCostMicros: 500,
+              totalChargedCredits: 6,
             },
-          ],
-        });
-      }
+          });
+        }
 
-      if (url === "/api/platform/ai/admin/providers/health-check" && method === "POST") {
-        return createJsonResponse({
-          success: true,
-          results: [
-            {
-              providerId: "provider_1",
-              providerKey: "geek-default",
-              ok: true,
-              status: "healthy",
-              message: "健康检查通过",
-            },
-          ],
-        });
-      }
+        if (url === "/api/platform/ai/admin/providers" && method === "GET") {
+          return createJsonResponse({
+            success: true,
+            providers: [
+              {
+                id: "provider_1",
+                key: "geek-default",
+                name: "Geek Default",
+                baseUrl: "https://geek.test/v1",
+                enabled: true,
+                priority: 1,
+                weight: 100,
+                requestType: "chat",
+                lastHealthStatus: "healthy",
+                totalAttempts: 2,
+                successAttempts: 2,
+                failedAttempts: 0,
+                averageLatencyMs: 300,
+                totalProviderCostMicros: 500,
+              },
+            ],
+          });
+        }
 
-      throw new Error(`未处理的请求: ${method} ${url}`);
-    });
+        if (
+          url === "/api/platform/ai/admin/providers/health-check" &&
+          method === "POST"
+        ) {
+          return createJsonResponse({
+            success: true,
+            results: [
+              {
+                providerId: "provider_1",
+                providerKey: "geek-default",
+                ok: true,
+                status: "healthy",
+                message: "健康检查通过",
+              },
+            ],
+          });
+        }
+
+        throw new Error(`未处理的请求: ${method} ${url}`);
+      }
+    );
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -165,7 +171,11 @@ describe("AdminAIGatewayView", () => {
 
     expect(toastSuccessMock).toHaveBeenCalledWith("Provider 已创建");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "健康检查" })[0]!);
+    const [healthCheckButton] = screen.getAllByRole("button", {
+      name: "健康检查",
+    });
+    expect(healthCheckButton).toBeDefined();
+    fireEvent.click(healthCheckButton);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -178,6 +188,76 @@ describe("AdminAIGatewayView", () => {
 
     expect(toastSuccessMock).toHaveBeenCalledWith("健康检查完成，共 1 条结果");
     expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("应从会话缓存恢复模型绑定草稿和当前页签", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+
+    const initialProps = {
+      initialOverview: {
+        totalRequests: 1,
+        successRequests: 1,
+        failedRequests: 0,
+        insufficientCredits: 0,
+        totalProviderCostMicros: 100,
+        totalChargedCredits: 3,
+      },
+      initialProviders: [
+        {
+          id: "provider_1",
+          key: "geek-default",
+          name: "Geek Default",
+          baseUrl: "https://geek.test/v1",
+          enabled: true,
+          priority: 1,
+          weight: 100,
+          requestType: "chat" as const,
+          lastHealthStatus: "healthy",
+          totalAttempts: 1,
+          successAttempts: 1,
+          failedAttempts: 0,
+          averageLatencyMs: 200,
+          totalProviderCostMicros: 100,
+        },
+      ],
+      initialBindings: [],
+      initialPricingRules: [],
+      initialRequests: [],
+    };
+
+    window.sessionStorage.setItem(
+      "ai-admin-active-tab",
+      JSON.stringify("bindings")
+    );
+    window.sessionStorage.setItem(
+      "ai-admin-binding-form",
+      JSON.stringify({
+        providerId: "provider_1",
+        modelKey: "gpt-4o-mini",
+        modelAlias: "openai/gpt-4o-mini",
+        capabilities: ["text"],
+        enabled: "true",
+        priority: "100",
+        weight: "100",
+        costMode: "manual",
+        inputCostPer1k: "0",
+        outputCostPer1k: "0",
+        fixedCostUsd: "0",
+        maxRetries: "0",
+        timeoutMs: "30000",
+      })
+    );
+
+    render(<AdminAIGatewayView {...initialProps} />);
+
+    expect(screen.getByRole("tab", { name: "模型绑定" })).toHaveAttribute(
+      "data-state",
+      "active"
+    );
+    const [restoredModelKeyInput, restoredModelAliasInput] =
+      screen.getAllByRole("textbox");
+    expect(restoredModelKeyInput).toHaveValue("gpt-4o-mini");
+    expect(restoredModelAliasInput).toHaveValue("openai/gpt-4o-mini");
   });
 });
 
