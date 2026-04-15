@@ -801,7 +801,12 @@
       "title": "Delete Account",
       "description": "Permanently delete your account and all associated data. This action cannot be undone.",
       "button": "Delete Account",
-      "warning": "This action is irreversible. Please proceed with caution."
+      "warning": "This action is irreversible. Please proceed with caution.",
+      "confirmTitle": "Confirm account deletion",
+      "confirmDescription": "Deleting your account will sign you out and cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete account",
+      "error": "Failed to delete account. Please try again later."
     },
     "security": {
       "changePassword": {

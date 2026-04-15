@@ -11,6 +11,15 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,12 +42,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditUsageSection } from "@/features/credits/components";
-import { updateProfileAction } from "@/features/settings/actions";
+import { deleteAccountAction } from "@/features/settings/actions";
+import { updateProfileAction } from "@/features/settings/actions/update-profile";
 import { updateProfileSchema } from "@/features/settings/schemas";
 import { getSignedUploadUrlAction } from "@/features/storage/actions";
 import { ALLOWED_IMAGE_TYPES, MAX_FILE_SIZE } from "@/features/storage/types";
 import { UserToolConfigSection } from "@/features/tool-config/components/user-tool-config-section";
 import { usePathname, useRouter } from "@/i18n/routing";
+import { signOut } from "@/lib/auth/client";
 import { BillingSection } from "./billing-section";
 import { SecuritySection } from "./security-section";
 
@@ -121,6 +132,7 @@ export function SettingsProfileView({
 
   // 头像预览 URL (本地预览)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   /**
    * 切换语言
@@ -186,6 +198,30 @@ export function SettingsProfileView({
       },
     }
   );
+
+  /**
+   * 删除账户后退出当前会话，避免前端继续持有过期登录态。
+   */
+  const { execute: executeDeleteAccount, isPending: isDeletingAccount } =
+    useAction(deleteAccountAction, {
+      onSuccess: async ({ data }) => {
+        setIsDeleteDialogOpen(false);
+        if (data?.message) {
+          toast.success(data.message);
+        }
+        await signOut({
+          fetchOptions: {
+            onSuccess: () => {
+              router.replace("/");
+              router.refresh();
+            },
+          },
+        });
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError || t("deleteAccount.error"));
+      },
+    });
 
   /**
    * 表单提交
@@ -292,8 +328,7 @@ export function SettingsProfileView({
    * 处理删除账户
    */
   const handleDeleteAccount = () => {
-    // TODO: 实现删除账户功能
-    toast.error(t("deleteAccount.warning"));
+    executeDeleteAccount();
   };
 
   return (
@@ -508,14 +543,53 @@ export function SettingsProfileView({
                 </p>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="border-destructive text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={handleDeleteAccount}
+              <AlertDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={(open) => {
+                  if (!isDeletingAccount) {
+                    setIsDeleteDialogOpen(open);
+                  }
+                }}
               >
-                {t("deleteAccount.button")}
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  disabled={isDeletingAccount}
+                >
+                  {isDeletingAccount && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {t("deleteAccount.button")}
+                </Button>
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t("deleteAccount.confirmTitle")}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("deleteAccount.confirmDescription")}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeletingAccount}>
+                      {t("deleteAccount.cancel")}
+                    </AlertDialogCancel>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleDeleteAccount}
+                      disabled={isDeletingAccount}
+                    >
+                      {isDeletingAccount && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {t("deleteAccount.confirm")}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </section>
         </TabsContent>

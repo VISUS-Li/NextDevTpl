@@ -31,9 +31,9 @@ DEFAULTS = {
     "REDINK_PUBLIC_URL": "https://redink.tripai.icu",
     "APP_BIND_HOST": "127.0.0.1",
     "APP_PORT": "3000",
-    "NETWORK_NAME": "nextdevtpl_net",
-    "DB_CONTAINER_NAME": "nextdevtpl-postgres",
-    "DB_VOLUME": "nextdevtpl_postgres",
+    "DOCKER_NETWORK": "",
+    "DATABASE_URL": "",
+    "DB_HOST": "host.docker.internal",
     "DB_NAME": "nextdevtpl",
     "DB_USER": "postgres",
     "DB_PASSWORD": "postgres",
@@ -223,16 +223,31 @@ def free_local_port(port: str, keep_containers: set[str] | None = None) -> None:
         stop_listening_process(pid)
 
 
+def resolve_database_url(config: dict[str, str]) -> str:
+    """解析部署要使用的数据库地址。"""
+    if config.get("DATABASE_URL"):
+        return config["DATABASE_URL"]
+    return (
+        f'postgresql://{config["DB_USER"]}:{config["DB_PASSWORD"]}'
+        f'@{config["DB_HOST"]}:{config["DB_PORT"]}/{config["DB_NAME"]}'
+    )
+
+
+def maybe_add_host_gateway(command: list[str], value: str) -> None:
+    """在需要时补宿主机网关映射。"""
+    if platform.system() == "Windows" or "host.docker.internal" not in value:
+        return
+    if "--add-host" in command:
+        return
+    command.extend(["--add-host", "host.docker.internal:host-gateway"])
+
+
 def ensure_env_file(path: Path, config: dict[str, str]) -> None:
     """生成并同步最小运行配置。"""
     existing = parse_env_file(path) if path.exists() else {}
-    db_url = (
-        f'postgresql://{config["DB_USER"]}:{config["DB_PASSWORD"]}'
-        f'@{config["DB_CONTAINER_NAME"]}:{config["DB_PORT"]}/{config["DB_NAME"]}'
-    )
     env_values = {
         "NODE_ENV": "production",
-        "DATABASE_URL": db_url,
+        "DATABASE_URL": resolve_database_url(config),
         "BETTER_AUTH_SECRET": existing.get("BETTER_AUTH_SECRET", secrets.token_hex(32)),
         "CONFIG_SECRET_KEY": existing.get("CONFIG_SECRET_KEY", secrets.token_hex(32)),
         "BETTER_AUTH_URL": config["SERVER_URL"],
@@ -266,79 +281,6 @@ def container_running(name: str) -> bool:
     return capture(["docker", "inspect", "--format", "{{.State.Running}}", name]) == "true"
 
 
-def network_exists(name: str) -> bool:
-    """判断 Docker 网络是否存在。"""
-    result = subprocess.run(
-        ["docker", "network", "ls", "--format", "{{.Name}}"],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    return name in result.stdout.splitlines()
-
-
-def ensure_network(name: str) -> None:
-    """确保应用网络存在。"""
-    if network_exists(name):
-        return
-    run(["docker", "network", "create", name])
-
-
-def ensure_postgres(config: dict[str, str]) -> None:
-    """确保 PostgreSQL 容器已启动。"""
-    ensure_network(config["NETWORK_NAME"])
-    name = config["DB_CONTAINER_NAME"]
-    if container_exists(name):
-        if not container_running(name):
-            run(["docker", "start", name])
-    else:
-        # 平台站点默认依赖 PostgreSQL，这里把数据库容器一并带起来。
-        run(
-            [
-                "docker",
-                "run",
-                "-d",
-                "--name",
-                name,
-                "--network",
-                config["NETWORK_NAME"],
-                "--restart",
-                "unless-stopped",
-                "-e",
-                f'POSTGRES_DB={config["DB_NAME"]}',
-                "-e",
-                f'POSTGRES_USER={config["DB_USER"]}',
-                "-e",
-                f'POSTGRES_PASSWORD={config["DB_PASSWORD"]}',
-                "-v",
-                f'{config["DB_VOLUME"]}:/var/lib/postgresql/data',
-                "--health-cmd",
-                f'pg_isready -U {config["DB_USER"]} -d {config["DB_NAME"]}',
-                "--health-interval",
-                "5s",
-                "--health-timeout",
-                "5s",
-                "--health-retries",
-                "20",
-                "postgres:16-alpine",
-            ]
-        )
-    wait_container_healthy(name)
-
-
-def wait_container_healthy(name: str, timeout_seconds: int = 90) -> None:
-    """等待容器健康检查通过。"""
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        status = capture(["docker", "inspect", "--format", "{{.State.Health.Status}}", name])
-        if status == "healthy":
-            return
-        if status == "unhealthy":
-            raise RuntimeError(f"容器健康检查失败: {name}")
-        time.sleep(2)
-    raise RuntimeError(f"等待容器健康检查超时: {name}")
-
-
 def wait_http(url: str, timeout_seconds: int = 120) -> None:
     """等待 HTTP 服务可访问。"""
     deadline = time.time() + timeout_seconds
@@ -366,7 +308,6 @@ def deploy_image(
     print(f"准备部署镜像: {full_image}")
     docker_login_if_needed(config, skip_login)
     ensure_env_file(env_file, config)
-    ensure_postgres(config)
     if not skip_pull:
         run(["docker", "pull", full_image])
     else:
@@ -377,17 +318,20 @@ def deploy_image(
         run(["docker", "rm", "-f", container_name])
     free_local_port(config["APP_PORT"], {container_name})
 
-    run(
+    command = [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container_name,
+        "--restart",
+        "unless-stopped",
+    ]
+    if config.get("DOCKER_NETWORK"):
+        command.extend(["--network", config["DOCKER_NETWORK"]])
+    maybe_add_host_gateway(command, resolve_database_url(config))
+    command.extend(
         [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            container_name,
-            "--network",
-            config["NETWORK_NAME"],
-            "--restart",
-            "unless-stopped",
             "--env-file",
             str(env_file),
             "-e",
@@ -399,6 +343,7 @@ def deploy_image(
             full_image,
         ]
     )
+    run(command)
 
     wait_http(f'http://127.0.0.1:{config["APP_PORT"]}')
     run(["docker", "ps", "--filter", f"name={container_name}"])
