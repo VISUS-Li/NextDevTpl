@@ -7,6 +7,7 @@ CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/release.env}"
 OVERRIDE_DOMAIN="${DOMAIN-}"
 OVERRIDE_WWW_DOMAIN="${WWW_DOMAIN-}"
 OVERRIDE_APP_BIND_HOST="${APP_BIND_HOST-}"
+OVERRIDE_APP_UPSTREAM_HOST="${APP_UPSTREAM_HOST-}"
 OVERRIDE_APP_PORT="${APP_PORT-}"
 
 # Nginx 配置和部署脚本共用一份发布配置，避免域名和端口分散。
@@ -18,6 +19,7 @@ fi
 DOMAIN="${OVERRIDE_DOMAIN:-${DOMAIN:-platform.tripai.icu}}"
 WWW_DOMAIN="${OVERRIDE_WWW_DOMAIN:-${WWW_DOMAIN:-}}"
 APP_BIND_HOST="${OVERRIDE_APP_BIND_HOST:-${APP_BIND_HOST:-127.0.0.1}}"
+APP_UPSTREAM_HOST="${OVERRIDE_APP_UPSTREAM_HOST:-${APP_UPSTREAM_HOST:-127.0.0.1}}"
 APP_PORT="${OVERRIDE_APP_PORT:-${APP_PORT:-3000}}"
 TARGET_FILE="${1:-}"
 SERVER_NAMES="${DOMAIN}"
@@ -82,7 +84,7 @@ server {
     client_max_body_size 100m;
 
     location / {
-        proxy_pass http://${APP_BIND_HOST}:${APP_PORT};
+        proxy_pass http://${APP_UPSTREAM_HOST}:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;

@@ -29,7 +29,7 @@ DEFAULTS = {
     "CONTAINER_NAME": "nextdevtpl-app",
     "SERVER_URL": "https://platform.tripai.icu",
     "REDINK_PUBLIC_URL": "https://redink.tripai.icu",
-    "APP_BIND_HOST": "127.0.0.1",
+    "APP_BIND_HOST": "0.0.0.0",
     "APP_PORT": "3000",
     "DOCKER_NETWORK": "",
     "DATABASE_URL": "",
