@@ -1,6 +1,7 @@
 "use client";
 
 import { RootProvider } from "fumadocs-ui/provider/next";
+import { usePathname } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 
 /**
@@ -17,6 +18,14 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
+  const pathname = usePathname();
+  const content = pathname.includes("/docs") ? (
+    // 文档页才需要 Fumadocs Provider，避免影响营销页渲染。
+    <RootProvider>{children}</RootProvider>
+  ) : (
+    children
+  );
+
   return (
     <ThemeProvider
       attribute="class"
@@ -24,7 +33,7 @@ export function Providers({ children }: ProvidersProps) {
       enableSystem
       disableTransitionOnChange
     >
-      <RootProvider>{children}</RootProvider>
+      {content}
     </ThemeProvider>
   );
 }

@@ -2,7 +2,7 @@
 
 import { BookOpen, Check, Coins, Layers, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { getPlanPrice, paymentConfig } from "@/config/payment";
 import { createCheckoutSession } from "@/features/payment/actions";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
+import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 import { AnimatedPrice } from "./animated-price";
@@ -90,7 +91,15 @@ export function PricingSection({
   const [isYearly, setIsYearly] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
+  const { data: session } = useSession();
+  const currentUser = user ?? (mounted ? (session?.user ?? null) : null);
+
+  // 首屏先使用服务端用户快照，避免订阅按钮在 hydration 前后切换
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 获取用户当前订阅状态
   const activePriceId = currentPriceId ?? null;
@@ -181,11 +190,11 @@ export function PricingSection({
    */
   const handleSubscribe = async (planId: string) => {
     if (planId === "free") {
-      router.push(user ? "/dashboard" : "/sign-up");
+      router.push(currentUser ? "/dashboard" : "/sign-up");
       return;
     }
 
-    if (!user) {
+    if (!currentUser) {
       router.push("/sign-in?redirect=/#pricing");
       return;
     }

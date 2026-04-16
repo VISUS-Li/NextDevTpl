@@ -1,28 +1,38 @@
 "use client";
 
 import { useLocale } from "next-intl";
+import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Link, useRouter } from "@/i18n/routing";
+import { useSession } from "@/lib/auth/client";
 
 interface CTAUser {
   id: string;
 }
 
 interface CTASectionProps {
-  user: CTAUser | null;
+  user?: CTAUser | null;
 }
 
 export function CTASection({ user }: CTASectionProps) {
   const locale = useLocale();
   const router = useRouter();
   const isZh = locale === "zh";
+  const [mounted, setMounted] = useState(false);
+  const { data: session } = useSession();
+  const currentUser = user ?? (mounted ? (session?.user ?? null) : null);
+
+  // 首屏保持和服务端一致，避免 CTA 按钮组在 hydration 时改树
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   /**
    * 跳转到订阅区域
    */
   const handleSubscriptionEntry = () => {
-    if (!user) {
+    if (!currentUser) {
       router.push("/sign-up");
       return;
     }
@@ -56,37 +66,40 @@ export function CTASection({ user }: CTASectionProps) {
                 : "We believe tools should remove friction from creative work. Trip Traveler AI wraps generative workflows into clear, direct actions that stay usable on the go."}
             </p>
             <div className="flex flex-col gap-3">
-              {user ? (
+              {currentUser ? (
                 <>
-                  <Button
-                    asChild
-                    className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-sm font-bold text-[#003064]"
+                  <Link
+                    href="/dashboard"
+                    className={buttonVariants({
+                      className:
+                        "h-12 w-full rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-sm font-bold text-[#003064]",
+                    })}
                   >
-                    <Link href="/dashboard">
-                      {isZh ? "进入控制台" : "Open Dashboard"}
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    className="h-12 w-full rounded-full border border-white/10 bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08] hover:text-[#e1e2eb]"
+                    {isZh ? "进入控制台" : "Open Dashboard"}
+                  </Link>
+                  <Link
+                    href="/dashboard/support"
+                    className={buttonVariants({
+                      variant: "ghost",
+                      className:
+                        "h-12 w-full rounded-full border border-white/10 bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08] hover:text-[#e1e2eb]",
+                    })}
                   >
-                    <Link href="/dashboard/support">
-                      {isZh ? "查看我的工单" : "Open Support"}
-                    </Link>
-                  </Button>
+                    {isZh ? "查看我的工单" : "Open Support"}
+                  </Link>
                 </>
               ) : (
                 <>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    className="h-12 w-full rounded-full border border-white/10 bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08] hover:text-[#e1e2eb]"
+                  <Link
+                    href="/docs"
+                    className={buttonVariants({
+                      variant: "ghost",
+                      className:
+                        "h-12 w-full rounded-full border border-white/10 bg-white/[0.04] text-[#e1e2eb] hover:bg-white/[0.08] hover:text-[#e1e2eb]",
+                    })}
                   >
-                    <Link href="/docs">
-                      {isZh ? "了解我们的愿景" : "Read Our Vision"}
-                    </Link>
-                  </Button>
+                    {isZh ? "了解我们的愿景" : "Read Our Vision"}
+                  </Link>
                   <Button
                     onClick={handleSubscriptionEntry}
                     className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] text-sm font-bold text-[#003064]"
@@ -110,25 +123,27 @@ export function CTASection({ user }: CTASectionProps) {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            {user ? (
+            {currentUser ? (
               <>
-                <Button
-                  asChild
-                  className="h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-10 text-base font-bold text-[#003064] shadow-xl shadow-blue-500/20 transition-transform hover:scale-105 sm:w-auto"
+                <Link
+                  href="/dashboard"
+                  className={buttonVariants({
+                    className:
+                      "h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-10 text-base font-bold text-[#003064] shadow-xl shadow-blue-500/20 transition-transform hover:scale-105 sm:w-auto",
+                  })}
                 >
-                  <Link href="/dashboard">
-                    {isZh ? "进入控制台" : "Open Dashboard"}
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-10 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-colors hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto"
+                  {isZh ? "进入控制台" : "Open Dashboard"}
+                </Link>
+                <Link
+                  href="/dashboard/support"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-10 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-colors hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto",
+                  })}
                 >
-                  <Link href="/dashboard/support">
-                    {isZh ? "查看我的工单" : "Open Support"}
-                  </Link>
-                </Button>
+                  {isZh ? "查看我的工单" : "Open Support"}
+                </Link>
               </>
             ) : (
               <>
@@ -138,15 +153,16 @@ export function CTASection({ user }: CTASectionProps) {
                 >
                   {isZh ? "立即订阅" : "Subscribe Now"}
                 </Button>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-10 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-colors hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto"
+                <Link
+                  href="/#pricing"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-10 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-colors hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto",
+                  })}
                 >
-                  <Link href="/#pricing">
-                    {isZh ? "查看订阅方案" : "View Plans"}
-                  </Link>
-                </Button>
+                  {isZh ? "查看订阅方案" : "View Plans"}
+                </Link>
               </>
             )}
           </div>

@@ -27,6 +27,17 @@ export interface StorageProvider {
   getSignedUrl(key: string, bucket: string, expiresIn: number): Promise<string>;
 
   /**
+   * 获取公开访问 URL
+   *
+   * 用于给 AI 上游或前端直接访问对象。
+   *
+   * @param key - 文件键名 (路径)
+   * @param bucket - 存储桶名称
+   * @returns 可公网访问的 URL
+   */
+  getPublicUrl(key: string, bucket: string): string;
+
+  /**
    * 获取签名上传 URL
    *
    * 用于客户端直接上传文件到存储
@@ -53,6 +64,29 @@ export interface StorageProvider {
   deleteObject(key: string, bucket: string): Promise<void>;
 
   /**
+   * 按前缀删除一组对象
+   *
+   * @param prefix - 键名前缀
+   * @param bucket - 存储桶名称
+   */
+  deletePrefix(prefix: string, bucket: string): Promise<void>;
+
+  /**
+   * 直接写入文件内容
+   *
+   * @param key - 文件键名
+   * @param bucket - 存储桶名称
+   * @param body - 文件内容
+   * @param contentType - 内容类型
+   */
+  putObject(
+    key: string,
+    bucket: string,
+    body: Buffer | Uint8Array | string,
+    contentType: string
+  ): Promise<void>;
+
+  /**
    * 获取文件内容
    *
    * @param key - 文件键名 (路径)
@@ -60,6 +94,20 @@ export interface StorageProvider {
    * @returns 文件内容 Buffer
    */
   getObject(key: string, bucket: string): Promise<Buffer>;
+
+  /**
+   * 列出对象
+   *
+   * @param prefix - 键名前缀
+   * @param bucket - 存储桶名称
+   * @param maxKeys - 最大返回数量
+   * @returns 对象列表
+   */
+  listObjects(
+    prefix: string,
+    bucket: string,
+    maxKeys?: number
+  ): Promise<Array<{ key: string; lastModified?: Date; size?: number }>>;
 }
 
 // ============================================
@@ -78,6 +126,12 @@ export interface S3StorageConfig {
   endpoint: string;
   /** 区域 (如 auto, us-east-1) */
   region: string;
+  /** 厂商标识 */
+  vendor: string;
+  /** 是否强制 path-style */
+  forcePathStyle: boolean;
+  /** 对外公开访问地址 */
+  publicBaseUrl: string | null;
 }
 
 // ============================================

@@ -36,7 +36,7 @@
 
 这些缺口如果不先承认，后面的分销方案一定会做歪。
 
-1. 还没有统一订单表，Webhook 现在只是在不同分支里直接改订阅、发积分
+1. 还没有完整统一订单中心，当前只补了 `sales_order` / `sales_order_item` 最小骨架
 2. 还没有分销归因模型，Checkout metadata 里也没有 referral 相关字段
 3. 还没有佣金账本，积分账本不能直接拿来记现金佣金
 4. 还没有提现申请、审核、打款、拒绝、冲正流程
@@ -59,6 +59,18 @@
 
 - 当前项目的“积分包支付完成”与“统一订单驱动分润”之间，实际还缺关键一段
 - 文档必须先把这一段补进主链路，后续开发才能闭环
+
+当前进度更新：
+
+- 这一段已经补上第一步
+- `src/app/api/webhooks/creem/route.ts` 已经开始真实处理 `credit_purchase`
+- 当前效果是“积分包 Checkout -> 支付成功 -> Creem webhook -> 发放积分”已经闭环
+- 同一笔积分购买已经补了幂等保护，重复 webhook 不会重复发积分
+- 当前还额外补上了 `sales_order` / `sales_order_item` 最小落单
+- 当前已经继续补上统一订单服务层，`checkout.completed`、`subscription.active`、`subscription.renewed` 已开始复用同一层落单
+- 当前已经继续补上标准化 `PaymentOrderPayload` 和订单显式归因字段
+- 当前已经继续补上统一售后事件流，退款、拒付、退货可以先走内部统一模型
+- 但这一步还不是完整订单中心，目前仍然缺少支付渠道原生售后事件接入
 
 
 ## 3. guns-distribution 的完整业务逻辑
@@ -1487,6 +1499,26 @@ SQL 里真正承担分销业务的核心表如下。
 
 - Checkout 前能稳定拿到代理归因
 
+当前进度更新：
+
+- 本阶段已经开始落地
+- 已完成内容：
+  1. 已新增 `distribution_profile`、`distribution_referral_code`、`distribution_attribution`
+  2. middleware 已开始捕获 URL 中的 `ref`、`campaign` 并写入 Cookie
+  3. Checkout 创建前已经开始读取归因上下文，并把归因字段写入支付 metadata
+  4. 已补充归因测试，覆盖 cookie 编解码、推广参数提取、归因绑定与复用
+- 当前还未完成内容：
+  1. 邀请码输入绑定页面
+  2. 管理端推广码生成和维护
+  3. 归因改绑审计
+  4. referral 与统一订单的显式字段关联
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/distribution/attribution.test.ts` 通过
+3. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+
 ### 阶段 2：统一订单中心
 
 目标：
@@ -1513,6 +1545,38 @@ SQL 里真正承担分销业务的核心表如下。
 
 - 订阅和积分包都能进入统一订单表
 - 换支付提供商时，只需要新增适配层，不需要改分销核心逻辑
+
+当前进度更新：
+
+- 本阶段已经开始落地，不再只是前置准备
+- 已完成内容：
+  1. `credit_purchase` 在 `checkout.completed` 中真实发放积分
+  2. 同一笔积分购买补了幂等校验
+  3. 已新增 `sales_order` / `sales_order_item` 最小表结构
+  4. `checkout.completed` 已开始落统一订单，覆盖订阅和积分包
+  5. 已抽出统一订单服务层，Checkout 和订阅生命周期事件开始复用同一套落单逻辑
+  6. `subscription.active` 会确认首购订单，`subscription.renewed` 会生成续费订单
+  7. 续费事件已补幂等，重复 `subscription.renewed` 不会重复创建续费订单
+  8. 已新增标准化 `PaymentOrderPayload`，Webhook 到订单域的映射开始统一
+  9. `sales_order` 已显式写入 `referral_code`、`attributed_agent_user_id`、`attribution_id`、`attribution_snapshot`
+  10. 已新增 `sales_after_sales_event`，退款、全额退款、退货、拒付开始统一入事件表
+  11. 售后事件会同步回写 `sales_order.after_sales_status` 和订单项退款金额
+  12. Webhook 测试改成走真实处理逻辑，不再只测手写模拟逻辑
+  13. 测试数据库连接逻辑已修正，兼容 Neon 和标准 PostgreSQL
+- 当前还未完成内容：
+  1. 支付渠道原生退款/拒付 webhook 接入
+  2. 多支付渠道标准化适配层
+  3. 订单金额字段的进一步细化
+  4. 续费金额从支付侧事件回填
+  5. 分润冻结与退款冲正联动
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts` 通过
+3. `pnpm exec vitest run src/test/credits/purchase.test.ts` 通过
+4. `pnpm exec vitest run src/test/distribution/attribution.test.ts` 通过
+5. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
 
 ### 阶段 3：佣金引擎
 
@@ -1541,6 +1605,45 @@ SQL 里真正承担分销业务的核心表如下。
 
 - 每条佣金都能追溯到订单项、规则快照、代理层级
 
+当前进度更新：
+
+- 本阶段已经开始落地，不再停留在表设计
+- 已完成内容：
+  1. 已新增 `commission_rule`、`commission_event`、`commission_record`、`commission_balance`、`commission_ledger`
+  2. 当前已经支持首版一级代理分佣，入口挂在统一订单主链上
+  3. 有归因的积分包订单在支付成功后会生成冻结佣金、余额快照和账本流水
+  4. 同一订单项 + 同一触发类型补了幂等，重复 webhook 不会重复记佣金
+  5. 佣金规则当前支持最小字段：订单类型、商品类型、百分比/固定金额、冻结天数、首购/续费/积分包开关
+- 当前还未完成内容：
+  1. 二级、三级代理分佣
+  2. 订阅首购和续费的差异化规则覆盖
+  3. 规则后台管理
+  4. 退款、拒付驱动的佣金冲正
+  5. 佣金解冻任务
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+3. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
+
+Review 补充：
+
+- 这轮回看 `guns-distribution` 的分润链路后，确认当前 tripsass 里有一个真实缺口：
+  - 售后事件已经会回写订单
+  - 但原本不会回冲已冻结佣金
+  - 这会导致“订单退款了，但代理冻结佣金还挂着”的错账
+- 当前已补上这一点：
+  1. `sales_after_sales_event` 入账后，会按退款比例回冲对应佣金
+  2. 部分退款按比例扣减冻结佣金
+  3. 全额退款会把佣金记录标记为 `reversed`
+  4. 同时写入 `commission_ledger.commission_reverse`
+- 当前已经继续补到可用余额阶段：
+  1. 已支持按 `available_at` 解冻佣金
+  2. 已支持 `frozen -> available` 的余额迁移和账本流水
+  3. 已支持 `available` 佣金在退款后回扣可用余额
+- 已提现佣金、负债场景仍然属于后续阶段
+
 ### 阶段 4：冻结、解冻、退款冲正
 
 目标：
@@ -1567,6 +1670,27 @@ SQL 里真正承担分销业务的核心表如下。
 
 - 账本始终平衡，余额不失真
 
+当前进度更新：
+
+- 本阶段已经开始落地
+- 已完成内容：
+  1. 已新增统一售后事件表和订单回写
+  2. 已支持冻结佣金在退款后按比例冲正
+  3. 已支持全额退款把佣金记录标记为 `reversed`
+  4. 已支持 `available_at` 到期后将佣金从冻结转为可用
+  5. 已支持 `available` 佣金在退款后扣减可用余额
+  6. 已补充冻结、解冻、冻结冲正、可用冲正测试
+- 当前还未完成内容：
+  1. 已提现佣金退款后的负债处理
+  2. 后台定时任务或 Cron 入口
+  3. 原生支付渠道售后 webhook 接入
+  4. 代理人工调账
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+
 ### 阶段 5：提现与后台
 
 目标：
@@ -1590,6 +1714,43 @@ SQL 里真正承担分销业务的核心表如下。
 通过标准：
 
 - 从“推广进入 -> 支付成功 -> 佣金到账 -> 提现完成”全链路可手动走通
+
+当前进度更新：
+
+- 本阶段已经开始落地，但当前只覆盖提现后端，不含页面
+- 已完成内容：
+  1. 已新增 `withdrawal_request`
+  2. 已支持创建提现申请
+  3. 已支持拒绝提现后释放冻结余额
+  4. 已支持确认打款后增加 `withdrawn_amount`
+  5. 已支持对应 `withdraw_freeze`、`withdraw_release`、`withdraw_paid` 账本流水
+  6. 已补充提现申请、拒绝、打款测试
+- 当前还未完成内容：
+  1. 代理端提现页面
+  2. 后台审核页面
+  3. 审批权限控制
+  4. 提现手续费规则配置
+  5. 已提现后退款负债联动
+
+前端进度补充：
+
+- 当前已经补上用户端 `dashboard/distribution` 页面
+- 页面已展示代理资料、推广码、归因订单、佣金记录、提现记录
+- 页面已接入提现申请表单，直接复用现有 `withdrawal_request` 后端状态机
+- Dashboard 侧边栏已补上分销入口
+- 已补充前端展示和提现提交流程测试
+- 当前已经继续补上后台 `admin/distribution` 页面
+- 后台已展示代理余额、归因订单、佣金记录和提现审核列表
+- 后台已接入驳回申请、标记打款两个动作入口
+- Admin 侧边栏已补上分销管理入口
+- 已补充后台页面展示和审核提交流程测试
+- 当前仍缺审批权限细分、手续费规则配置和已提现退款负债处理
+
+本轮验证结果：
+
+1. `pnpm typecheck` 通过
+2. `pnpm exec vitest run src/test/distribution/withdrawal.test.ts src/test/payment/webhook.test.ts src/test/credits/purchase.test.ts src/test/distribution/attribution.test.ts` 通过
+3. `pnpm db:generate` 与 `pnpm exec drizzle-kit push --force` 已完成
 
 
 ## 11. 测试矩阵
@@ -1708,3 +1869,19 @@ src/features/distribution/
 - 微信支付/支付宝接入
 
 都能沿着同一条主线做下去，而且每个阶段都能独立验证。
+
+当前代码进度补充：
+
+1. 方案文档里点名的 `credit_purchase` 断点已经补齐第一步
+2. 当前已经具备“积分包支付完成后真实发积分”和“重复 webhook 不重复发积分”
+3. 当前已经具备统一订单最小骨架，`checkout.completed` 会为订阅和积分包写入 `sales_order` / `sales_order_item`
+4. 当前已经补上统一订单服务层，`subscription.active` 和 `subscription.renewed` 也会进入统一订单域
+5. 当前已经补上 `PaymentOrderPayload` 和订单显式归因字段，后续分润不需要再从 metadata 反查
+6. 当前已经补上 `sales_after_sales_event` 和订单退款回写，退货和拒付也有统一入口
+7. 当前已经补上佣金事件、佣金记录、冻结余额和佣金账本，积分包分佣可以闭环
+8. 当前已经补上退款驱动的冻结佣金冲正，至少不会出现“退款后冻结佣金不回退”的错账
+9. 当前已经补上佣金解冻、可用佣金冲正和最小提现后端
+10. 当前已经补上用户端分销中心页面和提现申请界面
+11. 当前已经补上后台分销页面和提现审核界面
+12. 当前还缺审批权限细分、已提现负债处理和多支付渠道接入
+13. 下一步应继续推进可运营细节，而不是继续堆底层表

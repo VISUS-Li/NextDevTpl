@@ -3,7 +3,7 @@
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { useLocale } from "next-intl";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Link } from "@/i18n/routing";
 
 /**
@@ -53,22 +53,26 @@ export function HeroSection() {
         </p>
 
         <div className="hidden w-full flex-col items-center justify-center gap-4 sm:w-auto sm:flex-row sm:gap-6 md:flex">
-          <Button
-            asChild
-            className="group relative h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-8 text-base font-bold text-[#003064] shadow-[0_0_30px_rgba(10,132,255,0.22)] transition-all hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(10,132,255,0.35)] sm:w-auto"
+          <Link
+            href="/sign-up"
+            className={buttonVariants({
+              className:
+                "group relative h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-8 text-base font-bold text-[#003064] shadow-[0_0_30px_rgba(10,132,255,0.22)] transition-all hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(10,132,255,0.35)] sm:w-auto",
+            })}
           >
-            <Link href="/sign-up">
-              {isZh ? "免费开始使用" : "Start Free"}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant="ghost"
-            className="h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-8 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-all hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto"
+            {isZh ? "免费开始使用" : "Start Free"}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/docs"
+            className={buttonVariants({
+              variant: "ghost",
+              className:
+                "h-14 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-8 text-base font-bold text-[#e1e2eb] backdrop-blur-md transition-all hover:bg-white/[0.08] hover:text-[#e1e2eb] sm:w-auto",
+            })}
           >
-            <Link href="/docs">{isZh ? "了解更多细节" : "View Details"}</Link>
-          </Button>
+            {isZh ? "了解更多细节" : "View Details"}
+          </Link>
         </div>
 
         <div className="pt-2 md:hidden">

@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { Plus, Ticket } from "lucide-react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import {
   ticketPriorities,
   ticketStatuses,
 } from "@/features/support/schemas";
+import { Link } from "@/i18n/routing";
 import { getServerSession } from "@/lib/auth/server";
 
 /**
@@ -20,6 +21,8 @@ import { getServerSession } from "@/lib/auth/server";
  * 展示用户提交的所有支持工单
  */
 export default async function SupportPage() {
+  const supportT = await getTranslations("Support");
+
   // 获取当前用户会话
   const session = await getServerSession();
   if (!session?.user) {
@@ -51,7 +54,7 @@ export default async function SupportPage() {
         className={colorMap[status] || colorMap.closed}
         variant="secondary"
       >
-        {statusConfig?.label || status}
+        {statusConfig?.labelKey ? supportT(statusConfig.labelKey) : status}
       </Badge>
     );
   };
@@ -72,7 +75,9 @@ export default async function SupportPage() {
         className={colorMap[priority] || colorMap.medium}
         variant="secondary"
       >
-        {priorityConfig?.label || priority}
+        {priorityConfig?.labelKey
+          ? supportT(priorityConfig.labelKey)
+          : priority}
       </Badge>
     );
   };
@@ -82,7 +87,9 @@ export default async function SupportPage() {
    */
   const getCategoryLabel = (category: string) => {
     const categoryConfig = ticketCategories.find((c) => c.value === category);
-    return categoryConfig?.label || category;
+    return categoryConfig?.labelKey
+      ? supportT(categoryConfig.labelKey)
+      : category;
   };
 
   return (
@@ -90,13 +97,17 @@ export default async function SupportPage() {
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">支持中心</h2>
-          <p className="text-muted-foreground">查看和管理您的支持工单</p>
+          <h2 className="text-2xl font-bold tracking-tight">
+            {supportT("list.title")}
+          </h2>
+          <p className="text-muted-foreground">
+            {supportT("list.description")}
+          </p>
         </div>
         <Link href="/dashboard/support/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            新建工单
+            {supportT("list.create")}
           </Button>
         </Link>
       </div>
@@ -106,35 +117,44 @@ export default async function SupportPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Ticket className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">暂无工单</h3>
+            <h3 className="text-lg font-medium">
+              {supportT("list.emptyTitle")}
+            </h3>
             <p className="text-muted-foreground mb-4">
-              您还没有提交过任何支持工单
+              {supportT("list.emptyDescription")}
             </p>
             <Link href="/dashboard/support/new">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                创建第一个工单
+                {supportT("list.createFirst")}
               </Button>
             </Link>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {tickets.map((t) => (
-            <Link key={t.id} href={`/dashboard/support/${t.id}`}>
+          {tickets.map((ticketItem) => (
+            <Link
+              key={ticketItem.id}
+              href={`/dashboard/support/${ticketItem.id}`}
+            >
               <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <CardTitle className="text-base">{t.subject}</CardTitle>
+                      <CardTitle className="text-base">
+                        {ticketItem.subject}
+                      </CardTitle>
                       <p className="text-sm text-muted-foreground">
-                        {getCategoryLabel(t.category)} ·{" "}
-                        {new Date(t.createdAt).toLocaleDateString("zh-CN")}
+                        {getCategoryLabel(ticketItem.category)} ·{" "}
+                        {new Date(ticketItem.createdAt).toLocaleDateString(
+                          supportT("locale") === "zh" ? "zh-CN" : "en-US"
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {getPriorityBadge(t.priority)}
-                      {getStatusBadge(t.status)}
+                      {getPriorityBadge(ticketItem.priority)}
+                      {getStatusBadge(ticketItem.status)}
                     </div>
                   </div>
                 </CardHeader>

@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { SettingsProfileView } from "@/features/settings/components";
+import { getUserToolConfigPageData } from "@/features/tool-config/service";
 import { getServerSession } from "@/lib/auth/server";
 
-const settingsTabs = ["account", "security", "billing", "usage"] as const;
+const settingsTabs = ["account", "security", "billing", "usage", "tools"] as const;
 
 type SettingsTab = (typeof settingsTabs)[number];
 
@@ -38,10 +39,14 @@ export default async function SettingsPage({
   const initialTab = settingsTabs.includes(tab as SettingsTab)
     ? (tab as SettingsTab)
     : "account";
+  const toolConfigData = await getUserToolConfigPageData({
+    userId: session.user.id,
+  });
 
   return (
     <SettingsProfileView
       initialTab={initialTab}
+      toolConfigData={toolConfigData}
       user={{
         id: session.user.id,
         name: session.user.name || "",

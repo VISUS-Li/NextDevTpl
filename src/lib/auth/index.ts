@@ -1,30 +1,60 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { captcha } from "better-auth/plugins";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import {
+  ResetPasswordEmail,
+  VerifyEmailEmail,
+} from "@/features/mail/templates/primary-action-email";
 import { sendEmail } from "@/features/mail/utils";
-import { VerifyEmailEmail, ResetPasswordEmail } from "@/features/mail/templates/primary-action-email";
+
+const STATIC_TRUSTED_ORIGINS = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.BETTER_AUTH_URL,
+  process.env.REDINK_PUBLIC_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://10.0.160.121:3000",
+  "http://10.0.160.121:8082",
+  "http://10.0.160.121:8083",
+  "http://100.121.210.82:3000",
+  "http://100.121.210.82:8082",
+  "http://100.121.210.82:8083",
+  "https://platform.tripai.icu",
+  "https://jingfang.tripai.icu",
+  "https://redink.tripai.icu",
+  "https://*.trycloudflare.com",
+];
 
 /**
  * 返回认证可接受的来源列表
  */
 async function getTrustedOrigins(request?: Request) {
-  // 支持本地、局域网和 Cloudflare Quick Tunnel 的随机域名
-  const origins = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.BETTER_AUTH_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://*.trycloudflare.com",
-  ];
+  // 统一放行固定域名、局域网地址和当前请求实际来源，避免多入口访问时触发 INVALID_ORIGIN。
+  const origins = [...STATIC_TRUSTED_ORIGINS];
 
   if (request) {
     origins.push(new URL(request.url).origin);
+    const requestOrigin = request.headers.get("origin");
+    if (requestOrigin) {
+      origins.push(requestOrigin);
+    }
+
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    if (forwardedProto && forwardedHost) {
+      origins.push(`${forwardedProto}://${forwardedHost}`);
+    }
   }
 
   return [...new Set(origins.filter(Boolean))];
 }
+
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY?.trim();
+const turnstileEnabled = Boolean(turnstileSiteKey && turnstileSecretKey);
 
 /**
  * Better Auth 服务端配置
@@ -37,10 +67,16 @@ async function getTrustedOrigins(request?: Request) {
  */
 export const auth = betterAuth({
   /**
-   * 基础 URL 配置
-   * 未显式配置时按请求动态识别当前访问域名
+   * 认证回调地址跟随当前请求域名
+   * RedInk 代理登录时必须返回 redink 自己的回调地址
    */
-  ...(process.env.BETTER_AUTH_URL ? { baseURL: process.env.BETTER_AUTH_URL } : {}),
+
+  /**
+   * 开发环境允许 HTTP 调试登录，生产环境继续使用安全 Cookie
+   */
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === "production",
+  },
 
   /**
    * 信任的来源
@@ -163,6 +199,20 @@ export const auth = betterAuth({
       maxAge: 60 * 5, // 5 分钟缓存
     },
   },
+
+  /**
+   * 登录前的人机校验
+   * 仅拦邮箱密码登录，避免影响现有 OAuth 流程
+   */
+  plugins: turnstileEnabled
+    ? [
+        captcha({
+          provider: "cloudflare-turnstile",
+          secretKey: turnstileSecretKey || "",
+          endpoints: ["/sign-in/email"],
+        }),
+      ]
+    : [],
 });
 
 /**

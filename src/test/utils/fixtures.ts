@@ -87,6 +87,86 @@ export async function createTestUsers(
 }
 
 // ============================================
+// 分销工厂
+// ============================================
+
+export interface CreateTestDistributionProfileOptions {
+	userId: string;
+	displayName?: string;
+	inviterUserId?: string;
+	path?: string;
+	depth?: number;
+}
+
+/**
+ * 创建测试代理资料
+ */
+export async function createTestDistributionProfile(
+	options: CreateTestDistributionProfileOptions
+): Promise<schema.DistributionProfile> {
+	const id = generateTestId("test_dist_profile");
+
+	const [profile] = await testDb
+		.insert(schema.distributionProfile)
+		.values({
+			id,
+			userId: options.userId,
+			status: "active",
+			displayName: options.displayName ?? "Test Agent",
+			inviterUserId: options.inviterUserId,
+			path: options.path,
+			depth: options.depth ?? 0,
+			boundAt: new Date(),
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
+		.returning();
+
+	if (!profile) {
+		throw new Error("创建测试代理资料失败");
+	}
+
+	return profile;
+}
+
+export interface CreateTestReferralCodeOptions {
+	agentUserId: string;
+	code?: string;
+	campaign?: string;
+	landingPath?: string;
+}
+
+/**
+ * 创建测试推广码
+ */
+export async function createTestReferralCode(
+	options: CreateTestReferralCodeOptions
+): Promise<schema.DistributionReferralCode> {
+	const id = generateTestId("test_ref_code");
+	const code = options.code ?? `ref${Date.now()}`;
+
+	const [referralCode] = await testDb
+		.insert(schema.distributionReferralCode)
+		.values({
+			id,
+			agentUserId: options.agentUserId,
+			code,
+			campaign: options.campaign,
+			landingPath: options.landingPath,
+			status: "active",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
+		.returning();
+
+	if (!referralCode) {
+		throw new Error("创建测试推广码失败");
+	}
+
+	return referralCode;
+}
+
+// ============================================
 // 积分工厂
 // ============================================
 

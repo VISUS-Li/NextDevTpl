@@ -2,12 +2,14 @@ import {
   Activity,
   Bot,
   Coins,
+  Cpu,
   CreditCard,
   Globe,
   HardDrive,
   Headset,
   LayoutDashboard,
   type LucideIcon,
+  Network,
   Settings,
   Shield,
   Ticket,
@@ -21,6 +23,7 @@ import {
  */
 export interface NavItem {
   title: string;
+  titleKey?: string;
   href: string;
   disabled?: boolean;
   external?: boolean;
@@ -33,6 +36,7 @@ export interface NavItem {
  */
 export interface NavGroup {
   title: string;
+  titleKey?: string;
   items: NavItem[];
 }
 
@@ -172,24 +176,35 @@ export const footerNav = {
 export const dashboardNav: NavGroup[] = [
   {
     title: "Dashboard",
+    titleKey: "nav.dashboard",
     items: [
       {
         title: "Dashboard",
+        titleKey: "nav.dashboard",
         href: "/dashboard",
         icon: LayoutDashboard,
       },
       {
         title: "Credits",
+        titleKey: "nav.credits",
         href: "/dashboard/credits",
         icon: Coins,
       },
       {
+        title: "Distribution",
+        titleKey: "nav.distribution",
+        href: "/dashboard/distribution",
+        icon: Network,
+      },
+      {
         title: "Settings",
+        titleKey: "nav.settings",
         href: "/dashboard/settings",
         icon: Settings,
       },
       {
         title: "Support",
+        titleKey: "nav.support",
         href: "/dashboard/support",
         icon: Headset,
       },
@@ -207,21 +222,49 @@ export const dashboardNav: NavGroup[] = [
 export const adminNav: NavGroup[] = [
   {
     title: "管理中心",
+    titleKey: "nav.groups.management",
     items: [
       {
         title: "控制面板",
+        titleKey: "nav.dashboard",
         href: "/admin",
         icon: LayoutDashboard,
       },
       {
         title: "用户管理",
+        titleKey: "nav.users",
         href: "/admin/users",
         icon: Users,
       },
       {
         title: "工单管理",
+        titleKey: "nav.tickets",
         href: "/admin/tickets",
         icon: Ticket,
+      },
+      {
+        title: "分销管理",
+        titleKey: "nav.distribution",
+        href: "/admin/distribution",
+        icon: Network,
+      },
+      {
+        title: "工具配置",
+        titleKey: "nav.toolConfig",
+        href: "/admin/tool-config",
+        icon: Bot,
+      },
+      {
+        title: "AI 网关",
+        titleKey: "nav.aiGateway",
+        href: "/admin/ai",
+        icon: Cpu,
+      },
+      {
+        title: "对象存储",
+        titleKey: "nav.storage",
+        href: "/admin/storage",
+        icon: HardDrive,
       },
     ],
   },

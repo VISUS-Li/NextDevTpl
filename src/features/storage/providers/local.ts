@@ -1,0 +1,153 @@
+/**
+ * 本地文件存储提供者。
+ */
+
+import { headers } from "next/headers";
+
+import type { StorageProvider } from "../types";
+
+const localStorageRoot = process.env.LOCAL_STORAGE_DIR || ".local-storage";
+
+async function getNodeStorageModules() {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  return { fs, path: path.default };
+}
+
+// 解析本地存储路径，避免 key 逃逸到存储目录外。
+async function resolveLocalPath(bucket: string, key: string) {
+  const { path } = await getNodeStorageModules();
+  const root = path.resolve(localStorageRoot);
+  const filePath = path.resolve(root, bucket, key);
+  if (!filePath.startsWith(`${root}${path.sep}`)) {
+    throw new Error("存储路径非法");
+  }
+  return filePath;
+}
+
+// 按当前请求头推导外部访问地址，保证 IP 和域名入口返回一致的 URL。
+async function getLocalBaseUrl() {
+  try {
+    const headerList = await headers();
+    const forwardedProto = headerList
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim();
+    const forwardedHost = headerList
+      .get("x-forwarded-host")
+      ?.split(",")[0]
+      ?.trim();
+    const host = forwardedHost || headerList.get("host")?.split(",")[0]?.trim();
+    if (forwardedProto && host) {
+      return `${forwardedProto}://${host}`;
+    }
+    const origin = headerList.get("origin");
+    if (origin) {
+      return new URL(origin).origin;
+    }
+  } catch {
+    // 非请求上下文直接回退到静态配置，兼容脚本和测试调用。
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+}
+
+// 递归列出目录下的文件，用于兼容 S3 listObjects 行为。
+async function walkFiles(
+  dir: string
+): Promise<Array<{ path: string; statTime: Date; size: number }>> {
+  const { fs, path } = await getNodeStorageModules();
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return walkFiles(fullPath);
+      }
+      const fileStat = await fs.stat(fullPath);
+      return [
+        { path: fullPath, statTime: fileStat.mtime, size: fileStat.size },
+      ];
+    })
+  );
+  return files.flat();
+}
+
+export const localProvider: StorageProvider = {
+  async getSignedUrl(key: string, bucket: string): Promise<string> {
+    const baseUrl = await getLocalBaseUrl();
+    return `${baseUrl}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+  },
+
+  getPublicUrl(key: string, bucket: string): string {
+    const baseUrl =
+      process.env.STORAGE_PUBLIC_BASE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+    return `${baseUrl}/api/platform/storage/local-object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+  },
+
+  async getSignedUploadUrl(
+    key: string,
+    bucket: string,
+    contentType: string
+  ): Promise<string> {
+    const baseUrl = await getLocalBaseUrl();
+    return `${baseUrl}/api/platform/storage/local-upload?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}&contentType=${encodeURIComponent(contentType)}`;
+  },
+
+  async deleteObject(key: string, bucket: string): Promise<void> {
+    const { fs } = await getNodeStorageModules();
+    await fs.rm(await resolveLocalPath(bucket, key), { force: true });
+  },
+
+  async deletePrefix(prefix: string, bucket: string): Promise<void> {
+    const { fs } = await getNodeStorageModules();
+    await fs.rm(await resolveLocalPath(bucket, prefix), {
+      recursive: true,
+      force: true,
+    });
+  },
+
+  async putObject(
+    key: string,
+    bucket: string,
+    body: Buffer | Uint8Array | string,
+    _contentType: string
+  ): Promise<void> {
+    const { fs, path } = await getNodeStorageModules();
+    const filePath = await resolveLocalPath(bucket, key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, body);
+  },
+
+  async getObject(key: string, bucket: string): Promise<Buffer> {
+    const { fs } = await getNodeStorageModules();
+    return fs.readFile(await resolveLocalPath(bucket, key));
+  },
+
+  async listObjects(
+    prefix: string,
+    bucket: string,
+    maxKeys: number = 20
+  ): Promise<Array<{ key: string; lastModified?: Date; size?: number }>> {
+    const { path } = await getNodeStorageModules();
+    const basePath = await resolveLocalPath(bucket, prefix);
+    const bucketPath = await resolveLocalPath(bucket, "");
+    try {
+      const files = await walkFiles(basePath);
+      return files
+        .sort((a, b) => b.statTime.getTime() - a.statTime.getTime())
+        .slice(0, maxKeys)
+        .map((item) => ({
+          key: path.relative(bucketPath, item.path).split(path.sep).join("/"),
+          lastModified: item.statTime,
+          size: item.size,
+        }));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+  },
+};

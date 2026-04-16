@@ -8,11 +8,11 @@ import { and, asc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
+  type CreditsBatchSource,
+  type CreditsTransactionType,
   creditsBalance,
   creditsBatch,
   creditsTransaction,
-  type CreditsBatchSource,
-  type CreditsTransactionType,
 } from "@/db/schema";
 import { logEvent } from "@/lib/logger";
 
@@ -87,7 +87,7 @@ export class InsufficientCreditsError extends Error {
     public required: number,
     public available: number
   ) {
-    super(`积分不足: 需要 ${required}，可用 ${available}`);
+    super(`账户积分不足：需要 ${required}，当前可用 ${available}`);
     this.name = "InsufficientCreditsError";
   }
 }
@@ -367,10 +367,7 @@ export async function consumeCredits(
           eq(creditsBatch.status, "active"),
           gt(creditsBatch.remaining, 0),
           // 过滤掉已过期的批次
-          or(
-            isNull(creditsBatch.expiresAt),
-            gt(creditsBatch.expiresAt, now)
-          )
+          or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
         )
       )
       .orderBy(
@@ -389,7 +386,10 @@ export async function consumeCredits(
     for (const batch of activeBatches) {
       if (remainingToConsume <= 0) break;
 
-      const consumeFromThisBatch = Math.min(batch.remaining, remainingToConsume);
+      const consumeFromThisBatch = Math.min(
+        batch.remaining,
+        remainingToConsume
+      );
       const newRemaining = batch.remaining - consumeFromThisBatch;
 
       // 更新批次
@@ -531,7 +531,10 @@ export async function processExpiredBatches() {
   }
 
   if (results.length > 0) {
-    const totalExpired = results.reduce((sum, item) => sum + item.expiredAmount, 0);
+    const totalExpired = results.reduce(
+      (sum, item) => sum + item.expiredAmount,
+      0
+    );
     logEvent("credits.expired", {
       count: results.length,
       totalExpired,
@@ -555,10 +558,7 @@ export async function getUserActiveBatches(userId: string) {
         eq(creditsBatch.userId, userId),
         eq(creditsBatch.status, "active"),
         gt(creditsBatch.remaining, 0),
-        or(
-          isNull(creditsBatch.expiresAt),
-          gt(creditsBatch.expiresAt, now)
-        )
+        or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
       )
     )
     .orderBy(asc(creditsBatch.expiresAt), asc(creditsBatch.issuedAt));
@@ -588,7 +588,9 @@ export async function getUserTransactions(
 /**
  * 获取用户交易总数
  */
-export async function getUserTransactionsCount(userId: string): Promise<number> {
+export async function getUserTransactionsCount(
+  userId: string
+): Promise<number> {
   const [result] = await db
     .select({
       count: sql<number>`count(*)`.mapWith(Number),

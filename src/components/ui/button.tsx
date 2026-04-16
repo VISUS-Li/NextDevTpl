@@ -1,11 +1,18 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { Slot } from "radix-ui"
+import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
+import * as React from "react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
+
+type ButtonChildProps = {
+  [key: string]: unknown;
+  "aria-disabled"?: boolean | undefined;
+  children?: React.ReactNode | undefined;
+  className?: string | undefined;
+};
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -36,29 +43,63 @@ const buttonVariants = cva(
       size: "default",
     },
   }
-)
+);
 
 function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
+  loadingText,
+  children,
+  disabled,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
+    asChild?: boolean;
+    loading?: boolean;
+    loadingText?: React.ReactNode;
   }) {
-  const Comp = asChild ? Slot.Root : "button"
+  const content = (
+    <>
+      {loading ? <Loader2 className="animate-spin" /> : null}
+      {loading ? (loadingText ?? children) : children}
+    </>
+  );
+
+  // asChild 交给 Radix Slot 时必须保证只有一个 React 元素子节点
+  if (asChild) {
+    const child = React.Children.only(
+      children
+    ) as React.ReactElement<ButtonChildProps>;
+
+    return React.cloneElement(child, {
+      ...props,
+      "aria-disabled": disabled || loading || child.props["aria-disabled"],
+      children: content,
+      className: cn(
+        buttonVariants({ variant, size, className }),
+        child.props.className
+      ),
+      "data-size": size,
+      "data-slot": "button",
+      "data-variant": variant,
+    });
+  }
 
   return (
-    <Comp
+    <button
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
-  )
+    >
+      {content}
+    </button>
+  );
 }
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };

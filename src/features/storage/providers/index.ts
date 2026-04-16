@@ -2,4 +2,17 @@
  * 存储提供者导出
  */
 
-export { s3Provider, getStorageProvider } from "./s3";
+import type { StorageProvider } from "../types";
+
+import { localProvider } from "./local";
+import { s3Provider } from "./s3";
+
+export { localProvider } from "./local";
+export { s3Provider } from "./s3";
+
+/**
+ * 读取当前生效的存储提供者。
+ */
+export function getStorageProvider(): StorageProvider {
+  return process.env.STORAGE_PROVIDER === "local" ? localProvider : s3Provider;
+}

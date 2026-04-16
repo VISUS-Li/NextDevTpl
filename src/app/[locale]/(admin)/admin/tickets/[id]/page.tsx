@@ -1,21 +1,20 @@
-import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { eq } from "drizzle-orm";
-
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { db } from "@/db";
 import { ticket, ticketMessage, user } from "@/db/schema";
+import { AdminTicketReplyForm } from "@/features/support/components/admin-ticket-reply-form";
+import { AdminTicketStatusSelect } from "@/features/support/components/admin-ticket-status-select";
 import {
   ticketCategories,
   ticketPriorities,
   ticketStatuses,
 } from "@/features/support/schemas";
-import { AdminTicketReplyForm } from "@/features/support/components/admin-ticket-reply-form";
-import { AdminTicketStatusSelect } from "@/features/support/components/admin-ticket-status-select";
 
 interface AdminTicketDetailPageProps {
   params: Promise<{
@@ -89,7 +88,10 @@ export default async function AdminTicketDetailPage({
       closed: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
     };
     return (
-      <Badge className={colorMap[status] || colorMap.closed} variant="secondary">
+      <Badge
+        className={colorMap[status] || colorMap.closed}
+        variant="secondary"
+      >
         {statusConfig?.label || status}
       </Badge>
     );
@@ -107,7 +109,10 @@ export default async function AdminTicketDetailPage({
       high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
     };
     return (
-      <Badge className={colorMap[priority] || colorMap.medium} variant="secondary">
+      <Badge
+        className={colorMap[priority] || colorMap.medium}
+        variant="secondary"
+      >
         {priorityConfig?.label || priority}
       </Badge>
     );
@@ -136,7 +141,7 @@ export default async function AdminTicketDetailPage({
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Link href="/admin/tickets">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="h-4 w-4" />
@@ -147,11 +152,11 @@ export default async function AdminTicketDetailPage({
             {ticketData.subject}
           </h2>
           <p className="text-muted-foreground">
-            {getCategoryLabel(ticketData.category)} ·{" "}
-            创建于 {new Date(ticketData.createdAt).toLocaleDateString("zh-CN")}
+            {getCategoryLabel(ticketData.category)} · 创建于{" "}
+            {new Date(ticketData.createdAt).toLocaleDateString("zh-CN")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {getPriorityBadge(ticketData.priority)}
           {getStatusBadge(ticketData.status)}
         </div>
@@ -174,9 +179,9 @@ export default async function AdminTicketDetailPage({
                   {ticketUser?.name ? getInitials(ticketUser.name) : "U"}
                 </AvatarFallback>
               </Avatar>
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium">{ticketUser?.name || "未知用户"}</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="break-all text-sm text-muted-foreground">
                   {ticketUser?.email}
                 </p>
               </div>
@@ -206,7 +211,7 @@ export default async function AdminTicketDetailPage({
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex gap-4 p-4 rounded-lg ${
+              className={`flex flex-col gap-3 rounded-lg p-4 sm:flex-row ${
                 msg.isAdminResponse
                   ? "bg-blue-50 dark:bg-blue-950/30"
                   : "bg-muted/50"
@@ -228,7 +233,7 @@ export default async function AdminTicketDetailPage({
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">
                     {msg.user?.name || "用户"}
                   </span>

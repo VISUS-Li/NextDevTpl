@@ -5,11 +5,21 @@ import { Camera, Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
+import type { ComponentProps } from "react";
 import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,16 +42,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditUsageSection } from "@/features/credits/components";
-import { updateProfileAction } from "@/features/settings/actions";
+import { deleteAccountAction } from "@/features/settings/actions";
+import { updateProfileAction } from "@/features/settings/actions/update-profile";
 import { updateProfileSchema } from "@/features/settings/schemas";
-import {
-  ALLOWED_IMAGE_TYPES,
-  generateAvatarKey,
-  getAvatarUrl,
-  getSignedUploadUrlAction,
-  MAX_FILE_SIZE,
-} from "@/features/storage";
+import { getSignedUploadUrlAction } from "@/features/storage/actions";
+import { ALLOWED_IMAGE_TYPES, MAX_FILE_SIZE } from "@/features/storage/types";
+import { UserToolConfigSection } from "@/features/tool-config/components/user-tool-config-section";
 import { usePathname, useRouter } from "@/i18n/routing";
+import { signOut } from "@/lib/auth/client";
 import { BillingSection } from "./billing-section";
 import { SecuritySection } from "./security-section";
 
@@ -57,13 +65,38 @@ interface SettingsProfileViewProps {
     image?: string | null | undefined;
   };
   /** 初始标签页 */
-  initialTab: "account" | "security" | "billing" | "usage";
+  initialTab: "account" | "security" | "billing" | "usage" | "tools";
+  /** 用户工具配置数据 */
+  toolConfigData: ComponentProps<typeof UserToolConfigSection>["data"];
 }
 
 /**
  * 表单数据类型
  */
 type FormValues = z.infer<typeof updateProfileSchema>;
+
+/**
+ * 读取头像展示地址，兼容外部 URL 和本地代理路径。
+ */
+function getAvatarDisplayUrl(image: string | null | undefined) {
+  if (!image) {
+    return undefined;
+  }
+  if (image.startsWith("http://") || image.startsWith("https://")) {
+    return image;
+  }
+  const avatarsBucket =
+    process.env.NEXT_PUBLIC_AVATARS_BUCKET_NAME ?? "avatars";
+  return `/image-proxy/${avatarsBucket}/${image}`;
+}
+
+/**
+ * 生成头像对象键名，避免覆盖旧文件。
+ */
+function generateAvatarObjectKey(userId: string, file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  return `${userId}-${Date.now()}.${extension}`;
+}
 
 /**
  * 设置页面主视图组件
@@ -78,6 +111,7 @@ type FormValues = z.infer<typeof updateProfileSchema>;
 export function SettingsProfileView({
   user,
   initialTab,
+  toolConfigData,
 }: SettingsProfileViewProps) {
   // 文件上传 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +132,7 @@ export function SettingsProfileView({
 
   // 头像预览 URL (本地预览)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   /**
    * 切换语言
@@ -129,7 +164,7 @@ export function SettingsProfileView({
   /**
    * 获取当前显示的头像 URL
    */
-  const currentAvatarUrl = avatarPreview ?? getAvatarUrl(user.image);
+  const currentAvatarUrl = avatarPreview ?? getAvatarDisplayUrl(user.image);
 
   /**
    * 表单实例
@@ -163,6 +198,30 @@ export function SettingsProfileView({
       },
     }
   );
+
+  /**
+   * 删除账户后退出当前会话，避免前端继续持有过期登录态。
+   */
+  const { execute: executeDeleteAccount, isPending: isDeletingAccount } =
+    useAction(deleteAccountAction, {
+      onSuccess: async ({ data }) => {
+        setIsDeleteDialogOpen(false);
+        if (data?.message) {
+          toast.success(data.message);
+        }
+        await signOut({
+          fetchOptions: {
+            onSuccess: () => {
+              router.replace("/");
+              router.refresh();
+            },
+          },
+        });
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError || t("deleteAccount.error"));
+      },
+    });
 
   /**
    * 表单提交
@@ -217,7 +276,7 @@ export function SettingsProfileView({
       setAvatarPreview(localPreviewUrl);
 
       // 2. 生成唯一文件名
-      const key = generateAvatarKey(user.id, file);
+      const key = generateAvatarObjectKey(user.id, file);
 
       // 3. 获取签名上传 URL
       const uploadUrlResult = await getSignedUploadUrlAction({
@@ -269,8 +328,7 @@ export function SettingsProfileView({
    * 处理删除账户
    */
   const handleDeleteAccount = () => {
-    // TODO: 实现删除账户功能
-    toast.error(t("deleteAccount.warning"));
+    executeDeleteAccount();
   };
 
   return (
@@ -302,6 +360,12 @@ export function SettingsProfileView({
               className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-primary/20 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
             >
               {tTabs("usage")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="tools"
+              className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-primary/20 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              {tTabs("tools")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -479,14 +543,53 @@ export function SettingsProfileView({
                 </p>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="border-destructive text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={handleDeleteAccount}
+              <AlertDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={(open) => {
+                  if (!isDeletingAccount) {
+                    setIsDeleteDialogOpen(open);
+                  }
+                }}
               >
-                {t("deleteAccount.button")}
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  disabled={isDeletingAccount}
+                >
+                  {isDeletingAccount && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {t("deleteAccount.button")}
+                </Button>
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t("deleteAccount.confirmTitle")}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("deleteAccount.confirmDescription")}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeletingAccount}>
+                      {t("deleteAccount.cancel")}
+                    </AlertDialogCancel>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleDeleteAccount}
+                      disabled={isDeletingAccount}
+                    >
+                      {isDeletingAccount && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {t("deleteAccount.confirm")}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </section>
         </TabsContent>
@@ -504,6 +607,11 @@ export function SettingsProfileView({
         {/* Usage Tab - 积分使用情况 */}
         <TabsContent value="usage" className="mt-8 pl-4">
           <CreditUsageSection />
+        </TabsContent>
+
+        {/* Tools Tab - 用户工具配置 */}
+        <TabsContent value="tools" className="mt-8 pl-4">
+          <UserToolConfigSection data={toolConfigData} />
         </TabsContent>
       </Tabs>
     </div>

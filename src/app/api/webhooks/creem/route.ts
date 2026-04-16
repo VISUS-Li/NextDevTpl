@@ -11,15 +11,18 @@ import {
   type CreemCheckoutCompletedData,
   type CreemSubscription,
 } from "@/features/payment/creem";
+import {
+  getCheckoutPaymentReference,
+  getCheckoutProductId,
+  getSubscriptionProductId,
+  upsertSalesOrderFromCheckoutCompleted,
+  upsertSalesOrderFromSubscriptionEvent,
+} from "@/features/distribution/orders";
+import { settleCommissionForSalesOrder } from "@/features/distribution/commission";
 import { getPlanFromPriceId } from "@/config/subscription-plan";
 import { SUBSCRIPTION_MONTHLY_CREDITS } from "@/config/payment";
 import { logError, logEvent } from "@/lib/logger";
 import { withApiLogging } from "@/lib/api-logger";
-
-/** 从 CreemSubscription 中安全提取产品 ID */
-function getProductId(sub: CreemSubscription): string {
-  return typeof sub.product === "string" ? sub.product : sub.product?.id ?? "";
-}
 
 /**
  * Creem Webhook 处理器
@@ -116,10 +119,10 @@ export const POST = withApiLogging(async (req: Request) => {
  *
  * 当用户完成支付后，创建或更新订阅记录
  */
-async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
+export async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   const userId = data.metadata?.userId;
   const customerId = data.customer.id;
-  const productId = data.product?.id || data.order?.product;
+  const productId = getCheckoutProductId(data);
 
   if (!userId) {
     console.error("Missing userId in checkout metadata");
@@ -131,6 +134,14 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
     .update(user)
     .set({ customerId })
     .where(eq(user.id, userId));
+
+  const salesOrderId = await upsertSalesOrderFromCheckoutCompleted(userId, data);
+
+  // 积分购买走一次性支付分支，不创建订阅
+  if (data.metadata?.type === "credit_purchase") {
+    await handleCreditPurchaseCompleted(userId, data);
+    await settleCommissionForSalesOrder(salesOrderId, "credit_purchase");
+  }
 
   // 如果有订阅信息，创建订阅记录
   if (data.subscription) {
@@ -147,6 +158,72 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   });
 }
 
+/**
+ * 处理积分购买完成事件
+ *
+ * 幂等键优先使用支付交易号，其次退化到订单号或 checkout id
+ */
+export async function handleCreditPurchaseCompleted(
+  userId: string,
+  data: CreemCheckoutCompletedData
+) {
+  const credits = Number(data.metadata?.credits ?? 0);
+  const packageId = data.metadata?.packageId;
+  const paymentId = getCheckoutPaymentReference(data);
+
+  if (!Number.isFinite(credits) || credits <= 0) {
+    console.error("Invalid credits amount in checkout metadata:", data.metadata);
+    return;
+  }
+
+  // 使用 purchase + sourceRef 保证同一笔支付不会重复发积分
+  const [existingBatch] = await db
+    .select({ id: creditsBatch.id })
+    .from(creditsBatch)
+    .where(
+      and(
+        eq(creditsBatch.sourceType, "purchase"),
+        eq(creditsBatch.sourceRef, paymentId)
+      )
+    )
+    .limit(1);
+
+  if (existingBatch) {
+    console.log(`Credits already granted for payment: ${paymentId}, skipping`);
+    return;
+  }
+
+  const expiresAt = CREDITS_EXPIRY_DAYS
+    ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    : null;
+
+  await grantCredits({
+    userId,
+    amount: credits,
+    sourceType: "purchase",
+    debitAccount: `PAYMENT:${paymentId}`,
+    transactionType: "purchase",
+    expiresAt,
+    sourceRef: paymentId,
+    description: `购买 ${credits} 积分 (${packageId ?? "custom"})`,
+    metadata: {
+      checkoutId: data.id,
+      orderId: data.order?.id,
+      transactionId: data.order?.transaction,
+      packageId,
+      productId: getCheckoutProductId(data),
+    },
+  });
+
+  logEvent("credits.purchased", {
+    userId,
+    amount: credits,
+    paymentId,
+    packageId,
+    source: "creem",
+  });
+}
+
 // ============================================
 // 订阅事件处理
 // ============================================
@@ -156,7 +233,7 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
  *
  * 首次订阅激活时触发，发放积分
  */
-async function handleSubscriptionActive(sub: CreemSubscription) {
+export async function handleSubscriptionActive(sub: CreemSubscription) {
   const userId = sub.metadata?.userId;
 
   if (!userId) {
@@ -173,22 +250,34 @@ async function handleSubscriptionActive(sub: CreemSubscription) {
     }
 
     await updateSubscriptionStatus(sub);
+    const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
+      existingSub.userId,
+      sub,
+      "subscription.active"
+    );
     await grantSubscriptionCredits(existingSub.userId, sub, "subscription_create");
+    await settleCommissionForSalesOrder(salesOrderId, "subscription_create");
     logEvent("payment.subscription.created", {
       userId: existingSub.userId,
       subscriptionId: sub.id,
-      priceId: getProductId(sub),
+      priceId: getSubscriptionProductId(sub),
       status: sub.status,
     });
     return;
   }
 
   await createOrUpdateSubscription(userId, sub);
+  const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
+    userId,
+    sub,
+    "subscription.active"
+  );
   await grantSubscriptionCredits(userId, sub, "subscription_create");
+  await settleCommissionForSalesOrder(salesOrderId, "subscription_create");
   logEvent("payment.subscription.created", {
     userId,
     subscriptionId: sub.id,
-    priceId: getProductId(sub),
+    priceId: getSubscriptionProductId(sub),
     status: sub.status,
   });
 }
@@ -198,7 +287,7 @@ async function handleSubscriptionActive(sub: CreemSubscription) {
  *
  * 订阅周期结束续费时触发，发放积分
  */
-async function handleSubscriptionRenewed(sub: CreemSubscription) {
+export async function handleSubscriptionRenewed(sub: CreemSubscription) {
   await updateSubscriptionStatus(sub);
 
   // 从数据库获取 userId
@@ -213,7 +302,13 @@ async function handleSubscriptionRenewed(sub: CreemSubscription) {
     return;
   }
 
+  const salesOrderId = await upsertSalesOrderFromSubscriptionEvent(
+    existingSub.userId,
+    sub,
+    "subscription.renewed"
+  );
   await grantSubscriptionCredits(existingSub.userId, sub, "subscription_cycle");
+  await settleCommissionForSalesOrder(salesOrderId, "subscription_cycle");
 }
 
 /**
@@ -308,7 +403,7 @@ async function createOrUpdateSubscription(userId: string, sub: CreemSubscription
 
   const subscriptionData = {
     subscriptionId: sub.id,
-    priceId: getProductId(sub),
+    priceId: getSubscriptionProductId(sub),
     status: sub.status,
     currentPeriodStart: new Date(sub.current_period_start_date),
     currentPeriodEnd: new Date(sub.current_period_end_date),
@@ -360,7 +455,7 @@ async function grantSubscriptionCredits(
   sub: CreemSubscription,
   billingReason: "subscription_create" | "subscription_cycle"
 ) {
-  const priceId = getProductId(sub);
+  const priceId = getSubscriptionProductId(sub);
   const planType = getPlanFromPriceId(priceId);
 
   if (!planType) {

@@ -1,22 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { nanoid } from "nanoid";
-import { getFileTypeFromName } from "@/lib/file-utils";
-import { auth } from "@/lib/auth";
-import { withApiLogging } from "@/lib/api-logger";
+import { type NextRequest, NextResponse } from "next/server";
 
-/**
- * S3/R2 客户端配置
- */
-const s3Client = new S3Client({
-  region: process.env.STORAGE_REGION || "auto",
-  ...(process.env.STORAGE_ENDPOINT && { endpoint: process.env.STORAGE_ENDPOINT }),
-  credentials: {
-    accessKeyId: process.env.STORAGE_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY || "",
-  },
-});
+import { getStorageProvider } from "@/features/storage/providers";
+import { saveStorageObjectRecord } from "@/features/storage/records";
+import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
+import { getFileTypeFromName } from "@/lib/file-utils";
 
 const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
 
@@ -40,17 +29,28 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     });
 
     if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
-    const { filename, contentType, fileSize } = body as {
+    const {
+      filename,
+      contentType,
+      fileSize,
+      purpose = "document_upload",
+      retentionClass = "long_term",
+      expiresAt,
+      requestId,
+      taskId,
+    } = body as {
       filename: string;
       contentType: string;
       fileSize: number;
+      purpose?: string;
+      retentionClass?: "permanent" | "long_term" | "temporary" | "ephemeral";
+      expiresAt?: string;
+      requestId?: string;
+      taskId?: string;
     };
 
     // 验证文件名
@@ -65,7 +65,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     const fileType = getFileTypeFromName(filename);
     if (!fileType) {
       return NextResponse.json(
-        { error: `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}` },
+        {
+          error: `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}`,
+        },
         { status: 400 }
       );
     }
@@ -73,7 +75,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     // 验证文件大小
     if (fileSize > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        {
+          error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+        },
         { status: 400 }
       );
     }
@@ -82,24 +86,37 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     const fileExtension = filename.match(/\.[^.]+$/)?.[0] || "";
     const fileKey = `uploads/${session.user.id}/${nanoid()}${fileExtension}`;
 
-    // 创建预签名 URL
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: fileKey,
-      ContentType: contentType,
+    // 统一走存储 provider，避免上层直接耦合某一家云厂商 SDK。
+    const provider = getStorageProvider();
+    const presignedUrl = await provider.getSignedUploadUrl(
+      fileKey,
+      BUCKET_NAME,
+      contentType,
+      3600
+    );
+    const fileUrl = provider.getPublicUrl(fileKey, BUCKET_NAME);
+    const storageRecord = await saveStorageObjectRecord({
+      bucket: BUCKET_NAME,
+      key: fileKey,
+      contentType,
+      ownerUserId: session.user.id,
+      purpose,
+      retentionClass,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      requestId: requestId?.trim() || null,
+      taskId: taskId?.trim() || null,
+      status: "pending",
     });
-
-    const presignedUrl = await getSignedUrl(s3Client, command, {
-      expiresIn: 3600, // 1 hour
-    });
-
-    // 构建文件访问 URL
-    const fileUrl = `${process.env.STORAGE_ENDPOINT}/${BUCKET_NAME}/${fileKey}`;
 
     return NextResponse.json({
       presignedUrl,
       fileKey,
       fileUrl,
+      purpose: storageRecord.purpose,
+      retentionClass: storageRecord.retentionClass,
+      expiresAt: storageRecord.expiresAt,
+      requestId: storageRecord.requestId,
+      taskId: storageRecord.taskId,
       expiresIn: 3600,
     });
   } catch (error) {

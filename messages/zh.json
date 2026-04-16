@@ -183,6 +183,8 @@
       "emailLabel": "邮箱",
       "emailPlaceholder": "you@example.com",
       "passwordLabel": "密码",
+      "rememberAccount": "记住账号",
+      "captchaLabel": "机器人验证",
       "forgotPassword": "忘记密码",
       "loading": "登录中...",
       "submit": "继续",
@@ -196,6 +198,8 @@
         "github": "GitHub 登录失败，请重试",
         "missingFields": "请填写邮箱和密码",
         "invalidCredentials": "邮箱或密码错误",
+        "captchaRequired": "请先完成机器人验证",
+        "captchaFailed": "机器人验证失败，请重试",
         "emailNotVerified": "当前账号还未完成验证。",
         "sessionExpired": "登录状态已失效，请重新登录。",
         "serverUnavailable": "认证服务暂时不可用，请检查数据库连接配置。"
@@ -464,6 +468,9 @@
   "Dashboard": {
     "nav": {
       "dashboard": "控制台",
+      "credits": "积分",
+      "distribution": "分销",
+      "settings": "设置",
       "support": "支持",
       "newTicket": "新建工单"
     },
@@ -479,8 +486,282 @@
       "ticketDetails": "工单详情"
     },
     "sidebar": {
+      "navigation": "导航菜单",
       "settings": "设置",
       "logout": "退出登录"
+    }
+  },
+  "Admin": {
+    "header": {
+      "title": "管理后台",
+      "badge": "管理"
+    },
+    "nav": {
+      "groups": {
+        "management": "管理中心"
+      },
+      "dashboard": "控制面板",
+      "users": "用户管理",
+      "tickets": "工单管理",
+      "distribution": "分销管理",
+      "toolConfig": "工具配置",
+      "aiGateway": "AI 网关",
+      "storage": "对象存储"
+    },
+    "sidebar": {
+      "backToDashboard": "返回用户端",
+      "logout": "退出登录",
+      "openMenu": "打开管理菜单"
+    },
+    "users": {
+      "title": "用户管理",
+      "description": "查看和管理系统中的所有用户",
+      "loading": "更新中...",
+      "roles": {
+        "admin": "管理员",
+        "user": "普通用户"
+      },
+      "stats": {
+        "total": "总用户数",
+        "admins": "管理员",
+        "subscribers": "订阅用户",
+        "banned": "已封禁"
+      },
+      "search": {
+        "placeholder": "搜索邮箱或用户名...",
+        "submit": "搜索",
+        "clear": "清除"
+      },
+      "list": {
+        "title": "用户列表",
+        "searching": "搜索: \"{query}\"",
+        "emptySearch": "没有找到匹配的用户",
+        "empty": "暂无用户"
+      },
+      "table": {
+        "user": "用户",
+        "status": "状态",
+        "credits": "积分",
+        "subscription": "订阅",
+        "role": "角色",
+        "actions": "操作"
+      },
+      "status": {
+        "banned": "已封禁",
+        "verified": "已验证",
+        "unverified": "未验证"
+      },
+      "subscription": {
+        "none": "无订阅",
+        "active": "订阅中",
+        "canceled": "已取消",
+        "pastDue": "逾期",
+        "incomplete": "未完成"
+      },
+      "actions": {
+        "grant": "充值积分",
+        "ban": "封禁",
+        "unban": "解封",
+        "banUser": "封禁用户",
+        "unbanUser": "解除封禁"
+      },
+      "banDialog": {
+        "banTitle": "封禁用户",
+        "unbanTitle": "解除封禁",
+        "banDescription": "确定要封禁用户 {name} 吗？封禁后该用户将无法登录。",
+        "unbanDescription": "确定要解除用户 {name} 的封禁吗？",
+        "reason": "封禁原因 (可选)",
+        "reasonPlaceholder": "请输入封禁原因...",
+        "confirmBan": "确认封禁",
+        "confirmUnban": "解除封禁"
+      },
+      "grantDialog": {
+        "title": "手动充值积分",
+        "description": "为用户 {name} 充值积分",
+        "amount": "积分数量",
+        "amountPlaceholder": "请输入积分数量",
+        "reason": "充值原因",
+        "reasonPlaceholder": "请输入充值原因 (如：客服补偿、活动奖励等)",
+        "confirm": "确认充值"
+      },
+      "common": {
+        "cancel": "取消"
+      },
+      "toasts": {
+        "loadFailed": "加载用户列表失败",
+        "invalidAmount": "请输入有效的积分数量",
+        "reasonRequired": "请填写充值原因",
+        "roleUpdated": "角色更新成功",
+        "roleUpdateFailed": "角色更新失败"
+      }
+    },
+    "dashboard": {
+      "title": "控制面板",
+      "description": "查看用户、工单、积分和订阅的整体情况。",
+      "stats": {
+        "totalUsers": {
+          "title": "总用户数",
+          "description": "本周新增 {count} 位"
+        },
+        "pendingTickets": {
+          "title": "待处理工单",
+          "description": "今日新增 {count} 个"
+        },
+        "activeSubscriptions": {
+          "title": "活跃订阅",
+          "description": "总订阅 {count} 个"
+        },
+        "creditSupply": {
+          "title": "积分流通",
+          "description": "当前用户持有总积分"
+        }
+      },
+      "panels": {
+        "users": {
+          "title": "用户统计",
+          "total": "总用户",
+          "admins": "管理员",
+          "regularUsers": "普通用户",
+          "banned": "已封禁",
+          "newThisWeek": "本周新增"
+        },
+        "tickets": {
+          "title": "工单统计",
+          "open": "待处理",
+          "inProgress": "处理中",
+          "total": "总工单",
+          "newToday": "今日新增"
+        },
+        "credits": {
+          "title": "积分流水",
+          "current": "当前持有",
+          "earned": "累计发放",
+          "spent": "累计消费",
+          "subscribers": "订阅用户",
+          "subscribersValue": "{count} 活跃"
+        }
+      },
+      "quickActions": {
+        "title": "快速操作",
+        "users": "管理用户",
+        "usersValue": "{count} 位",
+        "tickets": "处理工单",
+        "pendingValue": "{count} 待处理"
+      },
+      "system": {
+        "title": "系统信息",
+        "version": "版本",
+        "environment": "环境",
+        "database": "数据库"
+      }
+    }
+  },
+  "Shared": {
+    "language": {
+      "label": "切换语言",
+      "english": "English",
+      "chinese": "中文"
+    },
+    "theme": {
+      "label": "切换主题",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    }
+  },
+  "Support": {
+    "locale": "zh",
+    "categories": {
+      "billing": "账单问题",
+      "technical": "技术支持",
+      "bug": "Bug 报告",
+      "feature": "功能建议",
+      "other": "其他"
+    },
+    "priorities": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "statuses": {
+      "open": "待处理",
+      "inProgress": "处理中",
+      "resolved": "已解决",
+      "closed": "已关闭"
+    },
+    "list": {
+      "title": "支持中心",
+      "description": "查看和管理您的支持工单",
+      "create": "新建工单",
+      "emptyTitle": "暂无工单",
+      "emptyDescription": "您还没有提交过任何支持工单",
+      "createFirst": "创建第一个工单"
+    },
+    "new": {
+      "title": "新建工单",
+      "description": "描述您遇到的问题，我们会尽快回复",
+      "formTitle": "工单信息",
+      "subject": "主题",
+      "subjectPlaceholder": "简要描述您的问题",
+      "category": "类别",
+      "categoryPlaceholder": "选择类别",
+      "priority": "优先级",
+      "priorityPlaceholder": "选择优先级",
+      "message": "详细描述",
+      "messagePlaceholder": "请详细描述您遇到的问题，包括：\n- 问题发生的时间\n- 具体的错误信息\n- 您已尝试的解决方法",
+      "cancel": "取消",
+      "submit": "提交工单"
+    },
+    "detail": {
+      "conversation": "对话记录",
+      "meta": "{category} · 创建于 {date}",
+      "user": "用户",
+      "supportAgent": "客服",
+      "closedUser": "此工单已关闭，无法添加新消息",
+      "closedAdmin": "此工单已关闭，无法添加新回复"
+    },
+    "reply": {
+      "userTitle": "添加回复",
+      "adminTitle": "回复用户",
+      "placeholder": "输入您的消息...",
+      "adminPlaceholder": "输入您的回复...",
+      "counter": "{count}/5000 字符",
+      "submit": "发送",
+      "adminSubmit": "发送回复"
+    },
+    "statusSelect": {
+      "label": "选择新状态",
+      "loading": "更新中..."
+    },
+    "toasts": {
+      "ticketCreated": "工单创建成功",
+      "ticketCreateFailed": "创建工单失败，请重试",
+      "messageRequired": "请输入消息内容",
+      "messageSent": "消息发送成功",
+      "messageFailed": "发送失败，请重试",
+      "replyRequired": "请输入回复内容",
+      "replySent": "回复成功",
+      "replyFailed": "回复失败，请重试",
+      "statusUpdated": "状态更新成功",
+      "statusUpdateFailed": "状态更新失败"
+    }
+  },
+  "DashboardCreditsBuy": {
+    "title": "购买积分",
+    "description": "选择积分套餐以解锁 AI 功能和能力",
+    "popular": "最受欢迎",
+    "creditsUnit": "积分",
+    "processing": "处理中...",
+    "buy": "购买 {name}",
+    "back": "← 返回用量",
+    "features": {
+      "instant": "即时到账",
+      "validity": "90 天内有效",
+      "usage": "可用于所有 AI 功能"
+    },
+    "toasts": {
+      "checkoutFailed": "创建支付会话失败",
+      "canceled": "支付已取消"
     }
   },
   "Settings": {
@@ -488,7 +769,8 @@
       "account": "账户",
       "security": "安全",
       "billing": "账单",
-      "usage": "用量"
+      "usage": "用量",
+      "tools": "工具"
     },
     "general": {
       "title": "基本信息",
@@ -515,7 +797,12 @@
       "title": "删除账户",
       "description": "永久删除您的账户及所有相关数据。此操作无法撤销。",
       "button": "删除账户",
-      "warning": "此操作不可逆，请谨慎操作。"
+      "warning": "此操作不可逆，请谨慎操作。",
+      "confirmTitle": "确认删除账户",
+      "confirmDescription": "删除后将退出当前登录，且无法恢复账户数据。",
+      "cancel": "取消",
+      "confirm": "确认删除",
+      "error": "删除账户失败，请稍后重试"
     },
     "security": {
       "changePassword": {

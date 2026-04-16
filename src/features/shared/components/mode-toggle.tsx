@@ -1,10 +1,10 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ export function ModeToggle({
   className,
 }: ModeToggleProps) {
   const { theme, setTheme } = useTheme();
+  const t = useTranslations("Shared.theme");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -63,10 +64,10 @@ export function ModeToggle({
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
-          title="浅色模式"
+          title={t("light")}
         >
           <Sun className="h-4 w-4" />
-          <span className="sr-only">浅色模式</span>
+          <span className="sr-only">{t("light")}</span>
         </button>
         <button
           type="button"
@@ -77,10 +78,10 @@ export function ModeToggle({
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
-          title="深色模式"
+          title={t("dark")}
         >
           <Moon className="h-4 w-4" />
-          <span className="sr-only">深色模式</span>
+          <span className="sr-only">{t("dark")}</span>
         </button>
         <button
           type="button"
@@ -91,10 +92,10 @@ export function ModeToggle({
               ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
-          title="跟随系统"
+          title={t("system")}
         >
           <Monitor className="h-4 w-4" />
-          <span className="sr-only">跟随系统</span>
+          <span className="sr-only">{t("system")}</span>
         </button>
       </div>
     );
@@ -103,25 +104,31 @@ export function ModeToggle({
   // 下拉菜单模式 (默认)
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className={className}>
+      <DropdownMenuTrigger
+        className={cn(
+          "inline-flex size-9 items-center justify-center rounded-md transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+          className
+        )}
+      >
+        {/* 直接渲染触发器，避免 asChild 对单子节点的限制 */}
+        <span className="contents">
           <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">切换主题</span>
-        </Button>
+          <span className="sr-only">{t("label")}</span>
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun className="mr-2 h-4 w-4" />
-          浅色
+          {t("light")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("dark")}>
           <Moon className="mr-2 h-4 w-4" />
-          深色
+          {t("dark")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")}>
           <Monitor className="mr-2 h-4 w-4" />
-          跟随系统
+          {t("system")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

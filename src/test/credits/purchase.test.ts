@@ -46,13 +46,13 @@ afterAll(async () => {
 // ============================================
 
 describe("Credit Package Config", () => {
-	it("应该有三个套餐（lite, standard, pro）", () => {
+	it("应该有三个套餐（starter, standard, premium）", () => {
 		expect(CREDIT_PACKAGES).toHaveLength(3);
 
 		const ids = CREDIT_PACKAGES.map((p) => p.id);
-		expect(ids).toContain("lite");
+		expect(ids).toContain("starter");
 		expect(ids).toContain("standard");
-		expect(ids).toContain("pro");
+		expect(ids).toContain("premium");
 	});
 
 	it("所有套餐应该有必要字段", () => {

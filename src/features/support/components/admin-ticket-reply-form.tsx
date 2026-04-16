@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, Send } from "lucide-react";
-
+import { useTranslations } from "next-intl";
+import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { adminReplyTicketAction } from "@/features/support/actions";
-import { toast } from "sonner";
+import { useRouter } from "@/i18n/routing";
 
 interface AdminTicketReplyFormProps {
   /** 工单 ID */
@@ -27,6 +27,7 @@ export function AdminTicketReplyForm({
   isClosed,
 }: AdminTicketReplyFormProps) {
   const router = useRouter();
+  const t = useTranslations("Support");
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,7 +38,7 @@ export function AdminTicketReplyForm({
     e.preventDefault();
 
     if (!content.trim()) {
-      toast.error("请输入回复内容");
+      toast.error(t("toasts.replyRequired"));
       return;
     }
 
@@ -50,14 +51,14 @@ export function AdminTicketReplyForm({
       });
 
       if (result?.data) {
-        toast.success("回复成功");
+        toast.success(t("toasts.replySent"));
         setContent("");
         router.refresh();
       } else if (result?.serverError) {
         toast.error(result.serverError);
       }
     } catch (error) {
-      toast.error("回复失败，请重试");
+      toast.error(t("toasts.replyFailed"));
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -68,7 +69,7 @@ export function AdminTicketReplyForm({
     return (
       <Card>
         <CardContent className="py-6 text-center text-muted-foreground">
-          此工单已关闭，无法添加新回复
+          {t("detail.closedAdmin")}
         </CardContent>
       </Card>
     );
@@ -77,12 +78,12 @@ export function AdminTicketReplyForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>回复用户</CardTitle>
+        <CardTitle>{t("reply.adminTitle")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Textarea
-            placeholder="输入您的回复..."
+            placeholder={t("reply.adminPlaceholder")}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={4}
@@ -90,7 +91,7 @@ export function AdminTicketReplyForm({
           />
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              {content.length}/5000 字符
+              {t("reply.counter", { count: content.length })}
             </p>
             <Button type="submit" disabled={isLoading || !content.trim()}>
               {isLoading ? (
@@ -98,7 +99,7 @@ export function AdminTicketReplyForm({
               ) : (
                 <Send className="mr-2 h-4 w-4" />
               )}
-              发送回复
+              {t("reply.adminSubmit")}
             </Button>
           </div>
         </form>

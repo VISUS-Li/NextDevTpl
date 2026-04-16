@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 /**
  * 存储 URL 工具函数
  *
@@ -61,6 +63,62 @@ export function getAvatarUrl(image: string | null | undefined): string | undefin
   // 否则是存储键名，转换为 image-proxy URL
   const avatarsBucket = process.env.NEXT_PUBLIC_AVATARS_BUCKET_NAME ?? "avatars";
   return `/image-proxy/${avatarsBucket}/${image}`;
+}
+
+/**
+ * 生成供 AI 上游访问的代理链接签名。
+ */
+function signStorageAssetPayload(bucket: string, key: string, expires: number) {
+  const secret =
+    process.env.STORAGE_ASSET_PROXY_SECRET ||
+    process.env.CONFIG_SECRET_KEY ||
+    process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error("缺少 STORAGE_ASSET_PROXY_SECRET 或 CONFIG_SECRET_KEY");
+  }
+  return createHmac("sha256", secret)
+    .update(`${bucket}\n${key}\n${expires}`)
+    .digest("hex");
+}
+
+/**
+ * 构造 AI 资产代理地址。
+ */
+export function getStorageAssetProxyUrl(
+  bucket: string,
+  key: string,
+  expiresIn: number = 3600
+) {
+  const baseUrl =
+    process.env.STORAGE_AI_PROXY_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+  const expires = Math.floor(Date.now() / 1000) + expiresIn;
+  const signature = signStorageAssetPayload(bucket, key, expires);
+  const url = new URL("/api/platform/storage/object", baseUrl);
+  url.searchParams.set("bucket", bucket);
+  url.searchParams.set("key", key);
+  url.searchParams.set("expires", String(expires));
+  url.searchParams.set("signature", signature);
+  return url.toString();
+}
+
+/**
+ * 校验 AI 资产代理签名。
+ */
+export function verifyStorageAssetSignature(
+  bucket: string,
+  key: string,
+  expires: number,
+  signature: string
+) {
+  if (!Number.isFinite(expires) || expires <= 0) {
+    return false;
+  }
+  if (expires < Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  return signStorageAssetPayload(bucket, key, expires) === signature;
 }
 
 /**

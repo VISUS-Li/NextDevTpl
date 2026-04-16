@@ -48,6 +48,13 @@
 }
 
 :root {
+  --font-geist-sans:
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans SC", sans-serif;
+  --font-geist-mono:
+    "SFMono-Regular", "JetBrains Mono", "Cascadia Code", "Fira Code",
+    "Courier New", monospace;
+
   /* Linear-style: smaller radius, more restrained */
   --radius: 0.375rem;
 

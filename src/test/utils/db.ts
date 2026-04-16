@@ -5,9 +5,11 @@
  * 使用 @neondatabase/serverless 的 WebSocket 模式以支持事务
  */
 
-import { neonConfig, Pool } from "@neondatabase/serverless";
-import { eq, inArray, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { neonConfig, Pool as NeonPool } from "@neondatabase/serverless";
+import { eq, inArray, or, sql } from "drizzle-orm";
+import { drizzle as drizzleNeonWs } from "drizzle-orm/neon-serverless";
+import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import ws from "ws";
 
 import * as schema from "@/db/schema";
@@ -19,7 +21,7 @@ neonConfig.webSocketConstructor = ws;
 // 数据库连接
 // ============================================
 
-let pool: Pool | null = null;
+let pool: NeonPool | Pool | null = null;
 
 /**
  * 获取测试数据库连接字符串
@@ -38,12 +40,25 @@ function getTestDatabaseUrl(): string {
 
 /**
  * 创建测试数据库实例
- * 使用 neon-serverless 驱动 (WebSocket) 以支持事务
+ *
+ * 与正式环境保持一致：
+ * - Neon URL 使用 WebSocket 驱动
+ * - 本地或标准 PostgreSQL 使用 node-postgres
  */
 function createTestDb() {
 	const databaseUrl = getTestDatabaseUrl();
-	pool = new Pool({ connectionString: databaseUrl });
-	return drizzle(pool, { schema });
+	const isNeon = databaseUrl.includes("neon.tech");
+
+	if (isNeon) {
+		neonConfig.webSocketConstructor = ws;
+		const neonPool = new NeonPool({ connectionString: databaseUrl });
+		pool = neonPool;
+		return drizzleNeonWs(neonPool, { schema });
+	}
+
+	const pgPool = new Pool({ connectionString: databaseUrl });
+	pool = pgPool;
+	return drizzlePg(pgPool, { schema });
 }
 
 /**
@@ -70,6 +85,142 @@ export async function closeTestDb() {
  */
 export async function cleanupUserData(userId: string) {
 	// 按外键依赖顺序删除
+	const orderIds = await testDb
+		.select({ id: schema.salesOrder.id })
+		.from(schema.salesOrder)
+		.where(eq(schema.salesOrder.userId, userId));
+
+	const commissionEventIds = await testDb
+		.select({ id: schema.commissionEvent.id })
+		.from(schema.commissionEvent)
+		.where(eq(schema.commissionEvent.triggerUserId, userId));
+
+	await testDb
+		.delete(schema.commissionLedger)
+		.where(eq(schema.commissionLedger.userId, userId));
+
+	await testDb
+		.delete(schema.withdrawalRequest)
+		.where(eq(schema.withdrawalRequest.userId, userId));
+
+	await testDb
+		.delete(schema.commissionBalance)
+		.where(eq(schema.commissionBalance.userId, userId));
+
+	await testDb
+		.delete(schema.commissionRecord)
+		.where(eq(schema.commissionRecord.beneficiaryUserId, userId));
+
+	if (commissionEventIds.length > 0) {
+		await testDb
+			.delete(schema.commissionRecord)
+			.where(
+				inArray(
+					schema.commissionRecord.eventId,
+					commissionEventIds.map((event) => event.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.commissionEvent)
+		.where(eq(schema.commissionEvent.triggerUserId, userId));
+
+	if (orderIds.length > 0) {
+		const orderCommissionEvents = await testDb
+			.select({ id: schema.commissionEvent.id })
+			.from(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		if (orderCommissionEvents.length > 0) {
+			await testDb
+				.delete(schema.commissionRecord)
+				.where(
+					inArray(
+						schema.commissionRecord.eventId,
+						orderCommissionEvents.map((event) => event.id)
+					)
+				);
+		}
+
+		await testDb
+			.delete(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		await testDb
+			.delete(schema.salesAfterSalesEvent)
+			.where(
+				inArray(
+					schema.salesAfterSalesEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		await testDb
+			.delete(schema.salesOrderItem)
+			.where(
+				inArray(
+					schema.salesOrderItem.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.salesOrder)
+		.where(eq(schema.salesOrder.userId, userId));
+
+	await testDb
+		.delete(schema.distributionAttribution)
+		.where(
+			or(
+				eq(schema.distributionAttribution.userId, userId),
+				eq(schema.distributionAttribution.agentUserId, userId)
+			)
+		);
+
+	await testDb
+		.delete(schema.distributionReferralCode)
+		.where(eq(schema.distributionReferralCode.agentUserId, userId));
+
+	await testDb
+		.delete(schema.distributionProfile)
+		.where(eq(schema.distributionProfile.userId, userId));
+
+	await testDb
+		.delete(schema.aiBillingRecord)
+		.where(eq(schema.aiBillingRecord.userId, userId));
+
+	const aiRequests = await testDb
+		.select({ requestId: schema.aiRequestLog.requestId })
+		.from(schema.aiRequestLog)
+		.where(eq(schema.aiRequestLog.userId, userId));
+
+	if (aiRequests.length > 0) {
+		await testDb
+			.delete(schema.aiRequestAttempt)
+			.where(
+				inArray(
+					schema.aiRequestAttempt.requestId,
+					aiRequests.map((item) => item.requestId)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.aiRequestLog)
+		.where(eq(schema.aiRequestLog.userId, userId));
+
 	await testDb
 		.delete(schema.creditsTransaction)
 		.where(eq(schema.creditsTransaction.userId, userId));
@@ -103,6 +254,119 @@ export async function cleanupTestUsers(userIds: string[]) {
 
 	// 按外键依赖顺序删除
 
+	// 0. 清理统一订单
+	const orderIds = await testDb
+		.select({ id: schema.salesOrder.id })
+		.from(schema.salesOrder)
+		.where(inArray(schema.salesOrder.userId, userIds));
+
+	const commissionEventIds = await testDb
+		.select({ id: schema.commissionEvent.id })
+		.from(schema.commissionEvent)
+		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+
+	await testDb
+		.delete(schema.commissionLedger)
+		.where(inArray(schema.commissionLedger.userId, userIds));
+
+	await testDb
+		.delete(schema.withdrawalRequest)
+		.where(inArray(schema.withdrawalRequest.userId, userIds));
+
+	await testDb
+		.delete(schema.commissionBalance)
+		.where(inArray(schema.commissionBalance.userId, userIds));
+
+	await testDb
+		.delete(schema.commissionRecord)
+		.where(inArray(schema.commissionRecord.beneficiaryUserId, userIds));
+
+	if (commissionEventIds.length > 0) {
+		await testDb
+			.delete(schema.commissionRecord)
+			.where(
+				inArray(
+					schema.commissionRecord.eventId,
+					commissionEventIds.map((event) => event.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.commissionEvent)
+		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+
+	if (orderIds.length > 0) {
+		const orderCommissionEvents = await testDb
+			.select({ id: schema.commissionEvent.id })
+			.from(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		if (orderCommissionEvents.length > 0) {
+			await testDb
+				.delete(schema.commissionRecord)
+				.where(
+					inArray(
+						schema.commissionRecord.eventId,
+						orderCommissionEvents.map((event) => event.id)
+					)
+				);
+		}
+
+		await testDb
+			.delete(schema.commissionEvent)
+			.where(
+				inArray(
+					schema.commissionEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		await testDb
+			.delete(schema.salesAfterSalesEvent)
+			.where(
+				inArray(
+					schema.salesAfterSalesEvent.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+
+		await testDb
+			.delete(schema.salesOrderItem)
+			.where(
+				inArray(
+					schema.salesOrderItem.orderId,
+					orderIds.map((order) => order.id)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.salesOrder)
+		.where(inArray(schema.salesOrder.userId, userIds));
+
+	await testDb
+		.delete(schema.distributionAttribution)
+		.where(
+			or(
+				inArray(schema.distributionAttribution.userId, userIds),
+				inArray(schema.distributionAttribution.agentUserId, userIds)
+			)
+		);
+
+	await testDb
+		.delete(schema.distributionReferralCode)
+		.where(inArray(schema.distributionReferralCode.agentUserId, userIds));
+
+	await testDb
+		.delete(schema.distributionProfile)
+		.where(inArray(schema.distributionProfile.userId, userIds));
+
 	// 1. 清理工单消息（依赖 ticket 和 user）
 	await testDb
 		.delete(schema.ticketMessage)
@@ -114,6 +378,30 @@ export async function cleanupTestUsers(userIds: string[]) {
 		.where(inArray(schema.ticket.userId, userIds));
 
 	// 3. 清理积分相关
+	await testDb
+		.delete(schema.aiBillingRecord)
+		.where(inArray(schema.aiBillingRecord.userId, userIds));
+
+	const aiRequestIds = await testDb
+		.select({ requestId: schema.aiRequestLog.requestId })
+		.from(schema.aiRequestLog)
+		.where(inArray(schema.aiRequestLog.userId, userIds));
+
+	if (aiRequestIds.length > 0) {
+		await testDb
+			.delete(schema.aiRequestAttempt)
+			.where(
+				inArray(
+					schema.aiRequestAttempt.requestId,
+					aiRequestIds.map((item) => item.requestId)
+				)
+			);
+	}
+
+	await testDb
+		.delete(schema.aiRequestLog)
+		.where(inArray(schema.aiRequestLog.userId, userIds));
+
 	await testDb
 		.delete(schema.creditsTransaction)
 		.where(inArray(schema.creditsTransaction.userId, userIds));

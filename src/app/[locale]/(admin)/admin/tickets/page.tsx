@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import { ticket, user } from "@/db/schema";
 import {
@@ -53,7 +52,10 @@ export default async function AdminTicketsPage() {
       closed: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
     };
     return (
-      <Badge className={colorMap[status] || colorMap.closed} variant="secondary">
+      <Badge
+        className={colorMap[status] || colorMap.closed}
+        variant="secondary"
+      >
         {statusConfig?.label || status}
       </Badge>
     );
@@ -71,7 +73,10 @@ export default async function AdminTicketsPage() {
       high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
     };
     return (
-      <Badge className={colorMap[priority] || colorMap.medium} variant="secondary">
+      <Badge
+        className={colorMap[priority] || colorMap.medium}
+        variant="secondary"
+      >
         {priorityConfig?.label || priority}
       </Badge>
     );
@@ -109,9 +114,7 @@ export default async function AdminTicketsPage() {
       {/* 页面标题 */}
       <div>
         <h2 className="text-2xl font-bold tracking-tight">工单管理</h2>
-        <p className="text-muted-foreground">
-          查看和处理用户提交的支持工单
-        </p>
+        <p className="text-muted-foreground">查看和处理用户提交的支持工单</p>
       </div>
 
       {/* 统计信息 */}
@@ -166,7 +169,7 @@ export default async function AdminTicketsPage() {
             </div>
           ) : (
             <div className="relative overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="hidden w-full text-sm text-left md:table">
                 <thead className="text-xs uppercase bg-muted/50">
                   <tr>
                     <th className="px-4 py-3">工单主题</th>
@@ -215,7 +218,9 @@ export default async function AdminTicketsPage() {
                       <td className="px-4 py-3 text-muted-foreground">
                         {getCategoryLabel(t.category)}
                       </td>
-                      <td className="px-4 py-3">{getPriorityBadge(t.priority)}</td>
+                      <td className="px-4 py-3">
+                        {getPriorityBadge(t.priority)}
+                      </td>
                       <td className="px-4 py-3">{getStatusBadge(t.status)}</td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {new Date(t.createdAt).toLocaleDateString("zh-CN")}
@@ -224,6 +229,55 @@ export default async function AdminTicketsPage() {
                   ))}
                 </tbody>
               </table>
+
+              {/* 移动端卡片列表 */}
+              <div className="space-y-3 md:hidden">
+                {tickets.map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/admin/tickets/${t.id}`}
+                    className="block rounded-lg border p-4 transition-colors hover:bg-muted/40"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{t.subject}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {getCategoryLabel(t.category)}
+                        </p>
+                      </div>
+                      {getStatusBadge(t.status)}
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage
+                          src={t.user?.image || undefined}
+                          alt={t.user?.name || "用户"}
+                        />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {t.user?.name ? getInitials(t.user.name) : "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {t.user?.name || "未知用户"}
+                        </p>
+                        <p className="break-all text-xs text-muted-foreground">
+                          {t.user?.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {getPriorityBadge(t.priority)}
+                      <span className="text-xs text-muted-foreground">
+                        创建于{" "}
+                        {new Date(t.createdAt).toLocaleDateString("zh-CN")}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>

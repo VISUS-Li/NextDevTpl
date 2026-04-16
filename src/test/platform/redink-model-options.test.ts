@@ -1,0 +1,318 @@
+import { eq } from "drizzle-orm";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+import { GET as getRedinkModelOptions } from "@/app/api/platform/redink/model-options/route";
+import { db } from "@/db";
+import { aiRelayModelBinding, aiRelayProvider, project } from "@/db/schema";
+import { encryptRelayApiKey } from "@/features/ai-gateway";
+import {
+  saveAdminToolConfig,
+  seedDefaultToolConfigProject,
+} from "@/features/tool-config";
+import { auth } from "@/lib/auth";
+import { cleanupTestUsers, createTestUser, generateTestId } from "../utils";
+
+const createdUserIds: string[] = [];
+const createdProviderIds: string[] = [];
+const createdBindingIds: string[] = [];
+const projectKey = generateTestId("redink_model_catalog");
+
+afterAll(async () => {
+  for (const bindingId of createdBindingIds) {
+    await db
+      .delete(aiRelayModelBinding)
+      .where(eq(aiRelayModelBinding.id, bindingId));
+  }
+
+  for (const providerId of createdProviderIds) {
+    await db.delete(aiRelayProvider).where(eq(aiRelayProvider.id, providerId));
+  }
+
+  await db.delete(project).where(eq(project.key, projectKey));
+  await cleanupTestUsers(createdUserIds);
+  vi.restoreAllMocks();
+}, 120_000);
+
+/**
+ * 模拟已登录会话。
+ */
+function mockSession(user: {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+}) {
+  vi.spyOn(auth.api, "getSession").mockResolvedValue({
+    session: {
+      id: `session_${user.id}`,
+      token: `token_${user.id}`,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    user,
+  } as never);
+}
+
+/**
+ * 准备测试所需的 AI 模型绑定。
+ */
+async function seedRelayBinding(
+  modelKey: string,
+  capabilities: string[],
+  priority: number
+) {
+  const providerId = crypto.randomUUID();
+  const bindingId = crypto.randomUUID();
+  createdProviderIds.push(providerId);
+  createdBindingIds.push(bindingId);
+
+  await db.insert(aiRelayProvider).values({
+    id: providerId,
+    key: `${modelKey}-provider-${priority}`,
+    name: `${modelKey} Provider`,
+    baseUrl: "https://mock.redink-model.test/v1",
+    apiKeyEncrypted: encryptRelayApiKey("redink-model-key"),
+    enabled: true,
+    priority,
+    weight: 100,
+    requestType: "chat",
+  });
+
+  await db.insert(aiRelayModelBinding).values({
+    id: bindingId,
+    providerId,
+    modelKey,
+    modelAlias: modelKey,
+    metadata: { capabilities },
+    enabled: true,
+    priority,
+    weight: 100,
+    costMode: "manual",
+    inputCostPer1k: 100,
+    outputCostPer1k: 200,
+    timeoutMs: 30000,
+  });
+}
+
+describe("RedInk model options API", () => {
+  it("显式 projectKey 首次访问时应自动补齐默认项目配置", async () => {
+    const freshProjectKey = generateTestId("redink_model_catalog_seed");
+    const normalUser = await createTestUser({
+      email: `1183989659+redink-model-seed-${Date.now()}@qq.com`,
+      name: "RedInk 首次访问用户",
+    });
+    createdUserIds.push(normalUser.id);
+
+    mockSession({
+      id: normalUser.id,
+      name: normalUser.name,
+      email: normalUser.email,
+      role: "user",
+    });
+
+    const response = await getRedinkModelOptions(
+      new Request(
+        `http://localhost:3000/api/platform/redink/model-options?projectKey=${freshProjectKey}`
+      )
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.text_generation).toEqual({
+      defaultModel: null,
+      options: [],
+    });
+    expect(data.image_generation.defaultModel).toBeNull();
+    expect(Array.isArray(data.image_generation.options)).toBe(true);
+
+    await db.delete(project).where(eq(project.key, freshProjectKey));
+  }, 120_000);
+
+  it("应只返回目录中配置且通过能力校验的用户可见模型子集", async () => {
+    const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const textModelKey = `redink-text-${testSuffix}`;
+    const imageModelKey = `redink-image-${testSuffix}`;
+    const adminUser = await createTestUser({
+      // 使用 QQ 邮箱前缀模拟真实测试用户，避免共享测试库邮箱冲突。
+      role: "admin",
+      email: `1183989659+redink-model-admin-${testSuffix}@qq.com`,
+      name: "RedInk 模型管理员",
+    });
+    const normalUser = await createTestUser({
+      // 这里保留用户提供的账号前缀，接口测试仍然模拟同一来源用户。
+      email: `1183989659+redink-model-user-${testSuffix}@qq.com`,
+      name: "RedInk 模型测试用户",
+    });
+    createdUserIds.push(adminUser.id, normalUser.id);
+
+    await seedDefaultToolConfigProject({ projectKey });
+    await seedRelayBinding(textModelKey, ["text"], 1);
+    await seedRelayBinding(
+      imageModelKey,
+      ["text", "image_input", "image_generation"],
+      2
+    );
+
+    await saveAdminToolConfig({
+      projectKey,
+      toolKey: "redink",
+      actorId: adminUser.id,
+      values: {
+        json1: [textModelKey, "ghost-model"],
+        json4: {
+          text_generation: {
+            defaultModel: textModelKey,
+            options: [
+              {
+                modelKey: textModelKey,
+                label: "标题文案标准模型",
+                description: "适合标题和文案",
+              },
+              {
+                modelKey: "ghost-model",
+                label: "无效模型",
+                description: "没有绑定不应该返回",
+              },
+            ],
+          },
+          image_generation: {
+            defaultModel: imageModelKey,
+            options: [
+              {
+                modelKey: imageModelKey,
+                label: "商品发布图模型",
+                description: "适合发布图出图",
+              },
+              {
+                modelKey: textModelKey,
+                label: "错误图片模型",
+                description: "没有出图能力不应该返回",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    mockSession({
+      id: normalUser.id,
+      name: normalUser.name,
+      email: normalUser.email,
+      role: "user",
+    });
+
+    const response = await getRedinkModelOptions(
+      new Request(
+        `http://localhost:3000/api/platform/redink/model-options?projectKey=${projectKey}`
+      )
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.text_generation).toEqual({
+      defaultModel: textModelKey,
+      options: [
+        {
+          modelKey: textModelKey,
+          label: "标题文案标准模型",
+          description: "适合标题和文案",
+        },
+      ],
+    });
+    expect(data.image_generation).toEqual({
+      defaultModel: imageModelKey,
+      options: [
+        {
+          modelKey: imageModelKey,
+          label: "商品发布图模型",
+          description: "适合发布图出图",
+        },
+      ],
+    });
+  }, 120_000);
+
+  it("应允许目录中的图片模型绕过 json1 白名单直接返回", async () => {
+    const testSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const adminUser = await createTestUser({
+      role: "admin",
+      email: `1183989659+redink-model-admin2-${testSuffix}@qq.com`,
+      name: "RedInk 模型管理员 2",
+    });
+    const normalUser = await createTestUser({
+      email: `1183989659+redink-model-user2-${testSuffix}@qq.com`,
+      name: "RedInk 模型测试用户 2",
+    });
+    createdUserIds.push(adminUser.id, normalUser.id);
+
+    await seedDefaultToolConfigProject({ projectKey });
+    await seedRelayBinding("nano-banana", ["text", "image_generation"], 3);
+
+    await saveAdminToolConfig({
+      projectKey,
+      toolKey: "redink",
+      actorId: adminUser.id,
+      values: {
+        json1: ["gpt-4o-mini"],
+        json4: {
+          text_generation: {
+            defaultModel: null,
+            options: [],
+          },
+          image_generation: {
+            defaultModel: "nano-banana",
+            options: [
+              {
+                modelKey: "nano-banana",
+                label: "Nano Banana",
+                description: "图片模型应直接可见",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    mockSession({
+      id: normalUser.id,
+      name: normalUser.name,
+      email: normalUser.email,
+      role: "user",
+    });
+
+    const response = await getRedinkModelOptions(
+      new Request(
+        `http://localhost:3000/api/platform/redink/model-options?projectKey=${projectKey}`
+      )
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.image_generation).toEqual({
+      defaultModel: "nano-banana",
+      options: [
+        {
+          modelKey: "nano-banana",
+          label: "Nano Banana",
+          description: "图片模型应直接可见",
+        },
+      ],
+    });
+  }, 120_000);
+
+  it("未登录时应拒绝读取模型目录", async () => {
+    vi.spyOn(auth.api, "getSession").mockResolvedValue(null as never);
+
+    const response = await getRedinkModelOptions(
+      new Request("http://localhost:3000/api/platform/redink/model-options")
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.success).toBe(false);
+    expect(data.error).toBe("unauthorized");
+  }, 120_000);
+});

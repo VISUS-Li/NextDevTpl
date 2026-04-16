@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Coins, Ban, UserCheck, Loader2 } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Ban, Coins, Loader2, Search, UserCheck } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,15 +16,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAllUsersAction,
-  banUserAction,
   adminGrantCreditsAction,
+  banUserAction,
+  getAllUsersAction,
 } from "@/features/support/actions";
 import { UserRoleSelect } from "@/features/support/components";
-import { toast } from "sonner";
 
 /**
  * 用户类型定义
@@ -64,6 +64,7 @@ interface UserWithDetails {
  * - 手动充值积分
  */
 export default function AdminUsersPage() {
+  const t = useTranslations("Admin.users");
   const [users, setUsers] = useState<UserWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +72,9 @@ export default function AdminUsersPage() {
 
   // 封禁对话框状态
   const [banDialogOpen, setBanDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(
+    null
+  );
   const [banReason, setBanReason] = useState("");
   const [isBanning, setIsBanning] = useState(false);
 
@@ -84,25 +87,28 @@ export default function AdminUsersPage() {
   /**
    * 加载用户列表
    */
-  const loadUsers = async (query?: string) => {
-    setIsLoading(true);
-    try {
-      const result = await getAllUsersAction(query ? { query } : undefined);
-      if (result?.data?.users) {
-        setUsers(result.data.users as UserWithDetails[]);
+  const loadUsers = useCallback(
+    async (query?: string) => {
+      setIsLoading(true);
+      try {
+        const result = await getAllUsersAction(query ? { query } : undefined);
+        if (result?.data?.users) {
+          setUsers(result.data.users as UserWithDetails[]);
+        }
+      } catch (error) {
+        toast.error(t("toasts.loadFailed"));
+        console.error(error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      toast.error("加载用户列表失败");
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [t]
+  );
 
   // 初始加载
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
   /**
    * 处理搜索
@@ -168,13 +174,13 @@ export default function AdminUsersPage() {
     if (!selectedUser) return;
 
     const amount = parseInt(grantAmount, 10);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error("请输入有效的积分数量");
+    if (Number.isNaN(amount) || amount <= 0) {
+      toast.error(t("toasts.invalidAmount"));
       return;
     }
 
     if (!grantReason.trim()) {
-      toast.error("请填写充值原因");
+      toast.error(t("toasts.reasonRequired"));
       return;
     }
 
@@ -220,20 +226,35 @@ export default function AdminUsersPage() {
     if (!sub) {
       return (
         <Badge variant="secondary" className="bg-gray-100 text-gray-800">
-          无订阅
+          {t("subscription.none")}
         </Badge>
       );
     }
 
     const statusMap: Record<string, { label: string; color: string }> = {
-      active: { label: "订阅中", color: "bg-green-100 text-green-800" },
-      canceled: { label: "已取消", color: "bg-yellow-100 text-yellow-800" },
-      past_due: { label: "逾期", color: "bg-red-100 text-red-800" },
-      incomplete: { label: "未完成", color: "bg-gray-100 text-gray-800" },
+      active: {
+        label: t("subscription.active"),
+        color: "bg-green-100 text-green-800",
+      },
+      canceled: {
+        label: t("subscription.canceled"),
+        color: "bg-yellow-100 text-yellow-800",
+      },
+      past_due: {
+        label: t("subscription.pastDue"),
+        color: "bg-red-100 text-red-800",
+      },
+      incomplete: {
+        label: t("subscription.incomplete"),
+        color: "bg-gray-100 text-gray-800",
+      },
     };
 
     // 获取配置，使用默认值避免 undefined
-    const defaultConfig = { label: "未完成", color: "bg-gray-100 text-gray-800" };
+    const defaultConfig = {
+      label: t("subscription.incomplete"),
+      color: "bg-gray-100 text-gray-800",
+    };
     const config = statusMap[sub.status] ?? defaultConfig;
     return (
       <Badge variant="secondary" className={config.color}>
@@ -254,17 +275,17 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       {/* 页面标题 */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">用户管理</h2>
-        <p className="text-muted-foreground">
-          查看和管理系统中的所有用户
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
+        <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
       {/* 统计信息 */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">总用户数</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.total")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalUsers}</div>
@@ -272,7 +293,9 @@ export default function AdminUsersPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">管理员</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.admins")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{adminCount}</div>
@@ -280,7 +303,9 @@ export default function AdminUsersPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">订阅用户</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.subscribers")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
@@ -290,7 +315,9 @@ export default function AdminUsersPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">已封禁</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("stats.banned")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{bannedCount}</div>
@@ -301,31 +328,35 @@ export default function AdminUsersPage() {
       {/* 搜索栏 */}
       <Card>
         <CardContent className="pt-6">
-          <form onSubmit={handleSearch} className="flex gap-4">
+          <form
+            onSubmit={handleSearch}
+            className="flex flex-col gap-3 sm:flex-row sm:gap-4"
+          >
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索邮箱或用户名..."
+                placeholder={t("search.placeholder")}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className="sm:w-auto">
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              搜索
+              {t("search.submit")}
             </Button>
             {searchQuery && (
               <Button
                 type="button"
                 variant="outline"
+                className="sm:w-auto"
                 onClick={() => {
                   setSearchInput("");
                   setSearchQuery("");
                   loadUsers();
                 }}
               >
-                清除
+                {t("search.clear")}
               </Button>
             )}
           </form>
@@ -336,10 +367,10 @@ export default function AdminUsersPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            用户列表
+            {t("list.title")}
             {searchQuery && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                搜索: "{searchQuery}"
+                {t("list.searching", { query: searchQuery })}
               </span>
             )}
           </CardTitle>
@@ -351,19 +382,19 @@ export default function AdminUsersPage() {
             </div>
           ) : users.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? "没有找到匹配的用户" : "暂无用户"}
+              {searchQuery ? t("list.emptySearch") : t("list.empty")}
             </div>
           ) : (
             <div className="relative overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="hidden w-full text-sm text-left md:table">
                 <thead className="text-xs uppercase bg-muted/50">
                   <tr>
-                    <th className="px-4 py-3">用户</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">积分</th>
-                    <th className="px-4 py-3">订阅</th>
-                    <th className="px-4 py-3">角色</th>
-                    <th className="px-4 py-3">操作</th>
+                    <th className="px-4 py-3">{t("table.user")}</th>
+                    <th className="px-4 py-3">{t("table.status")}</th>
+                    <th className="px-4 py-3">{t("table.credits")}</th>
+                    <th className="px-4 py-3">{t("table.subscription")}</th>
+                    <th className="px-4 py-3">{t("table.role")}</th>
+                    <th className="px-4 py-3">{t("table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,20 +422,22 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
                           {u.banned ? (
-                            <Badge variant="destructive">已封禁</Badge>
+                            <Badge variant="destructive">
+                              {t("status.banned")}
+                            </Badge>
                           ) : u.emailVerified ? (
                             <Badge
                               variant="secondary"
                               className="bg-green-100 text-green-800"
                             >
-                              已验证
+                              {t("status.verified")}
                             </Badge>
                           ) : (
                             <Badge
                               variant="secondary"
                               className="bg-yellow-100 text-yellow-800"
                             >
-                              未验证
+                              {t("status.unverified")}
                             </Badge>
                           )}
                         </div>
@@ -429,7 +462,7 @@ export default function AdminUsersPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => openGrantDialog(u)}
-                            title="充值积分"
+                            title={t("actions.grant")}
                           >
                             <Coins className="h-4 w-4" />
                           </Button>
@@ -437,7 +470,9 @@ export default function AdminUsersPage() {
                             size="sm"
                             variant={u.banned ? "default" : "destructive"}
                             onClick={() => openBanDialog(u)}
-                            title={u.banned ? "解封" : "封禁"}
+                            title={
+                              u.banned ? t("actions.unban") : t("actions.ban")
+                            }
                           >
                             {u.banned ? (
                               <UserCheck className="h-4 w-4" />
@@ -451,6 +486,102 @@ export default function AdminUsersPage() {
                   ))}
                 </tbody>
               </table>
+
+              {/* 移动端卡片列表 */}
+              <div className="space-y-3 md:hidden">
+                {users.map((u) => (
+                  <div key={u.id} className="rounded-lg border p-4">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={u.image || undefined} alt={u.name} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {getInitials(u.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{u.name}</span>
+                          {u.banned ? (
+                            <Badge variant="destructive">
+                              {t("status.banned")}
+                            </Badge>
+                          ) : u.emailVerified ? (
+                            <Badge
+                              variant="secondary"
+                              className="bg-green-100 text-green-800"
+                            >
+                              {t("status.verified")}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className="bg-yellow-100 text-yellow-800"
+                            >
+                              {t("status.unverified")}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 break-all text-xs text-muted-foreground">
+                          {u.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          {t("table.credits")}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Coins className="h-4 w-4 text-yellow-500" />
+                          <span className="font-medium">
+                            {u.credits?.balance ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          {t("table.subscription")}
+                        </p>
+                        {getSubscriptionBadge(u.subscription)}
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          {t("table.role")}
+                        </p>
+                        <UserRoleSelect userId={u.id} currentRole={u.role} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openGrantDialog(u)}
+                        title={t("actions.grant")}
+                      >
+                        <Coins className="mr-2 h-4 w-4" />
+                        {t("actions.grant")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={u.banned ? "default" : "destructive"}
+                        onClick={() => openBanDialog(u)}
+                        title={u.banned ? t("actions.unban") : t("actions.ban")}
+                      >
+                        {u.banned ? (
+                          <UserCheck className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Ban className="mr-2 h-4 w-4" />
+                        )}
+                        {u.banned
+                          ? t("actions.unbanUser")
+                          : t("actions.banUser")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
@@ -461,20 +592,26 @@ export default function AdminUsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedUser?.banned ? "解除封禁" : "封禁用户"}
+              {selectedUser?.banned
+                ? t("banDialog.unbanTitle")
+                : t("banDialog.banTitle")}
             </DialogTitle>
             <DialogDescription>
               {selectedUser?.banned
-                ? `确定要解除用户 ${selectedUser?.name} 的封禁吗？`
-                : `确定要封禁用户 ${selectedUser?.name} 吗？封禁后该用户将无法登录。`}
+                ? t("banDialog.unbanDescription", {
+                    name: selectedUser?.name ?? "",
+                  })
+                : t("banDialog.banDescription", {
+                    name: selectedUser?.name ?? "",
+                  })}
             </DialogDescription>
           </DialogHeader>
           {!selectedUser?.banned && (
             <div className="space-y-2">
-              <Label htmlFor="banReason">封禁原因 (可选)</Label>
+              <Label htmlFor="banReason">{t("banDialog.reason")}</Label>
               <Textarea
                 id="banReason"
-                placeholder="请输入封禁原因..."
+                placeholder={t("banDialog.reasonPlaceholder")}
                 value={banReason}
                 onChange={(e) => setBanReason(e.target.value)}
               />
@@ -486,7 +623,7 @@ export default function AdminUsersPage() {
               onClick={() => setBanDialogOpen(false)}
               disabled={isBanning}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               variant={selectedUser?.banned ? "default" : "destructive"}
@@ -494,7 +631,9 @@ export default function AdminUsersPage() {
               disabled={isBanning}
             >
               {isBanning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {selectedUser?.banned ? "解除封禁" : "确认封禁"}
+              {selectedUser?.banned
+                ? t("banDialog.confirmUnban")
+                : t("banDialog.confirmBan")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -504,18 +643,18 @@ export default function AdminUsersPage() {
       <Dialog open={grantDialogOpen} onOpenChange={setGrantDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>手动充值积分</DialogTitle>
+            <DialogTitle>{t("grantDialog.title")}</DialogTitle>
             <DialogDescription>
-              为用户 {selectedUser?.name} 充值积分
+              {t("grantDialog.description", { name: selectedUser?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="grantAmount">积分数量 *</Label>
+              <Label htmlFor="grantAmount">{t("grantDialog.amount")} *</Label>
               <Input
                 id="grantAmount"
                 type="number"
-                placeholder="请输入积分数量"
+                placeholder={t("grantDialog.amountPlaceholder")}
                 value={grantAmount}
                 onChange={(e) => setGrantAmount(e.target.value)}
                 min={1}
@@ -523,10 +662,10 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="grantReason">充值原因 *</Label>
+              <Label htmlFor="grantReason">{t("grantDialog.reason")} *</Label>
               <Textarea
                 id="grantReason"
-                placeholder="请输入充值原因 (如：客服补偿、活动奖励等)"
+                placeholder={t("grantDialog.reasonPlaceholder")}
                 value={grantReason}
                 onChange={(e) => setGrantReason(e.target.value)}
                 maxLength={200}
@@ -539,11 +678,11 @@ export default function AdminUsersPage() {
               onClick={() => setGrantDialogOpen(false)}
               disabled={isGranting}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleGrant} disabled={isGranting}>
               {isGranting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              确认充值
+              {t("grantDialog.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
