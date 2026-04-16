@@ -33,9 +33,9 @@ APP_BIND_HOST="${OVERRIDE_APP_BIND_HOST:-${APP_BIND_HOST:-127.0.0.1}}"
 APP_PORT="${OVERRIDE_APP_PORT:-${APP_PORT:-3000}}"
 SERVER_URL="${OVERRIDE_SERVER_URL:-${SERVER_URL:-https://platform.tripai.icu}}"
 REDINK_PUBLIC_URL="${OVERRIDE_REDINK_PUBLIC_URL:-${REDINK_PUBLIC_URL:-https://redink.tripai.icu}}"
-DOCKER_NETWORK="${OVERRIDE_DOCKER_NETWORK:-${DOCKER_NETWORK:-}}"
+DOCKER_NETWORK="${OVERRIDE_DOCKER_NETWORK:-${DOCKER_NETWORK:-tripai}}"
 LOCAL_STORAGE_VOLUME="${OVERRIDE_LOCAL_STORAGE_VOLUME:-${LOCAL_STORAGE_VOLUME:-nextdevtpl_storage}}"
-DB_HOST="${DB_HOST:-host.docker.internal}"
+DB_HOST="${DB_HOST:-postgres}"
 DB_NAME="${DB_NAME:-nextdevtpl}"
 DB_USER="${DB_USER:-postgres}"
 DB_PASSWORD="${DB_PASSWORD:-postgre4250}"
@@ -143,7 +143,8 @@ echo "当前容器状态："
 docker ps --filter "name=${CONTAINER_NAME}"
 
 echo "等待应用启动..."
-READY_URL="http://${APP_BIND_HOST}:${APP_PORT}"
+# 就绪检查走本机地址，公网监听地址只用于 Docker 端口发布。
+READY_URL="http://127.0.0.1:${APP_PORT}"
 for _ in $(seq 1 60); do
   if curl -fsS -I "${READY_URL}" >/dev/null 2>&1; then
     echo "应用已就绪: ${READY_URL}"
