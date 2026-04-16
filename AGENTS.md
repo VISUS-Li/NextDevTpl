@@ -14,9 +14,12 @@
 
 ## Git 流程
 
+- 当前 GitHub 仓库按独立仓库维护，不保留 fork 关系；如需跟进上游，只通过本地 `upstream` remote 手工同步
 - 验证成功后再执行 `git add` 和 `git commit`
 - 提交完成后再执行 `git push`
 - 未经验证的修改不得推送到远端
+- 当前仓库的 `upstream` 仅用于 `fetch`/`merge`/`rebase` 上游更新，绝不向 `upstream` 推送任何本地提交
+- 执行推送时默认只推 `origin`；若需要显式写远端，必须使用 `git push origin <branch>`
 - 当前机器的 GitHub 凭证文件在 `~/gh-token.txt`
 - 如果 HTTPS 推送失败，优先使用该 token 完成 `origin` 推送，不要重复假设本机没有凭证
 
