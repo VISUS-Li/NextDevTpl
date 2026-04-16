@@ -36,7 +36,7 @@ DEFAULTS = {
     "DB_HOST": "host.docker.internal",
     "DB_NAME": "nextdevtpl",
     "DB_USER": "postgres",
-    "DB_PASSWORD": "postgres",
+    "DB_PASSWORD": "postgre4250",
     "DB_PORT": "5432",
     "LOCAL_STORAGE_VOLUME": "nextdevtpl_storage",
 }
@@ -246,6 +246,7 @@ def ensure_env_file(path: Path, config: dict[str, str]) -> None:
     """生成并同步最小运行配置。"""
     existing = parse_env_file(path) if path.exists() else {}
     env_values = {
+        **existing,
         "NODE_ENV": "production",
         "DATABASE_URL": resolve_database_url(config),
         "BETTER_AUTH_SECRET": existing.get("BETTER_AUTH_SECRET", secrets.token_hex(32)),

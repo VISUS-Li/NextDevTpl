@@ -51,4 +51,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000), { redirect: 'manual' }).then((response) => { if (![200, 307, 308].includes(response.status)) process.exit(1); }).catch(() => process.exit(1))"
 
-CMD ["sh", "-c", "pnpm exec drizzle-kit push --force && pnpm start -H 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "node scripts/ensure-postgres-database.mjs && pnpm exec drizzle-kit migrate && pnpm start -H 0.0.0.0 -p ${PORT:-3000}"]

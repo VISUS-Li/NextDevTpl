@@ -38,7 +38,7 @@ LOCAL_STORAGE_VOLUME="${OVERRIDE_LOCAL_STORAGE_VOLUME:-${LOCAL_STORAGE_VOLUME:-n
 DB_HOST="${DB_HOST:-host.docker.internal}"
 DB_NAME="${DB_NAME:-nextdevtpl}"
 DB_USER="${DB_USER:-postgres}"
-DB_PASSWORD="${DB_PASSWORD:-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-postgre4250}"
 DB_PORT="${DB_PORT:-5432}"
 DATABASE_URL="${OVERRIDE_DATABASE_URL:-${DATABASE_URL:-postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}}}"
 VERSION="${1:-latest}"
@@ -47,7 +47,7 @@ SKIP_PULL="${SKIP_PULL:-false}"
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env.release}"
 
 ensure_env_file() {
-  local env_dir existing_auth_secret existing_config_secret
+  local env_dir existing_auth_secret existing_config_secret temp_file
   env_dir="$(dirname "${ENV_FILE}")"
   mkdir -p "${env_dir}"
   existing_auth_secret="$(grep -E '^BETTER_AUTH_SECRET=' "${ENV_FILE}" 2>/dev/null | head -n1 | cut -d= -f2- || true)"
@@ -58,7 +58,8 @@ ensure_env_file() {
   if [ -z "${existing_config_secret}" ]; then
     existing_config_secret="$(openssl rand -hex 32)"
   fi
-  cat > "${ENV_FILE}" <<EOF
+  temp_file="$(mktemp)"
+  cat > "${temp_file}" <<EOF
 NODE_ENV=production
 DATABASE_URL=${DATABASE_URL}
 BETTER_AUTH_SECRET=${existing_auth_secret}
@@ -69,6 +70,10 @@ REDINK_PUBLIC_URL=${REDINK_PUBLIC_URL}
 STORAGE_PROVIDER=local
 LOCAL_STORAGE_DIR=/app/.local-storage
 EOF
+  if [ -f "${ENV_FILE}" ]; then
+    grep -Ev '^(NODE_ENV|DATABASE_URL|BETTER_AUTH_SECRET|CONFIG_SECRET_KEY|BETTER_AUTH_URL|NEXT_PUBLIC_APP_URL|REDINK_PUBLIC_URL|STORAGE_PROVIDER|LOCAL_STORAGE_DIR)=' "${ENV_FILE}" >> "${temp_file}" || true
+  fi
+  mv "${temp_file}" "${ENV_FILE}"
   echo "已同步部署环境文件: ${ENV_FILE}"
 }
 
