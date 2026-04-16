@@ -168,12 +168,22 @@ export async function signInWithEmail(
 export async function signUpWithEmail(
   email: string,
   password: string,
-  name: string
+  name: string,
+  options?: {
+    captchaToken?: string;
+  }
 ) {
   return signUp.email({
     email,
     password,
     name,
+    fetchOptions: options?.captchaToken
+      ? {
+          headers: {
+            "x-captcha-response": options.captchaToken,
+          },
+        }
+      : undefined,
   });
 }
 

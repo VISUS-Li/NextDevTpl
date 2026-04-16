@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     title: siteConfig.name,
     description: siteConfig.description,
     images: [siteConfig.ogImage],
-    creator: "@nextdevtpl",
+    creator: "@tripai",
   },
   manifest: "/site.webmanifest",
 };

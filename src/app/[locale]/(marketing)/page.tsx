@@ -20,12 +20,12 @@ export async function generateMetadata({
   const isZh = locale === "zh";
 
   const title = isZh
-    ? "Trip 旅行者 AI - 让创意触手可及"
-    : "Trip Traveler AI - Make Ideas Reachable";
+    ? "tripai - 让创意触手可及"
+    : "tripai - Make Ideas Reachable";
 
   const description = isZh
-    ? "Trip 旅行者 AI 提供面向创作者与团队的专业级 AI 工具集，覆盖文案、视频与 3D 创作流程。"
-    : "Trip Traveler AI offers professional AI creation tools for copy, video, and 3D production workflows.";
+    ? "tripai 提供面向创作者与团队的专业级 AI 工具集，覆盖文案、视频与 3D 创作流程。"
+    : "tripai offers professional AI creation tools for copy, video, and 3D production workflows.";
 
   return {
     title,

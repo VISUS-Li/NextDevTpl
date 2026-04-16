@@ -5,7 +5,7 @@ import { getAdminDistributionOverview } from "@/features/distribution/queries";
  * 管理端分销页面元数据
  */
 export const metadata = {
-  title: "Distribution Admin | Trip",
+  title: "Distribution Admin | tripai",
   description: "管理分销、佣金与提现审核",
 };
 

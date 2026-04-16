@@ -39,7 +39,7 @@ describe("AdminToolConfigView", () => {
         data={{
           project: {
             key: "nextdevtpl",
-            name: "NextDevTpl",
+            name: "tripai",
             configRevision: 8,
           },
           toolConfigs: [
@@ -192,7 +192,7 @@ describe("AdminToolConfigView", () => {
         data={{
           project: {
             key: "nextdevtpl",
-            name: "NextDevTpl",
+            name: "tripai",
             configRevision: 8,
           },
           toolConfigs: [

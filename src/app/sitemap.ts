@@ -2,13 +2,20 @@ import type { MetadataRoute } from "next";
 
 import { siteConfig } from "@/config";
 import { getAllPseoParams } from "@/features/pseo/lib/pseo-data";
-import { getAllBlogSlugs, getAllLegalSlugs } from "@/lib/source";
+import { getAllLegalSlugs } from "@/lib/source";
 
 /** Supported locales */
 const locales = ["en", "zh"] as const;
 
 /** Solution types */
-const solutionTypes = ["text", "pdf", "url", "video", "word", "markdown"] as const;
+const solutionTypes = [
+  "text",
+  "pdf",
+  "url",
+  "video",
+  "word",
+  "markdown",
+] as const;
 
 /**
  * 动态生成 sitemap.xml
@@ -23,7 +30,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Static pages that exist for each locale
   const staticPaths = [
     "", // homepage
-    "/blog",
     "/pseo",
   ];
 
@@ -47,15 +53,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }))
   );
 
-  // Blog posts (dynamic)
-  const blogSlugs = getAllBlogSlugs();
-  const blogRoutes = blogSlugs.map(({ locale, slug }) => ({
-    url: `${baseUrl}/${locale}/blog/${slug}`,
-    lastModified: now,
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-  }));
-
   // Legal pages (dynamic)
   const legalSlugs = getAllLegalSlugs();
   const legalRoutes = legalSlugs.map(({ locale, slug }) => ({
@@ -73,11 +70,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
-  return [
-    ...staticRoutes,
-    ...solutionRoutes,
-    ...blogRoutes,
-    ...legalRoutes,
-    ...pseoRoutes,
-  ];
+  return [...staticRoutes, ...solutionRoutes, ...legalRoutes, ...pseoRoutes];
 }

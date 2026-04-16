@@ -134,7 +134,7 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Reset your password - Trip",
+        subject: "Reset your password - tripai",
         react: ResetPasswordEmail({
           resetUrl: url,
           name: user.name || "there",
@@ -152,7 +152,7 @@ export const auth = betterAuth({
     sendVerificationEmail: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Verify your email - Trip",
+        subject: "Verify your email - tripai",
         react: VerifyEmailEmail({
           verifyUrl: url,
           name: user.name || "there",
@@ -202,14 +202,14 @@ export const auth = betterAuth({
 
   /**
    * 登录前的人机校验
-   * 仅拦邮箱密码登录，避免影响现有 OAuth 流程
+   * 仅拦邮箱密码登录和注册，避免影响现有 OAuth 流程。
    */
   plugins: turnstileEnabled
     ? [
         captcha({
           provider: "cloudflare-turnstile",
           secretKey: turnstileSecretKey || "",
-          endpoints: ["/sign-in/email"],
+          endpoints: ["/sign-in/email", "/sign-up/email"],
         }),
       ]
     : [],

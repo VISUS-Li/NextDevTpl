@@ -39,7 +39,7 @@ describe("UserToolConfigSection", () => {
         data={{
           project: {
             key: "nextdevtpl",
-            name: "NextDevTpl",
+            name: "tripai",
           },
           toolConfigs: [
             {

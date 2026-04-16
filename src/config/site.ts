@@ -5,11 +5,10 @@
  */
 export const siteConfig = {
   /** 站点名称 */
-  name: "Trip 旅行者 AI",
+  name: "tripai",
 
   /** 站点描述 */
-  description:
-    "Trip Traveler AI offers professional AI creation tools for copy, video, and 3D production workflows.",
+  description: "tripai 提供面向创作者与团队的 AI 创作工具。",
 
   /** 站点 URL (生产环境) */
   url: process.env.NEXT_PUBLIC_APP_URL || "https://example.com",
@@ -19,21 +18,21 @@ export const siteConfig = {
 
   /** 作者信息 */
   author: {
-    name: "Trip Traveler AI Team",
-    url: "https://example.com",
-    email: "support@trip.local",
+    name: "tripai Team",
+    url: "https://tripai.icu",
+    email: "support@tripai.icu",
   },
 
   /** 社交链接 */
   links: {
     twitter: "https://twitter.com/trip",
-    github: "https://github.com/VISUS-Li/NextDevTpl",
+    github: "",
     discord: "https://discord.gg/trip",
   },
 
   /** 关键词 (SEO) */
   keywords: [
-    "Trip Traveler AI",
+    "tripai",
     "AI creation tools",
     "copy generation",
     "video generation",

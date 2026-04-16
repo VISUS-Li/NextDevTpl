@@ -164,4 +164,35 @@ describe("Tool config service", () => {
     ).toBe(true);
     expect(auditLogs.length).toBeGreaterThan(0);
   });
+
+  it("应该支持管理员设置新用户注册奖励积分", async () => {
+    const admin = await createTestUser({ role: "admin" });
+    createdUserIds.push(admin.id);
+
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
+
+    const initialConfig = await getResolvedToolConfig({
+      projectKey,
+      toolKey: "platform",
+    });
+    expect(initialConfig.config.config1).toBe(200);
+
+    await saveAdminToolConfig({
+      projectKey,
+      toolKey: "platform",
+      actorId: admin.id,
+      values: {
+        config1: 80,
+      },
+    });
+
+    const updatedConfig = await getResolvedToolConfig({
+      projectKey,
+      toolKey: "platform",
+    });
+    expect(updatedConfig.config.config1).toBe(80);
+  });
 });

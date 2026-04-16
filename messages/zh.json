@@ -1,12 +1,12 @@
 {
   "HomePage": {
-    "title": "Trip",
+    "title": "tripai",
     "subtitle": "工具销售官网",
     "description": "展示、销售和管理数字工具与订阅服务的官网。"
   },
   "Hero": {
     "badge": "全新：支持工具订阅与销售",
-    "title1": "Trip 工具官网",
+    "title1": "tripai 工具官网",
     "titleHighlight": "助力您的下一个产品",
     "subtitle": "使用现成的认证、支付和管理后台能力，快速搭建一个做工具销售的网站。",
     "getStarted": "立即注册",
@@ -52,11 +52,11 @@
   "HowItWorks": {
     "label": "使用流程",
     "title": "三步启动你的 SaaS",
-    "subtitle": "从模板到上线，只需要几步简单操作。",
+    "subtitle": "从平台到上线，只需要几步简单操作。",
     "steps": {
       "upload": {
         "title": "克隆 & 配置",
-        "description": "克隆模板仓库，配置环境变量（数据库、认证密钥等），运行 pnpm install 安装依赖。"
+        "description": "克隆平台仓库，配置环境变量（数据库、认证密钥等），运行 pnpm install 安装依赖。"
       },
       "generate": {
         "title": "定制 & 开发",
@@ -75,7 +75,7 @@
   "UseCases": {
     "label": "适用场景",
     "title": "适合各种 SaaS 产品",
-    "subtitle": "NextDevTpl 模板适用于多种类型的 SaaS 产品和业务场景。",
+    "subtitle": "tripai 平台适用于多种类型的 SaaS 产品和业务场景。",
     "items": {
       "students": {
         "title": "AI 产品",
@@ -106,15 +106,15 @@
   "Testimonials": {
     "label": "用户评价",
     "title": "听听开发者们怎么说",
-    "subtitle": "来自不同领域的开发者正在使用 NextDevTpl 模板快速构建产品。",
+    "subtitle": "来自不同领域的开发者正在使用 tripai 平台快速构建产品。",
     "items": [
       {
-        "content": "用这个模板两周就上线了一个 AI 写作工具，认证、支付、积分系统全都不用自己写，节省了至少一个月的开发时间。",
+        "content": "用这个平台两周就上线了一个 AI 写作工具，认证、支付、积分系统全都不用自己写，节省了至少一个月的开发时间。",
         "author": "林小雨",
         "role": "独立开发者"
       },
       {
-        "content": "之前自己搭 SaaS 框架花了三个月，用了这个模板后发现认证、订阅、积分这些通用模块的完成度远超预期，代码质量也很高。",
+        "content": "之前自己搭 SaaS 框架花了三个月，用了这个平台后发现认证、订阅、积分这些通用模块的完成度远超预期，代码质量也很高。",
         "author": "张明远",
         "role": "全栈工程师"
       },
@@ -143,31 +143,31 @@
   "FAQ": {
     "label": "常见问题",
     "title": "你可能想了解的",
-    "subtitle": "关于 NextDevTpl 模板的常见问题与解答。",
+    "subtitle": "关于 tripai 平台的常见问题与解答。",
     "items": [
       {
-        "question": "NextDevTpl 是什么？",
-        "answer": "NextDevTpl 是一个基于 Next.js 15、React 19、TypeScript 的生产就绪 SaaS 模板。内置认证（Better Auth）、支付（Creem）、积分系统、异步任务处理（Inngest）、国际化、管理后台等完整功能，帮助开发者快速启动 SaaS 项目。"
+        "question": "tripai 是什么？",
+        "answer": "tripai 是一个基于 Next.js 15、React 19、TypeScript 的生产就绪 AI 创作平台。内置认证（Better Auth）、支付（Creem）、积分系统、异步任务处理（Inngest）、国际化、管理后台等完整功能，帮助开发者快速启动 SaaS 项目。"
       },
       {
         "question": "需要哪些技术基础？",
-        "answer": "你需要熟悉 React、TypeScript 和 Next.js 的基础知识。模板使用 Tailwind CSS 做样式，Drizzle ORM 做数据库操作，了解这些技术栈会帮助你更快上手。"
+        "answer": "你需要熟悉 React、TypeScript 和 Next.js 的基础知识。平台使用 Tailwind CSS 做样式，Drizzle ORM 做数据库操作，了解这些技术栈会帮助你更快上手。"
       },
       {
         "question": "可以部署到哪些平台？",
-        "answer": "模板可以部署到 Vercel（推荐）、自有服务器或任何支持 Node.js 的平台。数据库推荐使用 Neon PostgreSQL（Serverless），文件存储使用 Cloudflare R2。"
+        "answer": "平台可以部署到 Vercel（推荐）、自有服务器或任何支持 Node.js 的平台。数据库推荐使用 Neon PostgreSQL（Serverless），文件存储使用 Cloudflare R2。"
       },
       {
         "question": "积分系统是怎样的？",
-        "answer": "模板内置基于双重记账法的积分系统，支持积分发放、消耗、FIFO 批次过期、余额查询等完整功能。注册用户会获得免费积分，你可以根据业务需求自定义积分规则和定价方案。"
+        "answer": "平台内置基于双重记账法的积分系统，支持积分发放、消耗、FIFO 批次过期、余额查询等完整功能。注册用户会获得免费积分，你可以根据业务需求自定义积分规则和定价方案。"
       },
       {
         "question": "如何定制支付方案？",
-        "answer": "模板集成 Creem 支付，支持订阅和一次性购买。你可以在配置文件中自定义套餐名称、价格、积分额度和功能权限。Webhook 处理和订阅生命周期管理已经内置。"
+        "answer": "平台集成 Creem 支付，支持订阅和一次性购买。你可以在配置文件中自定义套餐名称、价格、积分额度和功能权限。Webhook 处理和订阅生命周期管理已经内置。"
       },
       {
         "question": "支持哪些认证方式？",
-        "answer": "模板集成 Better Auth，支持邮箱密码注册登录、Google OAuth 和 GitHub OAuth。你可以轻松扩展其他 OAuth 提供商。会话管理、密码重置、邮箱验证等功能开箱即用。"
+        "answer": "平台集成 Better Auth，支持邮箱密码注册登录、Google OAuth 和 GitHub OAuth。你可以轻松扩展其他 OAuth 提供商。会话管理、密码重置、邮箱验证等功能开箱即用。"
       }
     ]
   },
@@ -179,7 +179,7 @@
     },
     "signIn": {
       "title": "欢迎回来",
-      "subtitle": "登录 Trip，继续管理你的工具和订阅。",
+      "subtitle": "登录 tripai，继续管理你的工具和订阅。",
       "emailLabel": "邮箱",
       "emailPlaceholder": "you@example.com",
       "passwordLabel": "密码",
@@ -206,7 +206,7 @@
       }
     },
     "signUp": {
-      "title": "创建 Trip 账号",
+      "title": "创建 tripai 账号",
       "subtitle": "注册后可直接进入后台体验功能。",
       "nameLabel": "姓名",
       "namePlaceholder": "张三",
@@ -216,6 +216,7 @@
       "passwordPlaceholder": "至少 8 个字符",
       "confirmPasswordLabel": "确认密码",
       "confirmPasswordPlaceholder": "再次输入密码",
+      "captchaLabel": "机器人验证",
       "loading": "正在创建...",
       "submit": "创建账号",
       "success": "注册成功！",
@@ -227,6 +228,8 @@
         "missingFields": "请填写所有字段",
         "passwordTooShort": "密码至少需要 8 个字符",
         "passwordMismatch": "两次输入的密码不一致",
+        "captchaRequired": "请先完成机器人验证",
+        "captchaFailed": "机器人验证失败，请重试",
         "emailInUse": "注册失败，该邮箱可能已被使用",
         "serverUnavailable": "认证服务暂时不可用，请检查数据库连接配置。"
       },
@@ -249,7 +252,7 @@
   "CTA": {
     "badge": "免费开始，无需信用卡",
     "title": "准备好启动你的工具网站了吗？",
-    "subtitle": "Trip 已具备认证、订阅、后台和用户管理能力，适合在此基础上继续开发你的工具销售产品。",
+    "subtitle": "tripai 已具备认证、订阅、后台和用户管理能力，适合在此基础上继续开发你的工具销售产品。",
     "getStarted": "立即注册",
     "seeDemo": "查看演示"
   },

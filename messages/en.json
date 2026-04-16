@@ -1,12 +1,12 @@
 {
   "HomePage": {
-    "title": "Trip",
+    "title": "tripai",
     "subtitle": "Tool Storefront",
     "description": "A storefront for showcasing, selling, and managing digital tools and subscriptions."
   },
   "Hero": {
     "badge": "New: tool subscriptions and sales support",
-    "title1": "Trip Tool Website",
+    "title1": "tripai Tool Website",
     "titleHighlight": "Launch your next product faster",
     "subtitle": "Build a tool-selling website with ready-to-use authentication, payments, subscriptions, and admin workflows.",
     "getStarted": "Create Account",
@@ -75,7 +75,7 @@
   "UseCases": {
     "label": "Use Cases",
     "title": "Build Any SaaS Product",
-    "subtitle": "NextDevTpl provides the foundation for a wide range of SaaS applications.",
+    "subtitle": "tripai provides the foundation for a wide range of SaaS applications.",
     "items": {
       "students": {
         "title": "AI Products",
@@ -110,7 +110,7 @@
   "Testimonials": {
     "label": "Testimonials",
     "title": "What Developers Say",
-    "subtitle": "Developers around the world are using NextDevTpl to ship their SaaS products faster.",
+    "subtitle": "Developers around the world are using tripai to ship their SaaS products faster.",
     "items": [
       {
         "content": "I went from idea to paying customers in under a week. The auth, payments, and credits system saved me at least a month of development time.",
@@ -147,11 +147,11 @@
   "FAQ": {
     "label": "FAQ",
     "title": "Questions You Might Have",
-    "subtitle": "Common questions and answers about NextDevTpl.",
+    "subtitle": "Common questions and answers about tripai.",
     "items": [
       {
-        "question": "What is NextDevTpl?",
-        "answer": "NextDevTpl is a production-ready Next.js SaaS starter template. It includes authentication, payment processing, a credits system, background job processing, internationalization, an admin dashboard, and more — everything you need to launch a SaaS product quickly."
+        "question": "What is tripai?",
+        "answer": "tripai is a production-ready tripai AI creation platform. It includes authentication, payment processing, a credits system, background job processing, internationalization, an admin dashboard, and more — everything you need to launch a SaaS product quickly."
       },
       {
         "question": "What tech stack does it use?",
@@ -183,7 +183,7 @@
     },
     "signIn": {
       "title": "Welcome back",
-      "subtitle": "Sign in to Trip to manage your tools and subscriptions.",
+      "subtitle": "Sign in to tripai to manage your tools and subscriptions.",
       "emailLabel": "Email address",
       "emailPlaceholder": "jane@example.com",
       "passwordLabel": "Password",
@@ -210,7 +210,7 @@
       }
     },
     "signUp": {
-      "title": "Create your Trip account",
+      "title": "Create your tripai account",
       "subtitle": "Register and go straight into the dashboard.",
       "nameLabel": "Full name",
       "namePlaceholder": "Jane Doe",
@@ -220,6 +220,7 @@
       "passwordPlaceholder": "At least 8 characters",
       "confirmPasswordLabel": "Confirm password",
       "confirmPasswordPlaceholder": "Re-enter your password",
+      "captchaLabel": "Bot verification",
       "loading": "Creating account...",
       "submit": "Create account",
       "success": "Account created successfully!",
@@ -231,6 +232,8 @@
         "missingFields": "Please fill in all fields.",
         "passwordTooShort": "Password must be at least 8 characters.",
         "passwordMismatch": "Passwords do not match.",
+        "captchaRequired": "Please complete bot verification first.",
+        "captchaFailed": "Bot verification failed. Please try again.",
         "emailInUse": "Sign-up failed. This email may already be in use.",
         "serverUnavailable": "Auth service is unavailable. Check the database connection settings."
       },
@@ -253,7 +256,7 @@
   "CTA": {
     "badge": "Start free, no credit card required",
     "title": "Ready to launch your tool website?",
-    "subtitle": "Trip already includes authentication, subscriptions, user management, and an admin backend so you can keep building from here.",
+    "subtitle": "tripai already includes authentication, subscriptions, user management, and an admin backend so you can keep building from here.",
     "getStarted": "Create Account",
     "seeDemo": "Live Demo"
   },

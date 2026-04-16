@@ -6,7 +6,6 @@ import {
   Heading,
   Hr,
   Html,
-  Link,
   Preview,
   Section,
   Text,
@@ -33,14 +32,14 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Welcome to Trip - Your account is ready.</Preview>
+      <Preview>Welcome to tripai - Your account is ready.</Preview>
       <Tailwind>
         <Body className="mx-auto my-auto bg-white font-sans">
           <Container className="mx-auto my-10 max-w-xl rounded-lg border border-solid border-gray-200 p-8">
             {/* Logo / 品牌区域 */}
             <Section className="mb-8 text-center">
               <Heading className="m-0 text-2xl font-bold text-gray-900">
-                Trip
+                tripai
               </Heading>
             </Section>
 
@@ -51,15 +50,14 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
 
             {/* 正文内容 */}
             <Text className="mb-4 text-base leading-relaxed text-gray-600">
-              Your Trip account has been created successfully. You can now
+              Your tripai account has been created successfully. You can now
               start managing tools, subscriptions, and customer access from one
               place.
             </Text>
 
             <Text className="mb-6 text-base leading-relaxed text-gray-600">
-              As a welcome gift, we&apos;ve added{" "}
-              <strong>100 free credits</strong> to your account. Use them to
-              explore the dashboard and your first product flows.
+              As a welcome gift, free credits have been added to your account.
+              Use them to explore the dashboard and your first product flows.
             </Text>
 
             {/* CTA 按钮 */}
@@ -79,8 +77,7 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
               </Text>
               <Text className="m-0 text-sm text-gray-600">
                 • Add your first tool or subscription product
-                <br />
-                • Review pricing, checkout, and access settings
+                <br />• Review pricing, checkout, and access settings
                 <br />• Open the dashboard to manage users and orders
               </Text>
             </Section>
@@ -89,17 +86,10 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
 
             {/* 页脚 */}
             <Text className="m-0 text-center text-xs text-gray-500">
-              Need help? Reply to this email or visit our{" "}
-              <Link
-                href="https://example.com/docs"
-                className="text-violet-600 no-underline"
-              >
-                documentation
-              </Link>
-              .
+              Need help? Reply to this email.
             </Text>
             <Text className="m-0 mt-2 text-center text-xs text-gray-400">
-              © {new Date().getFullYear()} Trip. All rights reserved.
+              © {new Date().getFullYear()} tripai. All rights reserved.
             </Text>
           </Container>
         </Body>
@@ -118,5 +108,5 @@ export default WelcomeEmail;
  */
 WelcomeEmail.PreviewProps = {
   name: "John Doe",
-  dashboardUrl: "https://example.com/dashboard",
+  dashboardUrl: "https://tripai.icu/dashboard",
 } satisfies WelcomeEmailProps;

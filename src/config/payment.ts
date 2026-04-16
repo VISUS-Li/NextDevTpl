@@ -144,7 +144,7 @@ export function getPricingPlans(_t?: (key: string) => string): Plan[] {
     plans.push({
       ...config.plans.free,
       name: "Free",
-      description: "Try Trip with no commitment",
+      description: "Try tripai with no commitment",
       features: [
         "200 credits (one-time)",
         "Text & file input",

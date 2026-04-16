@@ -2,7 +2,7 @@ import { AdminToolConfigView } from "@/features/tool-config/components/admin-too
 import { getAdminToolConfigPageData } from "@/features/tool-config/service";
 
 export const metadata = {
-  title: "Tool Config | Trip",
+  title: "Tool Config | tripai",
   description: "管理项目工具配置",
 };
 

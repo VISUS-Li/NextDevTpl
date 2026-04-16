@@ -29,6 +29,11 @@ const SLOT_TEXT_COUNT = 4;
 
 const defaultTools = [
   {
+    toolKey: "platform",
+    name: "tripai",
+    description: "平台基础设置",
+  },
+  {
     toolKey: "storage",
     name: "Storage",
     description: "对象存储生命周期策略",
@@ -46,6 +51,9 @@ const defaultTools = [
 ] as const;
 
 const TOOL_SLOT_SETTING_LABELS: Record<string, Record<string, string>> = {
+  platform: {
+    config1: "新用户注册奖励积分",
+  },
   storage: {
     config1: "短期资源保留小时",
     config2: "临时资源保留天数",
@@ -72,6 +80,10 @@ const TOOL_SLOT_SETTING_LABELS: Record<string, Record<string, string>> = {
     secret6: "高级设置密码",
   },
 };
+
+const PLATFORM_DEFAULT_RUNTIME_VALUES = {
+  config1: 200,
+} as const;
 
 const STORAGE_DEFAULT_RUNTIME_VALUES = {
   config1: 6,
@@ -125,6 +137,9 @@ const defaultFieldDefinitions: Array<{
   sortOrder: number;
 }> = defaultTools.flatMap((tool) =>
   buildDefaultSlotFields(tool.toolKey).map((field) => {
+    if (tool.toolKey === "platform") {
+      return buildPlatformFieldDefinition(field);
+    }
     if (tool.toolKey === "storage") {
       return buildStorageFieldDefinition(field);
     }
@@ -277,7 +292,7 @@ export async function seedDefaultToolConfigProject(params?: {
   const projectKey = params?.projectKey ?? DEFAULT_PROJECT_KEY;
   const currentProject = await ensureProject(
     projectKey,
-    params?.name ?? "NextDevTpl",
+    params?.name ?? "tripai",
     now
   );
 
@@ -406,8 +421,51 @@ export async function seedDefaultToolConfigProject(params?: {
 
   await seedDefaultRedinkRuntimeConfig(currentProject.id, now);
   await seedDefaultStorageRuntimeConfig(currentProject.id, now);
+  await seedDefaultPlatformRuntimeConfig(currentProject.id, now);
 
   return currentProject;
+}
+
+/**
+ * 补齐平台基础设置。
+ */
+async function seedDefaultPlatformRuntimeConfig(projectId: string, now: Date) {
+  const rows = await db
+    .select()
+    .from(toolConfigValue)
+    .where(
+      and(
+        eq(toolConfigValue.projectId, projectId),
+        eq(toolConfigValue.toolKey, "platform"),
+        eq(toolConfigValue.scope, "project_admin"),
+        isNull(toolConfigValue.userId)
+      )
+    );
+
+  const rowMap = new Map(rows.map((row) => [row.fieldKey, row]));
+
+  for (const [fieldKey, defaultValue] of Object.entries(
+    PLATFORM_DEFAULT_RUNTIME_VALUES
+  )) {
+    if (rowMap.has(fieldKey)) {
+      continue;
+    }
+
+    await db
+      .insert(toolConfigValue)
+      .values({
+        id: crypto.randomUUID(),
+        projectId,
+        toolKey: "platform",
+        fieldKey,
+        scope: "project_admin",
+        valueJson: defaultValue,
+        updatedBy: "system",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+  }
 }
 
 /**
@@ -634,6 +692,44 @@ function buildStorageFieldDefinition(field: {
       defaultValueJson: STORAGE_DEFAULT_RUNTIME_VALUES.json1.map((item) => ({
         ...item,
       })),
+    };
+  }
+
+  return {
+    ...field,
+    adminOnly: true,
+    userOverridable: false,
+  };
+}
+
+function buildPlatformFieldDefinition(field: {
+  toolKey: string;
+  fieldKey: string;
+  label: string;
+  description?: string;
+  group: string;
+  type: ToolConfigFieldType;
+  required?: boolean;
+  adminOnly?: boolean;
+  userOverridable?: boolean;
+  defaultValueJson?: ToolConfigValueInput;
+  optionsJson?: string[];
+  validationJson?: Record<string, unknown>;
+  sortOrder: number;
+}) {
+  if (field.fieldKey === "config1") {
+    return {
+      ...field,
+      label: "platform.registrationBonusCredits",
+      description: "新用户首次获得注册奖励时发放的积分数量",
+      type: "number" as const,
+      adminOnly: true,
+      userOverridable: false,
+      defaultValueJson: PLATFORM_DEFAULT_RUNTIME_VALUES.config1,
+      validationJson: {
+        min: 1,
+        max: 100000,
+      },
     };
   }
 
@@ -1244,6 +1340,22 @@ function assertFieldValue(field: ToolConfigField, value: ToolConfigValueInput) {
   }
   if (field.type === "number" && typeof value !== "number" && value !== null) {
     throw new Error("数字配置必须是数字");
+  }
+  if (field.type === "number" && typeof value === "number") {
+    const minValue =
+      typeof field.validationJson?.min === "number"
+        ? field.validationJson.min
+        : null;
+    const maxValue =
+      typeof field.validationJson?.max === "number"
+        ? field.validationJson.max
+        : null;
+    if (minValue !== null && value < minValue) {
+      throw new Error("数字配置低于允许范围");
+    }
+    if (maxValue !== null && value > maxValue) {
+      throw new Error("数字配置高于允许范围");
+    }
   }
   if (
     field.type === "boolean" &&

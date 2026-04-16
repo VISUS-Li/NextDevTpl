@@ -19,14 +19,6 @@ export function generateWebSiteSchema(locale: LocaleType) {
         ? "Tool storefront for discovering and subscribing to practical digital tools"
         : "用于发现和订阅实用数字工具的工具销售官网",
     inLanguage: locale === "en" ? "en-US" : "zh-CN",
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${getBaseUrl()}/{locale}/blog?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    },
   };
 }
 
@@ -156,7 +148,9 @@ export function generateBreadcrumbSchema(items: BreadcrumbItem[]) {
       "@type": "ListItem",
       position: index + 1,
       name: item.name,
-      item: item.url.startsWith("http") ? item.url : `${getBaseUrl()}${item.url}`,
+      item: item.url.startsWith("http")
+        ? item.url
+        : `${getBaseUrl()}${item.url}`,
     })),
   };
 }

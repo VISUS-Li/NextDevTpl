@@ -18,13 +18,13 @@ import {
   CREDIT_PACKAGES,
   CREDITS_EXPIRY_DAYS,
   MONTHLY_SUBSCRIPTION_CREDITS,
-  REGISTRATION_BONUS_CREDITS,
 } from "./config";
 import {
   AccountFrozenError,
   consumeCredits,
   ensureRegistrationBonus,
   getCreditsBalance,
+  getRegistrationBonusCredits,
   getUserActiveBatches,
   getUserTransactions,
   getUserTransactionsCount,
@@ -56,13 +56,14 @@ export const grantRegistrationBonus = withPublicCreditsAction(
   )
   .action(async ({ parsedInput }) => {
     const { userId } = parsedInput;
+    const bonusCredits = await getRegistrationBonusCredits();
     const expiresAt = CREDITS_EXPIRY_DAYS
       ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
       : null;
 
     const result = await grantCredits({
       userId,
-      amount: REGISTRATION_BONUS_CREDITS,
+      amount: bonusCredits,
       sourceType: "bonus",
       debitAccount: "SYSTEM:registration_bonus",
       transactionType: "registration_bonus",
@@ -97,7 +98,7 @@ export const getMyCreditsBalance = withProtectedCreditsAction(
   // 懒加载: 确保新用户获得注册奖励
   await ensureRegistrationBonus(
     userId,
-    REGISTRATION_BONUS_CREDITS,
+    await getRegistrationBonusCredits(),
     CREDITS_EXPIRY_DAYS
   );
 

@@ -9,7 +9,7 @@ import { Link } from "@/i18n/routing";
 /**
  * Hero Section 组件
  *
- * NextDevTpl 产品主页 Hero 区域
+ * tripai 产品主页 Hero 区域
  * - 简洁现代的 Vercel 风格
  * - 信任标识（头像组 + 文案）
  */
@@ -64,7 +64,7 @@ export function HeroSection() {
             <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
-            href="/docs"
+            href="/#features"
             className={buttonVariants({
               variant: "ghost",
               className:

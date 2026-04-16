@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { auth } from "@/lib/auth";
-import { withApiLogging } from "@/lib/api-logger";
-import {
-  CREDITS_EXPIRY_DAYS,
-  REGISTRATION_BONUS_CREDITS,
-} from "@/features/credits/config";
+import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
 import {
   ensureRegistrationBonus,
   getCreditsBalance,
+  getRegistrationBonusCredits,
 } from "@/features/credits/core";
+import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 const checkCreditsSchema = z.object({
   amount: z.number().int().positive(),
@@ -48,14 +45,15 @@ export const POST = withApiLogging(async (request: Request) => {
 
   await ensureRegistrationBonus(
     session.user.id,
-    REGISTRATION_BONUS_CREDITS,
+    await getRegistrationBonusCredits(),
     CREDITS_EXPIRY_DAYS
   );
 
   const balance = await getCreditsBalance(session.user.id);
   return NextResponse.json({
     success: true,
-    available: balance.balance >= payload.data.amount && balance.status === "active",
+    available:
+      balance.balance >= payload.data.amount && balance.status === "active",
     required: payload.data.amount,
     currentBalance: balance.balance,
     status: balance.status,

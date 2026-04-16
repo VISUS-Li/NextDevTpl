@@ -19,11 +19,7 @@ import { Link } from "@/i18n/routing";
 export function Footer() {
   const locale = useLocale();
   const isZh = locale === "zh";
-  const quickLinks = [
-    { href: "/docs", label: isZh ? "文档" : "Docs" },
-    { href: "/blog", label: "Blog" },
-    { href: "/pseo", label: "PSEO" },
-  ];
+  const quickLinks = [{ href: "/pseo", label: "PSEO" }];
   const legalLabels: Record<string, string> = {
     "/legal/terms": isZh ? "服务条款" : "Terms",
     "/legal/privacy": isZh ? "隐私政策" : "Privacy",
@@ -38,7 +34,7 @@ export function Footer() {
             href="/"
             className="font-['Manrope'] text-lg font-bold md:text-xl"
           >
-            {isZh ? "Trip 旅行者 AI" : "Trip Traveler AI"}
+            tripai
           </Link>
           <div className="flex items-center gap-2 md:hidden">
             <LanguageSwitcher />
@@ -47,8 +43,8 @@ export function Footer() {
           <p className="text-center text-xs leading-6 text-[#e1e2eb]/50 md:text-left md:text-sm">
             © {new Date().getFullYear()}{" "}
             {isZh
-              ? "Trip 旅行者 AI. 旅行，从 AI 开始。"
-              : "Trip Traveler AI. Start the journey with AI."}
+              ? "tripai. 旅行，从 AI 开始。"
+              : "tripai. Start the journey with AI."}
           </p>
         </div>
 
@@ -72,15 +68,17 @@ export function Footer() {
               {legalLabels[link.href] || link.title}
             </Link>
           ))}
-          <Link
-            href={siteConfig.links.github}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 text-sm text-[#e1e2eb]/50 transition-colors hover:text-[#0A84FF]"
-          >
-            <Github className="h-5 w-5" />
-            GitHub
-          </Link>
+          {siteConfig.links.github ? (
+            <Link
+              href={siteConfig.links.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm text-[#e1e2eb]/50 transition-colors hover:text-[#0A84FF]"
+            >
+              <Github className="h-5 w-5" />
+              GitHub
+            </Link>
+          ) : null}
         </div>
       </div>
     </footer>

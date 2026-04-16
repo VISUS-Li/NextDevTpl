@@ -62,8 +62,8 @@ export function CTASection({ user }: CTASectionProps) {
           <div className="w-full rounded-[2rem] border border-white/5 bg-[#191c22] p-8">
             <p className="mb-6 text-sm leading-7 text-[#c0c6d6]">
               {isZh
-                ? "我们相信，技术不应成为创意的阻碍。Trip 旅行者 AI 通过极简的交互界面，将生成式 AI 能力封装进每一个直觉化操作中。"
-                : "We believe tools should remove friction from creative work. Trip Traveler AI wraps generative workflows into clear, direct actions that stay usable on the go."}
+                ? "我们相信，技术不应成为创意的阻碍。tripai 通过极简的交互界面，将生成式 AI 能力封装进每一个直觉化操作中。"
+                : "We believe tools should remove friction from creative work. tripai wraps generative workflows into clear, direct actions that stay usable on the go."}
             </p>
             <div className="flex flex-col gap-3">
               {currentUser ? (
@@ -91,7 +91,7 @@ export function CTASection({ user }: CTASectionProps) {
               ) : (
                 <>
                   <Link
-                    href="/docs"
+                    href="/#features"
                     className={buttonVariants({
                       variant: "ghost",
                       className:

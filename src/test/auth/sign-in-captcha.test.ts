@@ -17,24 +17,35 @@ describe("Auth sign-in captcha", () => {
   /**
    * 构造邮箱密码登录请求
    */
-  function createSignInRequest(headers?: HeadersInit) {
-    return new Request("http://localhost:3000/api/auth/sign-in/email", {
+  function createAuthRequest(
+    path: "sign-in" | "sign-up",
+    headers?: HeadersInit
+  ) {
+    return new Request(`http://localhost:3000/api/auth/${path}/email`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         origin: "http://localhost:3000",
         ...headers,
       },
-      body: JSON.stringify({
-        email: "user@example.com",
-        password: "password123",
-      }),
+      body: JSON.stringify(
+        path === "sign-in"
+          ? {
+              email: "user@example.com",
+              password: "password123",
+            }
+          : {
+              name: "User",
+              email: "user@example.com",
+              password: "password123",
+            }
+      ),
     });
   }
 
   it("缺少验证码时应直接返回 400", async () => {
     const { POST } = await import("@/app/api/auth/[...all]/route");
-    const response = await POST(createSignInRequest());
+    const response = await POST(createAuthRequest("sign-in"));
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -60,7 +71,7 @@ describe("Auth sign-in captcha", () => {
 
     const { POST } = await import("@/app/api/auth/[...all]/route");
     const response = await POST(
-      createSignInRequest({
+      createAuthRequest("sign-in", {
         "x-captcha-response": "invalid-token",
       })
     );
@@ -68,5 +79,14 @@ describe("Auth sign-in captcha", () => {
 
     expect(response.status).toBe(403);
     expect(data.message).toBe("Captcha verification failed");
+  });
+
+  it("注册缺少验证码时应直接返回 400", async () => {
+    const { POST } = await import("@/app/api/auth/[...all]/route");
+    const response = await POST(createAuthRequest("sign-up"));
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.message).toBe("Missing CAPTCHA response");
   });
 });

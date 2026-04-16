@@ -3,7 +3,13 @@ import { SettingsProfileView } from "@/features/settings/components";
 import { getUserToolConfigPageData } from "@/features/tool-config/service";
 import { getServerSession } from "@/lib/auth/server";
 
-const settingsTabs = ["account", "security", "billing", "usage", "tools"] as const;
+const settingsTabs = [
+  "account",
+  "security",
+  "billing",
+  "usage",
+  "tools",
+] as const;
 
 type SettingsTab = (typeof settingsTabs)[number];
 
@@ -11,7 +17,7 @@ type SettingsTab = (typeof settingsTabs)[number];
  * 设置页面元数据
  */
 export const metadata = {
-  title: "Settings | Trip",
+  title: "Settings | tripai",
   description: "管理您的账户设置和偏好",
 };
 

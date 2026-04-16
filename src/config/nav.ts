@@ -141,10 +141,8 @@ export const productsNav: ProductNavGroup[] = [
  * 主导航链接 (Header)
  */
 export const mainNav: NavItem[] = [
-  { title: "Docs", href: "/docs" },
   { title: "PSEO", href: "/pseo" },
   { title: "Pricing", href: "/#pricing" },
-  { title: "Blog", href: "/blog" },
 ];
 
 /**
@@ -154,8 +152,7 @@ export const footerNav = {
   /** 产品 (Product) */
   product: [
     { title: "Pricing", href: "/#pricing" },
-    { title: "Changelog", href: "/blog" },
-    { title: "Contact Us", href: "mailto:hello@example.com" },
+    { title: "Contact Us", href: "mailto:support@tripai.icu" },
   ] as NavItem[],
 
   /** 法律 (Legal) */

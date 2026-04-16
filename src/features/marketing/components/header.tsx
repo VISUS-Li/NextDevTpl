@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  BookOpen,
-  Grid2x2,
-  House,
-  LifeBuoy,
-  NotebookPen,
-  UserRound,
-} from "lucide-react";
+import { Grid2x2, House, LifeBuoy, NotebookPen, UserRound } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -61,16 +54,6 @@ export function Header({ user }: HeaderProps) {
       label: locale === "zh" ? "订阅方案" : "Plans",
     },
     {
-      key: "docs",
-      href: "/docs",
-      label: locale === "zh" ? "开发文档" : "Docs",
-    },
-    {
-      key: "blog",
-      href: "/blog",
-      label: "Blog",
-    },
-    {
       key: "pseo",
       href: "/pseo",
       label: "PSEO",
@@ -101,12 +84,6 @@ export function Header({ user }: HeaderProps) {
       icon: Grid2x2,
     },
     {
-      key: "docs",
-      href: "/docs",
-      label: locale === "zh" ? "文档" : "Docs",
-      icon: BookOpen,
-    },
-    {
       key: "account",
       href: currentUser ? "/dashboard" : "/sign-in",
       label: locale === "zh" ? "我的" : "My",
@@ -126,18 +103,6 @@ export function Header({ user }: HeaderProps) {
       key: "pricing",
       href: "/#pricing",
       label: locale === "zh" ? "方案" : "Plans",
-      icon: NotebookPen,
-    },
-    {
-      key: "docs",
-      href: "/docs",
-      label: locale === "zh" ? "文档" : "Docs",
-      icon: BookOpen,
-    },
-    {
-      key: "blog",
-      href: "/blog",
-      label: "Blog",
       icon: NotebookPen,
     },
     {
@@ -214,9 +179,6 @@ export function Header({ user }: HeaderProps) {
    * 判断导航项是否处于当前页面
    */
   const isNavItemActive = (href: string) => {
-    if (href === "/docs") {
-      return pathname.startsWith(`/${locale}/docs`);
-    }
     if (href.startsWith("/#")) {
       return /^\/[a-z]{2}$/.test(pathname) && activeSection === href.slice(2);
     }
@@ -251,10 +213,8 @@ export function Header({ user }: HeaderProps) {
               href="/"
               className="bg-gradient-to-br from-[#0A84FF] to-[#5AC8FA] bg-clip-text font-['Manrope'] text-xl font-extrabold tracking-[-0.04em] text-transparent"
             >
-              <span className="hidden sm:inline">
-                {locale === "zh" ? "Trip 旅行者 AI" : "Trip Traveler AI"}
-              </span>
-              <span className="sm:hidden">Trip AI</span>
+              <span className="hidden sm:inline">tripai</span>
+              <span className="sm:hidden">tripai</span>
             </Link>
 
             <nav className="hidden items-center gap-8 font-['Manrope'] text-sm font-bold tracking-tight md:flex">
@@ -335,7 +295,7 @@ export function Header({ user }: HeaderProps) {
             href="/"
             className="bg-gradient-to-br from-[#0A84FF] to-[#5AC8FA] bg-clip-text font-['Manrope'] text-xl font-extrabold tracking-[-0.04em] text-transparent"
           >
-            Trip AI
+            tripai
           </Link>
 
           <div className="flex items-center gap-2">

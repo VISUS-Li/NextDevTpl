@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-
-import { getUserPlan } from "@/features/subscription/services/user-plan";
+import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
 import {
   ensureRegistrationBonus,
   getCreditsBalance,
+  getRegistrationBonusCredits,
 } from "@/features/credits/core";
-import {
-  CREDITS_EXPIRY_DAYS,
-  REGISTRATION_BONUS_CREDITS,
-} from "@/features/credits/config";
-import { auth } from "@/lib/auth";
+import { getUserPlan } from "@/features/subscription/services/user-plan";
 import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 /**
  * 获取平台会话信息
@@ -35,7 +32,7 @@ export const GET = withApiLogging(async (request: Request) => {
   // 新用户首次访问时补发注册积分，保持与站内逻辑一致。
   await ensureRegistrationBonus(
     session.user.id,
-    REGISTRATION_BONUS_CREDITS,
+    await getRegistrationBonusCredits(),
     CREDITS_EXPIRY_DAYS
   );
 

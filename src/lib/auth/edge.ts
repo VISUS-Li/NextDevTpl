@@ -73,12 +73,4 @@ export const authRoutes = [
  * 公开路由的路径模式
  * 这些路由不需要认证
  */
-export const publicRoutes = [
-  "/",
-  "/about",
-  "/pricing",
-  "/blog",
-  "/blog/:path*",
-  "/docs",
-  "/docs/:path*",
-];
+export const publicRoutes = ["/", "/about", "/pricing"];

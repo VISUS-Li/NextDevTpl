@@ -8,7 +8,7 @@ import { getServerSession } from "@/lib/auth/server";
  * 分销中心页面元数据
  */
 export const metadata = {
-  title: "Distribution | Trip",
+  title: "Distribution | tripai",
   description: "查看推广、佣金和提现状态",
 };
 

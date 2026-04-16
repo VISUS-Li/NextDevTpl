@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { auth } from "@/lib/auth";
-import { withApiLogging } from "@/lib/api-logger";
+import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
 import {
   AccountFrozenError,
   consumeCredits,
   ensureRegistrationBonus,
+  getRegistrationBonusCredits,
   InsufficientCreditsError,
 } from "@/features/credits/core";
-import {
-  CREDITS_EXPIRY_DAYS,
-  REGISTRATION_BONUS_CREDITS,
-} from "@/features/credits/config";
+import { withApiLogging } from "@/lib/api-logger";
+import { auth } from "@/lib/auth";
 
 const consumeCreditsSchema = z.object({
   amount: z.number().int().positive(),
@@ -55,7 +52,7 @@ export const POST = withApiLogging(async (request: Request) => {
 
   await ensureRegistrationBonus(
     session.user.id,
-    REGISTRATION_BONUS_CREDITS,
+    await getRegistrationBonusCredits(),
     CREDITS_EXPIRY_DAYS
   );
 

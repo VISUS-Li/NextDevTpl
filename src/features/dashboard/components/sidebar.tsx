@@ -149,7 +149,7 @@ export function DashboardSidebar() {
               viewBox="0 0 24 24"
               fill="currentColor"
             >
-              <title>Trip</title>
+              <title>tripai</title>
               <rect x="2" y="2" width="9" height="9" rx="2" />
               <rect x="13" y="2" width="9" height="9" rx="2" opacity="0.5" />
               <rect x="2" y="13" width="9" height="9" rx="2" opacity="0.5" />
@@ -161,7 +161,7 @@ export function DashboardSidebar() {
                 collapsed && "opacity-0"
               )}
             >
-              Trip<span className="text-primary">.</span>
+              tripai<span className="text-primary">.</span>
             </span>
           </Link>
         </div>

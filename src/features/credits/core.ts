@@ -14,6 +14,7 @@ import {
   creditsBatch,
   creditsTransaction,
 } from "@/db/schema";
+import { getResolvedToolConfig } from "@/features/tool-config/service";
 import { logEvent } from "@/lib/logger";
 
 // ============================================
@@ -105,6 +106,18 @@ export class AccountFrozenError extends Error {
 // ============================================
 // 核心函数
 // ============================================
+
+/**
+ * 读取当前注册奖励积分配置
+ */
+export async function getRegistrationBonusCredits() {
+  const resolved = await getResolvedToolConfig({ toolKey: "platform" });
+  const value = resolved.config.config1;
+  if (!Number.isInteger(value) || Number(value) <= 0) {
+    throw new Error("注册奖励积分配置无效");
+  }
+  return Number(value);
+}
 
 /**
  * 确保用户有积分账户

@@ -174,7 +174,9 @@ describe("AdminAIGatewayView", () => {
     const [healthCheckButton] = screen.getAllByRole("button", {
       name: "健康检查",
     });
-    expect(healthCheckButton).toBeDefined();
+    if (!healthCheckButton) {
+      throw new Error("健康检查按钮不存在");
+    }
     fireEvent.click(healthCheckButton);
 
     await waitFor(() => {

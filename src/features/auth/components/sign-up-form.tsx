@@ -2,8 +2,9 @@
 
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
+import Script from "next/script";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,35 @@ import { signInWithGoogle, signUpWithEmail } from "@/lib/auth/client";
 
 import { AuthErrorAlert } from "./auth-error-alert";
 import { AuthLogo } from "./auth-logo";
+
+const turnstileSiteKey =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || "";
+const turnstileEnabled = turnstileSiteKey.length > 0;
+
+/**
+ * 渲染注册页 Turnstile 挂件
+ */
+function renderTurnstileWidget(params: {
+  container: HTMLDivElement | null;
+  widgetIdRef: { current: string | null };
+  onTokenChange: (token: string) => void;
+}) {
+  if (
+    !turnstileEnabled ||
+    !window.turnstile ||
+    !params.container ||
+    params.widgetIdRef.current
+  ) {
+    return;
+  }
+
+  params.widgetIdRef.current = window.turnstile.render(params.container, {
+    sitekey: turnstileSiteKey,
+    callback: params.onTokenChange,
+    "expired-callback": () => params.onTokenChange(""),
+    "error-callback": () => params.onTokenChange(""),
+  });
+}
 
 /**
  * 注册表单组件
@@ -28,12 +58,15 @@ export function SignUpForm() {
   const t = useTranslations("Auth.signUp");
   const tCommon = useTranslations("Auth.common");
   const router = useRouter();
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
 
   // 表单状态
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +80,44 @@ export function SignUpForm() {
     const message = "message" in error ? String(error.message || "") : "";
     return status >= 500 || message.toUpperCase().includes("SERVER_ERROR");
   };
+
+  /**
+   * 判断是否为验证码错误
+   */
+  const isCaptchaFailure = (error: unknown) => {
+    if (!error || typeof error !== "object") return false;
+    const status = "status" in error ? Number(error.status) : NaN;
+    const message = "message" in error ? String(error.message || "") : "";
+    return (
+      [400, 403].includes(status) && message.toLowerCase().includes("captcha")
+    );
+  };
+
+  /**
+   * 失败后重置验证码
+   */
+  const resetTurnstile = () => {
+    setCaptchaToken("");
+    if (!turnstileWidgetIdRef.current || !window.turnstile) {
+      return;
+    }
+    window.turnstile.reset(turnstileWidgetIdRef.current);
+  };
+
+  useEffect(() => {
+    renderTurnstileWidget({
+      container: turnstileRef.current,
+      widgetIdRef: turnstileWidgetIdRef,
+      onTokenChange: setCaptchaToken,
+    });
+    return () => {
+      if (!turnstileWidgetIdRef.current || !window.turnstile) {
+        return;
+      }
+      window.turnstile.remove(turnstileWidgetIdRef.current);
+      turnstileWidgetIdRef.current = null;
+    };
+  }, []);
 
   /**
    * 处理 Google 注册
@@ -84,12 +155,25 @@ export function SignUpForm() {
       return;
     }
 
+    if (turnstileEnabled && !captchaToken) {
+      setError(t("errors.captchaRequired"));
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
-      const result = await signUpWithEmail(email, password, name);
+      const result = await signUpWithEmail(email, password, name, {
+        captchaToken,
+      });
 
       if (result.error) {
+        if (isCaptchaFailure(result.error)) {
+          setError(t("errors.captchaFailed"));
+          resetTurnstile();
+          setIsLoading(false);
+          return;
+        }
         if (isServerFailure(result.error)) {
           setError(t("errors.serverUnavailable"));
           setIsLoading(false);
@@ -108,18 +192,38 @@ export function SignUpForm() {
       router.push("/dashboard");
     } catch (error) {
       setError(
-        isServerFailure(error)
-          ? t("errors.serverUnavailable")
-          : error instanceof Error
-            ? error.message
-            : t("errors.emailInUse")
+        isCaptchaFailure(error)
+          ? t("errors.captchaFailed")
+          : isServerFailure(error)
+            ? t("errors.serverUnavailable")
+            : error instanceof Error
+              ? error.message
+              : t("errors.emailInUse")
       );
+      if (isCaptchaFailure(error)) {
+        resetTurnstile();
+      }
       setIsLoading(false);
     }
   };
 
   return (
     <div className="w-full max-w-md space-y-6 px-1 sm:px-0">
+      {turnstileEnabled && (
+        <Script
+          id="cloudflare-turnstile-sign-up"
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          onLoad={() =>
+            renderTurnstileWidget({
+              container: turnstileRef.current,
+              widgetIdRef: turnstileWidgetIdRef,
+              onTokenChange: setCaptchaToken,
+            })
+          }
+        />
+      )}
+
       {/* Logo 和标题 */}
       <div className="flex flex-col items-center space-y-2 text-center">
         <AuthLogo />
@@ -247,6 +351,17 @@ export function SignUpForm() {
             className="h-11 text-base"
           />
         </div>
+
+        {/* 人机验证 */}
+        {turnstileEnabled && (
+          <div className="space-y-2">
+            <Label>{t("captchaLabel")}</Label>
+            <div
+              ref={turnstileRef}
+              className="min-h-[65px] rounded-md border border-border bg-background p-3"
+            />
+          </div>
+        )}
 
         {/* 提交按钮 */}
         <Button
