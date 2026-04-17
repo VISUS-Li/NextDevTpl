@@ -951,6 +951,12 @@ export type NewToolFeature = typeof toolFeature.$inferInsert;
 export type ToolStorageRule = typeof toolStorageRule.$inferSelect;
 export type NewToolStorageRule = typeof toolStorageRule.$inferInsert;
 
+export type ToolRuntimeToken = typeof toolRuntimeToken.$inferSelect;
+export type NewToolRuntimeToken = typeof toolRuntimeToken.$inferInsert;
+
+export type ToolLaunchTicket = typeof toolLaunchTicket.$inferSelect;
+export type NewToolLaunchTicket = typeof toolLaunchTicket.$inferInsert;
+
 export type ToolConfigField = typeof toolConfigField.$inferSelect;
 export type NewToolConfigField = typeof toolConfigField.$inferInsert;
 
@@ -1373,6 +1379,61 @@ export const toolStorageRule = pgTable(
       table.purpose
     ),
   ]
+);
+
+/**
+ * 工具运行时令牌表
+ *
+ * 用于给外部工具服务端发放按工具隔离的访问令牌。
+ */
+export const toolRuntimeToken = pgTable(
+  "tool_runtime_token",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    scopes: json("scopes").$type<string[]>().notNull(),
+    expiresAt: timestamp("expires_at"),
+    lastUsedAt: timestamp("last_used_at"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_runtime_token_project_tool_name_idx").on(
+      table.projectId,
+      table.toolKey,
+      table.name
+    ),
+  ]
+);
+
+/**
+ * 工具启动票据表
+ *
+ * 用于外部工具通过一次性票据交换平台用户身份。
+ */
+export const toolLaunchTicket = pgTable(
+  "tool_launch_ticket",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    ticketHash: text("ticket_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("tool_launch_ticket_hash_idx").on(table.ticketHash)]
 );
 
 // ============================================

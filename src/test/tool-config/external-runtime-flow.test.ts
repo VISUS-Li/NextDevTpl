@@ -5,6 +5,7 @@ import { POST as postRuntime } from "@/app/api/platform/tool-config/runtime/rout
 import { POST as postRuntimeSave } from "@/app/api/platform/tool-config/runtime-save/route";
 import { project } from "@/db/schema";
 import { seedDefaultToolConfigProject } from "@/features/tool-config";
+import { createToolRuntimeToken } from "@/features/tool-config/runtime-auth";
 import { generateTestId, testDb } from "../utils";
 
 describe("Tool config external runtime flow", () => {
@@ -15,8 +16,14 @@ describe("Tool config external runtime flow", () => {
   });
 
   it("应该模拟外部工具先保存再读取固定槽位配置", async () => {
-    process.env.TOOL_CONFIG_RUNTIME_TOKEN = "runtime-test-token";
     await seedDefaultToolConfigProject({ projectKey });
+    await createToolRuntimeToken({
+      projectKey,
+      toolKey: "jingfang-ai",
+      name: "external-runtime-flow",
+      token: "runtime-test-token",
+      scopes: ["runtime:read", "runtime:write", "session:exchange"],
+    });
 
     const saveResponse = await postRuntimeSave(
       new Request(

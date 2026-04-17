@@ -11,6 +11,7 @@ import {
   saveAdminToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config";
+import { createToolRuntimeToken } from "@/features/tool-config/runtime-auth";
 import { auth } from "@/lib/auth";
 import {
   cleanupTestUsers,
@@ -52,9 +53,22 @@ describe("Tool config platform API", () => {
     const admin = await createTestUser({ role: "admin" });
     const user = await createTestUser();
     createdUserIds.push(admin.id, user.id);
-    process.env.TOOL_CONFIG_RUNTIME_TOKEN = "runtime-test-token";
 
     await seedDefaultToolConfigProject({ projectKey });
+    await createToolRuntimeToken({
+      projectKey,
+      toolKey: "redink",
+      name: "api-test-redink",
+      token: "runtime-test-token",
+      scopes: ["runtime:read", "runtime:write", "session:exchange"],
+    });
+    await createToolRuntimeToken({
+      projectKey,
+      toolKey: "jingfang-ai",
+      name: "api-test-jingfang",
+      token: "jingfang-runtime-token",
+      scopes: ["runtime:read", "runtime:write", "session:exchange"],
+    });
     await saveAdminToolConfig({
       projectKey,
       toolKey: "redink",
@@ -149,13 +163,26 @@ describe("Tool config platform API", () => {
     );
     const revision = await revisionResponse.json();
 
-    expect(revisionResponse.status).toBe(200);
-    expect(revision.revision).toBe(saved.revision);
+    expect(revisionResponse.status).toBe(400);
+    expect(revision.success).toBe(false);
+
+    const scopedRevisionResponse = await getRevision(
+      new Request(
+        `http://localhost:3000/api/platform/tool-config/revision?projectKey=${projectKey}&tool=redink`,
+        {
+          headers: {
+            Authorization: "Bearer runtime-test-token",
+          },
+        }
+      )
+    );
+    const scopedRevision = await scopedRevisionResponse.json();
+
+    expect(scopedRevisionResponse.status).toBe(200);
+    expect(scopedRevision.revision).toBe(saved.revision);
   });
 
   it("运行时接口应该拒绝错误令牌", async () => {
-    process.env.TOOL_CONFIG_RUNTIME_TOKEN = "runtime-test-token";
-
     const response = await postRuntime(
       new Request("http://localhost:3000/api/platform/tool-config/runtime", {
         method: "POST",
@@ -177,8 +204,6 @@ describe("Tool config platform API", () => {
   });
 
   it("运行时保存接口应该支持外部工具按 userId 写入配置", async () => {
-    process.env.TOOL_CONFIG_RUNTIME_TOKEN = "runtime-test-token";
-
     const response = await postRuntimeSave(
       new Request(
         "http://localhost:3000/api/platform/tool-config/runtime-save",
@@ -186,7 +211,7 @@ describe("Tool config platform API", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: "Bearer runtime-test-token",
+            Authorization: "Bearer jingfang-runtime-token",
           },
           body: JSON.stringify({
             projectKey,
@@ -210,7 +235,7 @@ describe("Tool config platform API", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer runtime-test-token",
+          Authorization: "Bearer jingfang-runtime-token",
         },
         body: JSON.stringify({
           projectKey,
