@@ -25,7 +25,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { saveAdminToolConfigAction } from "@/features/tool-config/actions";
+import {
+  disableToolDefinitionAction,
+  importToolDefinitionAction,
+  rollbackToolDefinitionAction,
+  saveAdminToolConfigAction,
+} from "@/features/tool-config/actions";
+import type { ImportedToolDefinition } from "@/features/tool-config/schema";
 import { cn } from "@/lib/utils";
 
 type AdminToolConfigField = {
@@ -73,6 +79,33 @@ interface AdminToolConfigViewProps {
     };
     toolConfigs: AdminToolConfig[];
   };
+  toolDefinitions: {
+    project: {
+      key: string;
+      name: string;
+      configRevision: number;
+    };
+    tools: Array<{
+      tool: {
+        toolKey: string;
+        name: string;
+        description: string | null;
+        enabled: boolean;
+      };
+      status: {
+        fieldCount: number;
+        featureCount: number;
+        storageRuleCount: number;
+        lastRuntimeUseAt: string | Date | null;
+        lastAIRequestAt: string | Date | null;
+        lastAIRequestFeature: string | null;
+        lastAIRequestStatus: string | null;
+        lastImportAction: string | null;
+        lastImportAt: string | Date | null;
+        lastImportSummary: unknown;
+      };
+    }>;
+  };
 }
 
 type JsonValue =
@@ -96,8 +129,12 @@ type JsonValueType =
 /**
  * 管理员工具配置页面
  */
-export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
+export function AdminToolConfigView({
+  data,
+  toolDefinitions,
+}: AdminToolConfigViewProps) {
   const [formValues, setFormValues] = useState(() => createInitialValues(data));
+  const [importText, setImportText] = useState("");
   const [jsonViewModes, setJsonViewModes] = useState<
     Record<string, "form" | "json">
   >({});
@@ -109,8 +146,56 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
       toast.error(error.serverError ?? "工具配置保存失败");
     },
   });
+  const { execute: importDefinition, isPending: isImporting } = useAction(
+    importToolDefinitionAction,
+    {
+      onSuccess: ({ data: result }) => {
+        toast.success(result?.message ?? "工具定义已导入");
+        setImportText("");
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError ?? "工具定义导入失败");
+      },
+    }
+  );
+  const { execute: disableDefinition, isPending: isDisabling } = useAction(
+    disableToolDefinitionAction,
+    {
+      onSuccess: ({ data: result }) => {
+        toast.success(result?.message ?? "工具已停用");
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError ?? "工具停用失败");
+      },
+    }
+  );
+  const { execute: rollbackDefinition, isPending: isRollingBack } = useAction(
+    rollbackToolDefinitionAction,
+    {
+      onSuccess: ({ data: result }) => {
+        toast.success(result?.message ?? "工具定义已回滚");
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError ?? "工具定义回滚失败");
+      },
+    }
+  );
 
   const firstTool = data.toolConfigs[0]?.tool.toolKey ?? "";
+
+  /**
+   * 导入工具定义 JSON。
+   */
+  const submitImportDefinition = () => {
+    try {
+      importDefinition({
+        projectKey: data.project.key,
+        definition: JSON.parse(importText) as ImportedToolDefinition,
+      });
+    } catch {
+      toast.error("工具定义 JSON 解析失败");
+    }
+  };
 
   /**
    * 更新当前工具字段值
@@ -197,6 +282,103 @@ export function AdminToolConfigView({ data }: AdminToolConfigViewProps) {
         <p className="text-sm text-muted-foreground">
           为每个工具设置管理员默认配置，用户只会看到允许个人覆盖的字段。
         </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>工具定义导入</CardTitle>
+          <CardDescription>
+            直接粘贴工具定义 JSON，后台会同步工具、字段、功能、计费和存储规则。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            className="min-h-48 font-mono text-xs"
+            placeholder='{"toolKey":"notes-ai","name":"Notes AI",...}'
+            value={importText}
+            onChange={(event) => setImportText(event.target.value)}
+          />
+          <Button
+            type="button"
+            disabled={isImporting}
+            loading={isImporting}
+            loadingText="导入工具定义中..."
+            onClick={submitImportDefinition}
+          >
+            导入工具定义
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {toolDefinitions.tools.map((item) => (
+          <Card key={`status-${item.tool.toolKey}`}>
+            <CardHeader>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>{item.tool.name}</CardTitle>
+                <Badge variant={item.tool.enabled ? "default" : "secondary"}>
+                  {item.tool.enabled ? "已启用" : "已停用"}
+                </Badge>
+                <Badge variant="outline">{item.tool.toolKey}</Badge>
+              </div>
+              <CardDescription>
+                {item.tool.description ?? "暂无描述"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div>字段 {item.status.fieldCount}</div>
+                <div>功能 {item.status.featureCount}</div>
+                <div>存储规则 {item.status.storageRuleCount}</div>
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  最近导入：{item.status.lastImportAction ?? "无"} ·{" "}
+                  {formatDateTime(item.status.lastImportAt)}
+                </p>
+                <p>
+                  最近运行时访问：{formatDateTime(item.status.lastRuntimeUseAt)}
+                </p>
+                <p>
+                  最近 AI 请求：
+                  {item.status.lastAIRequestFeature
+                    ? `${item.status.lastAIRequestFeature} / ${item.status.lastAIRequestStatus ?? "-"}`
+                    : "无"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isDisabling}
+                  onClick={() =>
+                    disableDefinition({
+                      projectKey: data.project.key,
+                      tool: item.tool.toolKey,
+                    })
+                  }
+                >
+                  停用
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRollingBack}
+                  onClick={() =>
+                    rollbackDefinition({
+                      projectKey: data.project.key,
+                      tool: item.tool.toolKey,
+                    })
+                  }
+                >
+                  回滚最近一次
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Tabs defaultValue={firstTool} className="space-y-4">
@@ -362,6 +544,14 @@ function getGroupOrder(fields: AdminToolConfigField[]) {
   const groupOrder = ["config", "secret", "json", "text"];
   const availableGroups = new Set(fields.map((field) => field.group));
   return groupOrder.filter((group) => availableGroups.has(group));
+}
+
+function formatDateTime(value: string | Date | null) {
+  if (!value) {
+    return "无";
+  }
+
+  return new Date(value).toLocaleString("zh-CN");
 }
 
 function renderFieldInput(params: {

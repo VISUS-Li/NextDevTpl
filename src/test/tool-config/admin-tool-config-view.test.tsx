@@ -27,6 +27,15 @@ vi.mock("sonner", () => ({
 }));
 
 describe("AdminToolConfigView", () => {
+  const toolDefinitions = {
+    project: {
+      key: "nextdevtpl",
+      name: "tripai",
+      configRevision: 8,
+    },
+    tools: [],
+  };
+
   beforeEach(() => {
     executeMock.mockReset();
     toastSuccessMock.mockReset();
@@ -128,6 +137,7 @@ describe("AdminToolConfigView", () => {
             },
           ],
         }}
+        toolDefinitions={toolDefinitions}
       />
     );
 
@@ -227,6 +237,7 @@ describe("AdminToolConfigView", () => {
             },
           ],
         }}
+        toolDefinitions={toolDefinitions}
       />
     );
 

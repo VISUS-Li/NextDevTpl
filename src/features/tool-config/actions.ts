@@ -2,8 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  disableToolDefinition,
+  importToolDefinition,
+  rollbackToolDefinition,
+} from "@/features/tool-config/definition-admin";
+import {
+  importToolDefinitionSchema,
   saveAdminToolConfigSchema,
   saveUserToolConfigSchema,
+  toolDefinitionActionSchema,
 } from "@/features/tool-config/schema";
 import {
   saveAdminToolConfig,
@@ -37,6 +44,76 @@ export const saveAdminToolConfigAction = withToolConfigAdminAction("saveConfig")
     return {
       message: "工具配置已保存",
       revision,
+    };
+  });
+
+/**
+ * 导入工具定义
+ */
+export const importToolDefinitionAction = withToolConfigAdminAction(
+  "importDefinition"
+)
+  .schema(importToolDefinitionSchema)
+  .action(async ({ parsedInput: data, ctx }) => {
+    const result = await importToolDefinition({
+      projectKey: data.projectKey,
+      actorId: ctx.userId,
+      definition: data.definition,
+    });
+
+    revalidatePath("/admin/tool-config");
+    revalidatePath("/admin/ai");
+    revalidatePath("/admin/storage");
+
+    return {
+      message: "工具定义已导入",
+      toolKey: result.tool?.toolKey ?? data.definition.toolKey,
+    };
+  });
+
+/**
+ * 停用工具定义
+ */
+export const disableToolDefinitionAction = withToolConfigAdminAction(
+  "disableDefinition"
+)
+  .schema(toolDefinitionActionSchema)
+  .action(async ({ parsedInput: data, ctx }) => {
+    await disableToolDefinition({
+      projectKey: data.projectKey,
+      toolKey: data.tool,
+      actorId: ctx.userId,
+    });
+
+    revalidatePath("/admin/tool-config");
+
+    return {
+      message: "工具已停用",
+      toolKey: data.tool,
+    };
+  });
+
+/**
+ * 回滚工具定义
+ */
+export const rollbackToolDefinitionAction = withToolConfigAdminAction(
+  "rollbackDefinition"
+)
+  .schema(toolDefinitionActionSchema)
+  .action(async ({ parsedInput: data, ctx }) => {
+    await rollbackToolDefinition({
+      projectKey: data.projectKey,
+      toolKey: data.tool,
+      actorId: ctx.userId,
+    });
+
+    revalidatePath("/admin/tool-config");
+    revalidatePath("/admin/ai");
+    revalidatePath("/admin/storage");
+
+    return {
+      message: "工具定义已回滚",
+      toolKey: data.tool,
     };
   });
 

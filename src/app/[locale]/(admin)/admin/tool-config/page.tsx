@@ -1,4 +1,5 @@
 import { AdminToolConfigView } from "@/features/tool-config/components/admin-tool-config-view";
+import { listAdminToolDefinitions } from "@/features/tool-config/definition-admin";
 import { getAdminToolConfigPageData } from "@/features/tool-config/service";
 
 export const metadata = {
@@ -10,7 +11,10 @@ export const metadata = {
  * 管理员工具配置页面
  */
 export default async function AdminToolConfigPage() {
-  const data = await getAdminToolConfigPageData();
+  const [data, toolDefinitions] = await Promise.all([
+    getAdminToolConfigPageData(),
+    listAdminToolDefinitions(),
+  ]);
 
-  return <AdminToolConfigView data={data} />;
+  return <AdminToolConfigView data={data} toolDefinitions={toolDefinitions} />;
 }

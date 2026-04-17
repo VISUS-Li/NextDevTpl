@@ -957,6 +957,11 @@ export type NewToolRuntimeToken = typeof toolRuntimeToken.$inferInsert;
 export type ToolLaunchTicket = typeof toolLaunchTicket.$inferSelect;
 export type NewToolLaunchTicket = typeof toolLaunchTicket.$inferInsert;
 
+export type ToolDefinitionImportLog =
+  typeof toolDefinitionImportLog.$inferSelect;
+export type NewToolDefinitionImportLog =
+  typeof toolDefinitionImportLog.$inferInsert;
+
 export type ToolConfigField = typeof toolConfigField.$inferSelect;
 export type NewToolConfigField = typeof toolConfigField.$inferInsert;
 
@@ -1435,6 +1440,29 @@ export const toolLaunchTicket = pgTable(
   },
   (table) => [uniqueIndex("tool_launch_ticket_hash_idx").on(table.ticketHash)]
 );
+
+/**
+ * 工具定义导入日志表
+ *
+ * 用于记录导入、停用和回滚时的前后快照。
+ */
+export const toolDefinitionImportLog = pgTable("tool_definition_import_log", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => project.id, { onDelete: "cascade" }),
+  toolKey: text("tool_key").notNull(),
+  action: text("action").notNull(),
+  actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+  previousDefinitionJson: json("previous_definition_json").$type<
+    Record<string, unknown>
+  >(),
+  nextDefinitionJson: json("next_definition_json").$type<
+    Record<string, unknown>
+  >(),
+  summaryJson: json("summary_json").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 // ============================================
 // AI 网关表

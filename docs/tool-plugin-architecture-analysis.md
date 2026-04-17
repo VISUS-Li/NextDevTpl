@@ -6,7 +6,7 @@
 - 2026-04-17：阶段 2 已完成。新增 `tool_feature` 表并在项目初始化时按工具定义写入功能清单，AI 默认计费规则改为从 `tool-definitions` 的 `features.pricing` 派生，去掉 AI 网关里只服务 RedInk 的硬编码默认规则；新增阶段测试 `src/test/platform/tool-pricing-phase2.test.ts`，并回归 `src/test/platform/ai-chat-redink-defaults.test.ts`
 - 2026-04-17：阶段 3 已完成。新增 `tool_storage_rule` 表并在项目初始化时按工具定义写入工具级前缀、用途和 TTL 规则，`storage` 默认运行配置只保留平台级前缀，`presigned-image` 接口已支持显式传 `toolKey + purpose` 选择工具前缀；新增阶段测试 `src/test/platform/tool-storage-phase3.test.ts`，并回归 `src/test/platform/storage-phase2-lifecycle.test.ts`、`src/test/platform/storage-phase45-policy.test.ts`
 - 2026-04-17：阶段 4 已完成。新增 `tool_runtime_token` 和 `tool_launch_ticket` 表，`runtime`、`runtime-save`、`revision` 三个运行时接口已切到工具级 token，外部工具可通过 `GET /api/platform/tools/{toolKey}/launch` 取启动票据，再经 `POST /api/platform/tools/session/exchange` 交换用户身份；新增阶段测试 `src/test/tool-config/tool-runtime-phase4.test.ts`，并回归 `src/test/tool-config/api.test.ts`、`src/test/tool-config/external-runtime-flow.test.ts`
-- 2026-04-17：阶段 5 尚未开始，本轮后续开发应继续沿用前四阶段的数据模型，补上后台导入工具定义、导入审计、回滚与状态展示
+- 2026-04-17：阶段 5 已完成。新增 `tool_definition_import_log` 表、后台工具定义导入管理服务和 `/api/platform/tools`、`/api/platform/tools/import`、`/api/platform/tools/{toolKey}/disable`、`/api/platform/tools/{toolKey}/rollback` 接口，`/admin/tool-config` 已可导入工具定义 JSON、查看工具状态、停用工具并回滚最近一次导入；新增阶段测试 `src/test/tool-config/tool-import-phase5.test.ts`，并回归 `src/test/tool-config/tool-runtime-phase4.test.ts`、`src/test/tool-config/admin-tool-config-view.test.tsx`
 
 ## 1. 背景与目标
 
@@ -941,6 +941,13 @@ GET /api/platform/ai/chat/result
 2. 导入时校验字段、功能、计费和存储规则
 3. 支持禁用工具和回滚最近一次导入
 4. 显示工具接入状态和最近调用记录
+
+当前实现：
+
+1. 已新增 `tool_definition_import_log`，保存导入、停用、回滚前后的定义快照与摘要
+2. 已落地 `importToolDefinition()`、`disableToolDefinition()`、`rollbackToolDefinition()`、`listAdminToolDefinitions()`
+3. 已开放后台接口 `GET /api/platform/tools`、`POST /api/platform/tools/import`、`POST /api/platform/tools/{toolKey}/disable`、`POST /api/platform/tools/{toolKey}/rollback`
+4. `/admin/tool-config` 已增加工具定义导入面板、状态卡片、停用与回滚入口
 
 ## 14. RedInk 的推荐改造方式
 
