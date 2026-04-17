@@ -196,6 +196,7 @@ export const project = pgTable("project", {
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
   enabled: boolean("enabled").notNull().default(true),
   configRevision: integer("config_revision").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),

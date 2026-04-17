@@ -12,10 +12,8 @@ import { POST as postPresignedImage } from "@/app/api/platform/storage/presigned
 import { POST as postUploadPresigned } from "@/app/api/upload/presigned/route";
 import { db } from "@/db";
 import { storageObject } from "@/db/schema";
-import {
-  saveAdminToolConfig,
-  seedDefaultToolConfigProject,
-} from "@/features/tool-config";
+import { saveStoragePolicyConfig } from "@/features/storage/records";
+import { seedDefaultToolConfigProject } from "@/features/tool-config";
 import { auth } from "@/lib/auth";
 import { cleanupTestUsers, createTestUser } from "../utils";
 
@@ -190,14 +188,13 @@ describe("Storage Phase 2 Lifecycle API", () => {
     createdUserIds.push(adminUser.id);
     mockSession(adminUser);
     await seedDefaultToolConfigProject();
-    await saveAdminToolConfig({
-      toolKey: "storage",
+    await saveStoragePolicyConfig({
       actorId: adminUser.id,
-      values: {
-        config1: 2,
-        config2: 5,
-        config3: 120,
-        json1: [
+      policy: {
+        ephemeralHours: 2,
+        temporaryDays: 5,
+        longTermDays: 120,
+        prefixRules: [
           {
             prefix: "platform/ai-assets/request/",
             retentionClass: "ephemeral",

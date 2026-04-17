@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { project, toolConfigField, toolRegistry } from "@/db/schema";
+import { getStoragePolicyConfig } from "@/features/storage/records";
 import {
   getAdminToolConfigPageData,
-  getResolvedToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config";
 import { generateTestId, testDb } from "../utils";
@@ -100,20 +100,21 @@ describe("Tool definition phase 1", () => {
       name: "Tool Definition P1",
     });
 
-    const storageConfig = await getResolvedToolConfig({
-      projectKey,
-      toolKey: "storage",
-    });
+    const pageData = await getAdminToolConfigPageData(projectKey);
+    const storagePolicy = await getStoragePolicyConfig(projectKey);
 
-    expect(storageConfig.config).toMatchObject({
-      config1: 6,
-      config2: 3,
-      config3: 90,
-    });
-    expect(Array.isArray(storageConfig.config.json1)).toBe(true);
     expect(
-      (storageConfig.config.json1 as Array<{ prefix: string }>).some(
-        (item) => item.prefix === "redink/product-images-temp/"
+      pageData.toolConfigs.some((item) => item.tool.toolKey === "storage")
+    ).toBe(false);
+    expect(storagePolicy).toMatchObject({
+      ephemeralHours: 6,
+      temporaryDays: 3,
+      longTermDays: 90,
+    });
+    expect(Array.isArray(storagePolicy.prefixRules)).toBe(true);
+    expect(
+      storagePolicy.prefixRules.some(
+        (item) => item.prefix === "platform/ai-assets/request/"
       )
     ).toBe(true);
   });

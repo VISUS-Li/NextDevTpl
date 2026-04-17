@@ -10,11 +10,11 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as postCleanupScope } from "@/app/api/platform/storage/admin/cleanup-scope/route";
 import { db } from "@/db";
 import { storageObject } from "@/db/schema";
-import { saveStorageObjectRecord } from "@/features/storage/records";
 import {
-  saveAdminToolConfig,
-  seedDefaultToolConfigProject,
-} from "@/features/tool-config";
+  saveStorageObjectRecord,
+  saveStoragePolicyConfig,
+} from "@/features/storage/records";
+import { seedDefaultToolConfigProject } from "@/features/tool-config";
 import { auth } from "@/lib/auth";
 import { cleanupTestUsers, createTestUser } from "../utils";
 
@@ -68,14 +68,13 @@ describe("Storage Phase 4/5 Policy", () => {
     });
     createdUserIds.push(adminUser.id);
     await seedDefaultToolConfigProject();
-    await saveAdminToolConfig({
-      toolKey: "storage",
+    await saveStoragePolicyConfig({
       actorId: adminUser.id,
-      values: {
-        config1: 6,
-        config2: 3,
-        config3: 90,
-        json1: [
+      policy: {
+        ephemeralHours: 6,
+        temporaryDays: 3,
+        longTermDays: 90,
+        prefixRules: [
           {
             prefix: "platform/ai-assets/request/",
             retentionClass: "ephemeral",

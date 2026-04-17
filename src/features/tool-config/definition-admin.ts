@@ -1,4 +1,4 @@
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, ne, notInArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -184,7 +184,12 @@ export async function listAdminToolDefinitions(
   const tools = await db
     .select()
     .from(toolRegistry)
-    .where(eq(toolRegistry.projectId, currentProject.id))
+    .where(
+      and(
+        eq(toolRegistry.projectId, currentProject.id),
+        ne(toolRegistry.toolKey, "storage")
+      )
+    )
     .orderBy(toolRegistry.sortOrder, toolRegistry.toolKey);
 
   const items = await Promise.all(

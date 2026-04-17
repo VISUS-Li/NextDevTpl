@@ -96,6 +96,7 @@ type DefaultFieldDefinition = {
 };
 
 const builtInToolDefinitions = listBuiltInToolDefinitions();
+const HIDDEN_ADMIN_TOOL_KEYS = new Set(["storage"]);
 const defaultFieldDefinitions: DefaultFieldDefinition[] =
   builtInToolDefinitions.flatMap((tool) =>
     buildDefaultSlotFields(tool.toolKey).map((field) => {
@@ -699,7 +700,12 @@ export async function getAdminToolConfigPageData(
   const tools = await db
     .select()
     .from(toolRegistry)
-    .where(eq(toolRegistry.projectId, currentProject.id))
+    .where(
+      and(
+        eq(toolRegistry.projectId, currentProject.id),
+        notInArray(toolRegistry.toolKey, [...HIDDEN_ADMIN_TOOL_KEYS])
+      )
+    )
     .orderBy(asc(toolRegistry.sortOrder), asc(toolRegistry.toolKey));
   const toolConfigs = await Promise.all(
     tools.map(async (tool) => ({

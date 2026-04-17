@@ -13,6 +13,7 @@ import {
 
 import { db } from "@/db";
 import {
+  project,
   type StorageRetentionClass,
   storageObject,
   toolRegistry,
@@ -69,6 +70,28 @@ type StoragePolicyConfig = {
   prefixRules: StoragePrefixRule[];
 };
 
+const DEFAULT_STORAGE_POLICY: StoragePolicyConfig = {
+  ephemeralHours: 6,
+  temporaryDays: 3,
+  longTermDays: 90,
+  prefixRules: [
+    {
+      prefix: "platform/ai-assets/request/",
+      retentionClass: "ephemeral",
+      ttlHours: 24,
+      purpose: "ai_input_temp",
+      enabled: true,
+    },
+    {
+      prefix: "platform/ai-assets/task/",
+      retentionClass: "temporary",
+      ttlHours: 72,
+      purpose: "ai_task_temp",
+      enabled: true,
+    },
+  ],
+};
+
 /**
  * 计算资源过期时间。
  */
@@ -116,15 +139,10 @@ export function getStorageExpiryDate(
 /**
  * 读取后台维护的对象存储策略。
  */
-export async function getStoragePolicyConfig(): Promise<StoragePolicyConfig> {
-  const currentProject = await seedDefaultToolConfigProject({
-    projectKey: DEFAULT_PROJECT_KEY,
-  });
-  const resolved = await getResolvedToolConfig({
-    projectKey: DEFAULT_PROJECT_KEY,
-    toolKey: "storage",
-  });
-  const config = resolved.config as Record<string, unknown>;
+export async function getStoragePolicyConfig(
+  projectKey = DEFAULT_PROJECT_KEY
+): Promise<StoragePolicyConfig> {
+  const { currentProject, policy } = await getStoredStoragePolicy(projectKey);
   const ruleRows = await db
     .select()
     .from(toolStorageRule)
@@ -136,14 +154,62 @@ export async function getStoragePolicyConfig(): Promise<StoragePolicyConfig> {
     );
 
   return {
-    ephemeralHours: normalizePositiveNumber(config.config1, 6),
-    temporaryDays: normalizePositiveNumber(config.config2, 3),
-    longTermDays: normalizePositiveNumber(config.config3, 90),
+    ephemeralHours: policy.ephemeralHours,
+    temporaryDays: policy.temporaryDays,
+    longTermDays: policy.longTermDays,
     prefixRules: mergeStoragePrefixRules(
-      normalizePrefixRules(config.json1),
+      policy.prefixRules,
       normalizeToolStorageRules(ruleRows)
     ),
   };
+}
+
+/**
+ * 保存平台级对象存储策略。
+ */
+export async function saveStoragePolicyConfig(params: {
+  actorId: string;
+  projectKey?: string;
+  policy: StoragePolicyConfig;
+}) {
+  const projectKey = params.projectKey ?? DEFAULT_PROJECT_KEY;
+  await seedDefaultToolConfigProject({ projectKey });
+  const [currentProject] = await db
+    .select({
+      id: project.id,
+      configRevision: project.configRevision,
+      metadata: project.metadata,
+    })
+    .from(project)
+    .where(eq(project.key, projectKey))
+    .limit(1);
+
+  if (!currentProject) {
+    throw new Error("项目配置不存在");
+  }
+
+  const now = new Date();
+  const metadata = asRecord(currentProject.metadata);
+  const normalizedPolicy = normalizeStoragePolicy(
+    params.policy,
+    DEFAULT_STORAGE_POLICY
+  );
+
+  await db
+    .update(project)
+    .set({
+      metadata: {
+        ...metadata,
+        storagePolicy: normalizedPolicy,
+        storagePolicyUpdatedBy: params.actorId,
+        storagePolicyUpdatedAt: now.toISOString(),
+      },
+      configRevision: currentProject.configRevision + 1,
+      updatedAt: now,
+    })
+    .where(eq(project.id, currentProject.id));
+
+  return currentProject.configRevision + 1;
 }
 
 /**
@@ -348,9 +414,7 @@ export async function cleanupScopedStorageObjects(
  * 读取管理员存储页面数据。
  */
 export async function getStorageAdminPageData() {
-  const currentProject = await seedDefaultToolConfigProject({
-    projectKey: DEFAULT_PROJECT_KEY,
-  });
+  const { currentProject } = await getStoredStoragePolicy();
   const now = new Date();
   const storagePolicy = await getStoragePolicyConfig();
 
@@ -520,6 +584,30 @@ function normalizePositiveNumber(value: unknown, fallback: number) {
   return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
 }
 
+function normalizeStoragePolicy(
+  value: unknown,
+  fallback: StoragePolicyConfig
+): StoragePolicyConfig {
+  const record = asRecord(value);
+  return {
+    ephemeralHours: normalizePositiveNumber(
+      record?.ephemeralHours,
+      fallback.ephemeralHours
+    ),
+    temporaryDays: normalizePositiveNumber(
+      record?.temporaryDays,
+      fallback.temporaryDays
+    ),
+    longTermDays: normalizePositiveNumber(
+      record?.longTermDays,
+      fallback.longTermDays
+    ),
+    prefixRules: normalizePrefixRules(
+      record?.prefixRules ?? fallback.prefixRules
+    ),
+  };
+}
+
 function normalizePrefixRules(value: unknown): StoragePrefixRule[] {
   if (!Array.isArray(value)) {
     return [];
@@ -618,6 +706,55 @@ function mergeStorageMetadata(
     ...(metadata ?? {}),
     ...(matchedPrefix ? { matchedPrefixRule: matchedPrefix } : {}),
   };
+}
+
+/**
+ * 读取项目级对象存储策略，并兼容旧版 tool-config 数据。
+ */
+async function getStoredStoragePolicy(projectKey = DEFAULT_PROJECT_KEY) {
+  await seedDefaultToolConfigProject({ projectKey });
+  const [currentProject] = await db
+    .select({
+      id: project.id,
+      key: project.key,
+      name: project.name,
+      configRevision: project.configRevision,
+      metadata: project.metadata,
+    })
+    .from(project)
+    .where(eq(project.key, projectKey))
+    .limit(1);
+
+  if (!currentProject) {
+    throw new Error("项目配置不存在");
+  }
+
+  const metadata = asRecord(currentProject.metadata);
+  const storedPolicy = metadata?.storagePolicy
+    ? normalizeStoragePolicy(metadata.storagePolicy, DEFAULT_STORAGE_POLICY)
+    : await getLegacyStoragePolicyConfig(projectKey);
+
+  return {
+    currentProject,
+    policy: storedPolicy,
+  };
+}
+
+/**
+ * 兼容旧版 storage 工具配置，避免已有策略丢失。
+ */
+async function getLegacyStoragePolicyConfig(projectKey: string) {
+  const resolved = await getResolvedToolConfig({
+    projectKey,
+    toolKey: "storage",
+  });
+  return normalizeStoragePolicy(resolved.config, DEFAULT_STORAGE_POLICY);
+}
+
+function asRecord(value: unknown) {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 async function performStorageDeletion(

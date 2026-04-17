@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { saveStoragePolicyAction } from "@/features/storage/actions";
 import { saveAdminToolConfigAction } from "@/features/tool-config/actions";
 
 type StorageAssetUrlMode = "public" | "proxy" | "signed";
@@ -170,6 +171,18 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
       setSavingToolKey(null);
     },
   });
+  // 用于保存平台级对象存储策略。
+  const { execute: saveStoragePolicy } = useAction(saveStoragePolicyAction, {
+    onSuccess: ({ data: result }) => {
+      toast.success(result?.message ?? "存储策略已保存");
+      setSavingToolKey(null);
+      router.refresh();
+    },
+    onError: ({ error }) => {
+      toast.error(error.serverError ?? "存储策略保存失败");
+      setSavingToolKey(null);
+    },
+  });
 
   /**
    * 保存工具的资源访问方式。
@@ -192,18 +205,16 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
   const handleSaveStoragePolicy = () => {
     try {
       setSavingToolKey("storage");
-      saveToolConfig({
+      saveStoragePolicy({
         projectKey: data.project.key,
-        tool: "storage",
-        values: {
-          config1: Number(storagePolicyForm.ephemeralHours),
-          config2: Number(storagePolicyForm.temporaryDays),
-          config3: Number(storagePolicyForm.longTermDays),
-          json1: JSON.parse(
+        policy: {
+          ephemeralHours: Number(storagePolicyForm.ephemeralHours),
+          temporaryDays: Number(storagePolicyForm.temporaryDays),
+          longTermDays: Number(storagePolicyForm.longTermDays),
+          prefixRules: JSON.parse(
             storagePolicyForm.prefixRules
           ) as StoragePrefixRule[],
         },
-        clearSecrets: [],
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "存储策略保存失败");

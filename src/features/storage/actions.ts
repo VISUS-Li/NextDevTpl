@@ -6,15 +6,36 @@
  * 提供文件上传和管理的服务端操作接口
  */
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { protectedAction } from "@/lib/safe-action";
-
+import { adminAction, protectedAction } from "@/lib/safe-action";
 import { getStorageProvider } from "./providers";
+import { saveStoragePolicyConfig } from "./records";
 import { ALLOWED_IMAGE_TYPES, type AllowedImageType } from "./types";
 
+const withStorageAdminAction = (name: string) =>
+  adminAction.metadata({ action: `storage.admin.${name}` });
 const withStorageAction = (name: string) =>
   protectedAction.metadata({ action: `storage.${name}` });
+
+const storagePrefixRuleSchema = z.object({
+  prefix: z.string().min(1, "前缀不能为空"),
+  retentionClass: z.enum(["permanent", "long_term", "temporary", "ephemeral"]),
+  ttlHours: z.number().int().positive().optional(),
+  purpose: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+});
+
+const saveStoragePolicySchema = z.object({
+  projectKey: z.string().min(1).optional(),
+  policy: z.object({
+    ephemeralHours: z.number().int().positive(),
+    temporaryDays: z.number().int().positive(),
+    longTermDays: z.number().int().positive(),
+    prefixRules: z.array(storagePrefixRuleSchema),
+  }),
+});
 
 // ============================================
 // 存储配置
@@ -45,6 +66,38 @@ function getAllowedBuckets(): string[] {
 // ============================================
 
 /**
+ * 保存平台级对象存储策略。
+ */
+export const saveStoragePolicyAction = withStorageAdminAction("savePolicy")
+  .schema(saveStoragePolicySchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const revision = await saveStoragePolicyConfig({
+      actorId: ctx.userId,
+      policy: {
+        ephemeralHours: parsedInput.policy.ephemeralHours,
+        temporaryDays: parsedInput.policy.temporaryDays,
+        longTermDays: parsedInput.policy.longTermDays,
+        prefixRules: parsedInput.policy.prefixRules.map((item) => ({
+          prefix: item.prefix,
+          retentionClass: item.retentionClass,
+          ...(item.ttlHours === undefined ? {} : { ttlHours: item.ttlHours }),
+          ...(item.purpose === undefined ? {} : { purpose: item.purpose }),
+          ...(item.enabled === undefined ? {} : { enabled: item.enabled }),
+        })),
+      },
+      ...(parsedInput.projectKey ? { projectKey: parsedInput.projectKey } : {}),
+    });
+
+    revalidatePath("/admin/storage");
+    revalidatePath("/admin/tool-config");
+
+    return {
+      message: "存储策略已保存",
+      revision,
+    };
+  });
+
+/**
  * 获取签名上传 URL
  *
  * 受保护的 Action - 需要用户登录
@@ -58,11 +111,14 @@ export const getSignedUploadUrlAction = withStorageAction("getSignedUploadUrl")
         .string()
         .min(1, "文件键名不能为空")
         .max(255, "文件键名过长")
-        .regex(/^[a-zA-Z0-9\-_\/\.]+$/, "文件键名包含非法字符"),
+        .regex(/^[a-zA-Z0-9\-/.]+$/, "文件键名包含非法字符"),
       /** 文件 MIME 类型 */
-      contentType: z.enum(["image/jpeg", "image/png", "image/gif", "image/webp"], {
-        message: `只支持以下文件类型: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
-      }),
+      contentType: z.enum(
+        ["image/jpeg", "image/png", "image/gif", "image/webp"],
+        {
+          message: `只支持以下文件类型: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
+        }
+      ),
       /** 存储桶名称 (可选，默认使用头像桶) */
       bucket: z.string().optional(),
     })
