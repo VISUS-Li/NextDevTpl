@@ -945,6 +945,9 @@ export type NewProject = typeof project.$inferInsert;
 export type ToolRegistry = typeof toolRegistry.$inferSelect;
 export type NewToolRegistry = typeof toolRegistry.$inferInsert;
 
+export type ToolFeature = typeof toolFeature.$inferSelect;
+export type NewToolFeature = typeof toolFeature.$inferInsert;
+
 export type ToolConfigField = typeof toolConfigField.$inferSelect;
 export type NewToolConfigField = typeof toolConfigField.$inferInsert;
 
@@ -1301,6 +1304,39 @@ export const aiRelayCostModeEnum = pgEnum("ai_relay_cost_mode", [
   "manual",
   "fixed",
 ]);
+
+/**
+ * 工具功能表
+ *
+ * 用于记录工具声明的功能、默认操作和能力要求。
+ */
+export const toolFeature = pgTable(
+  "tool_feature",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    featureKey: text("feature_key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    requestType: aiRequestTypeEnum("request_type").notNull().default("chat"),
+    defaultOperation: text("default_operation"),
+    requiredCapabilities: json("required_capabilities").$type<string[]>(),
+    enabled: boolean("enabled").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_feature_project_tool_feature_idx").on(
+      table.projectId,
+      table.toolKey,
+      table.featureKey
+    ),
+  ]
+);
 
 // ============================================
 // AI 网关表

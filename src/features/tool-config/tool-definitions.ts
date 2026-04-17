@@ -556,3 +556,10 @@ export function listBuiltInToolDefinitions() {
 export function getBuiltInToolDefinition(toolKey: string) {
   return listBuiltInToolDefinitions().find((item) => item.toolKey === toolKey);
 }
+
+/**
+ * 读取工具功能定义列表。
+ */
+export function listBuiltInToolFeatures(toolKey: string) {
+  return getBuiltInToolDefinition(toolKey)?.features ?? [];
+}

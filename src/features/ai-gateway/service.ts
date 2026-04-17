@@ -32,6 +32,7 @@ import {
   getResolvedToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config/service";
+import { listBuiltInToolFeatures } from "@/features/tool-config/tool-definitions";
 import {
   type AIChatMessage,
   type AIChatResult,
@@ -59,56 +60,6 @@ const AI_MODEL_CAPABILITIES = [
 ] as const;
 
 type AIModelCapability = (typeof AI_MODEL_CAPABILITIES)[number];
-
-const REDINK_DEFAULT_PRICING_RULES = [
-  {
-    featureKey: "outline",
-    billingMode: "token_based" as const,
-    inputTokensPerCredit: 600,
-    outputTokensPerCredit: 300,
-    minimumCredits: 2,
-  },
-  {
-    featureKey: "content",
-    billingMode: "token_based" as const,
-    inputTokensPerCredit: 600,
-    outputTokensPerCredit: 300,
-    minimumCredits: 2,
-  },
-  {
-    featureKey: "product-copy",
-    billingMode: "token_based" as const,
-    inputTokensPerCredit: 600,
-    outputTokensPerCredit: 300,
-    minimumCredits: 2,
-  },
-  {
-    featureKey: "product-post-content",
-    billingMode: "token_based" as const,
-    inputTokensPerCredit: 600,
-    outputTokensPerCredit: 300,
-    minimumCredits: 2,
-  },
-  {
-    featureKey: "product-image-analysis",
-    billingMode: "token_based" as const,
-    inputTokensPerCredit: 400,
-    outputTokensPerCredit: 200,
-    minimumCredits: 3,
-  },
-  {
-    featureKey: "product-post-image",
-    billingMode: "fixed_credits" as const,
-    fixedCredits: 8,
-    minimumCredits: 8,
-  },
-  {
-    featureKey: "image-generation",
-    billingMode: "fixed_credits" as const,
-    fixedCredits: 8,
-    minimumCredits: 8,
-  },
-] as const;
 
 export class AIGatewayError extends Error {
   constructor(
@@ -339,21 +290,22 @@ async function getPricingRule(
 }
 
 /**
- * 为 RedInk 补齐默认计费规则，避免新功能没有 rule。
+ * 按工具定义补齐默认计费规则。
  */
 async function seedDefaultPricingRules(toolKey: string) {
-  if (toolKey !== "redink") {
-    return;
-  }
+  const features = listBuiltInToolFeatures(toolKey).filter(
+    (feature) => feature.pricing
+  );
 
-  for (const rule of REDINK_DEFAULT_PRICING_RULES) {
+  for (const feature of features) {
+    const rule = feature.pricing;
     const [existingRule] = await db
       .select({ id: aiPricingRule.id })
       .from(aiPricingRule)
       .where(
         and(
           eq(aiPricingRule.toolKey, toolKey),
-          eq(aiPricingRule.featureKey, rule.featureKey),
+          eq(aiPricingRule.featureKey, feature.featureKey),
           eq(aiPricingRule.requestType, "chat"),
           eq(aiPricingRule.modelScope, "any")
         )
@@ -367,8 +319,8 @@ async function seedDefaultPricingRules(toolKey: string) {
     await db.insert(aiPricingRule).values({
       id: crypto.randomUUID(),
       toolKey,
-      featureKey: rule.featureKey,
-      requestType: "chat",
+      featureKey: feature.featureKey,
+      requestType: feature.requestType,
       billingMode: rule.billingMode,
       modelScope: "any",
       fixedCredits: "fixedCredits" in rule ? rule.fixedCredits : null,

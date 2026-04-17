@@ -17,6 +17,7 @@ import {
   toolConfigAuditLog,
   toolConfigField,
   toolConfigValue,
+  toolFeature,
   toolRegistry,
 } from "@/db/schema";
 import type { ToolConfigValueInput } from "./schema";
@@ -24,6 +25,7 @@ import {
   DEFAULT_PROJECT_KEY,
   getBuiltInToolDefinition,
   listBuiltInToolDefinitions,
+  listBuiltInToolFeatures,
   SLOT_CONFIG_COUNT,
   SLOT_JSON_COUNT,
   SLOT_SECRET_COUNT,
@@ -288,6 +290,7 @@ export async function seedDefaultToolConfigProject(params?: {
   }
 
   await seedBuiltInRuntimeConfig(currentProject.id, now);
+  await seedBuiltInToolFeatures(currentProject.id, now);
 
   return currentProject;
 }
@@ -365,6 +368,60 @@ async function seedBuiltInRuntimeConfig(projectId: string, now: Date) {
           updatedAt: now,
         })
         .where(eq(toolConfigValue.id, currentRow.id));
+    }
+  }
+}
+
+/**
+ * 按工具定义补齐功能清单。
+ */
+async function seedBuiltInToolFeatures(projectId: string, now: Date) {
+  for (const tool of builtInToolDefinitions) {
+    const features = listBuiltInToolFeatures(tool.toolKey);
+    if (features.length === 0) {
+      continue;
+    }
+
+    for (const [index, feature] of features.entries()) {
+      const [existingFeature] = await db
+        .select({ id: toolFeature.id })
+        .from(toolFeature)
+        .where(
+          and(
+            eq(toolFeature.projectId, projectId),
+            eq(toolFeature.toolKey, tool.toolKey),
+            eq(toolFeature.featureKey, feature.featureKey)
+          )
+        )
+        .limit(1);
+
+      const featureValues = {
+        projectId,
+        toolKey: tool.toolKey,
+        featureKey: feature.featureKey,
+        name: feature.name,
+        description: feature.description ?? null,
+        requestType: feature.requestType,
+        defaultOperation: feature.defaultOperation ?? null,
+        requiredCapabilities: feature.requiredCapabilities ?? null,
+        enabled: feature.enabled ?? true,
+        sortOrder: feature.sortOrder ?? (index + 1) * 10,
+        updatedAt: now,
+      };
+
+      if (existingFeature) {
+        await db
+          .update(toolFeature)
+          .set(featureValues)
+          .where(eq(toolFeature.id, existingFeature.id));
+        continue;
+      }
+
+      await db.insert(toolFeature).values({
+        id: crypto.randomUUID(),
+        ...featureValues,
+        createdAt: now,
+      });
     }
   }
 }
