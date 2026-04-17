@@ -19,6 +19,7 @@ import {
   toolConfigValue,
   toolFeature,
   toolRegistry,
+  toolStorageRule,
 } from "@/db/schema";
 import type { ToolConfigValueInput } from "./schema";
 import {
@@ -26,6 +27,7 @@ import {
   getBuiltInToolDefinition,
   listBuiltInToolDefinitions,
   listBuiltInToolFeatures,
+  listBuiltInToolStorageRules,
   SLOT_CONFIG_COUNT,
   SLOT_JSON_COUNT,
   SLOT_SECRET_COUNT,
@@ -291,6 +293,7 @@ export async function seedDefaultToolConfigProject(params?: {
 
   await seedBuiltInRuntimeConfig(currentProject.id, now);
   await seedBuiltInToolFeatures(currentProject.id, now);
+  await seedBuiltInToolStorageRules(currentProject.id, now);
 
   return currentProject;
 }
@@ -420,6 +423,79 @@ async function seedBuiltInToolFeatures(projectId: string, now: Date) {
       await db.insert(toolFeature).values({
         id: crypto.randomUUID(),
         ...featureValues,
+        createdAt: now,
+      });
+    }
+  }
+}
+
+/**
+ * 按工具定义补齐存储规则。
+ */
+async function seedBuiltInToolStorageRules(projectId: string, now: Date) {
+  for (const tool of builtInToolDefinitions) {
+    const rules = listBuiltInToolStorageRules(tool.toolKey);
+    const expectedPurposes = rules.map((item) => item.purpose);
+
+    if (expectedPurposes.length > 0) {
+      await db
+        .delete(toolStorageRule)
+        .where(
+          and(
+            eq(toolStorageRule.projectId, projectId),
+            eq(toolStorageRule.toolKey, tool.toolKey),
+            notInArray(toolStorageRule.purpose, expectedPurposes)
+          )
+        );
+    } else {
+      await db
+        .delete(toolStorageRule)
+        .where(
+          and(
+            eq(toolStorageRule.projectId, projectId),
+            eq(toolStorageRule.toolKey, tool.toolKey)
+          )
+        );
+      continue;
+    }
+
+    for (const rule of rules) {
+      const [existingRule] = await db
+        .select({ id: toolStorageRule.id })
+        .from(toolStorageRule)
+        .where(
+          and(
+            eq(toolStorageRule.projectId, projectId),
+            eq(toolStorageRule.toolKey, tool.toolKey),
+            eq(toolStorageRule.purpose, rule.purpose)
+          )
+        )
+        .limit(1);
+
+      const ruleValues = {
+        projectId,
+        toolKey: tool.toolKey,
+        purpose: rule.purpose,
+        prefix: rule.prefix,
+        retentionClass: rule.retentionClass,
+        ttlHours: rule.ttlHours ?? null,
+        maxSizeBytes: rule.maxSizeBytes ?? null,
+        contentTypes: rule.contentTypes ?? null,
+        enabled: rule.enabled,
+        updatedAt: now,
+      };
+
+      if (existingRule) {
+        await db
+          .update(toolStorageRule)
+          .set(ruleValues)
+          .where(eq(toolStorageRule.id, existingRule.id));
+        continue;
+      }
+
+      await db.insert(toolStorageRule).values({
+        id: crypto.randomUUID(),
+        ...ruleValues,
         createdAt: now,
       });
     }

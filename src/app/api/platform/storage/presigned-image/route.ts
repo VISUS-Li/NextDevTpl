@@ -2,7 +2,10 @@ import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStorageProvider } from "@/features/storage/providers";
-import { saveStorageObjectRecord } from "@/features/storage/records";
+import {
+  resolveToolStoragePrefix,
+  saveStorageObjectRecord,
+} from "@/features/storage/records";
 import {
   ALLOWED_IMAGE_TYPES,
   type AllowedImageType,
@@ -15,6 +18,7 @@ const presignedImageSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   contentType: z.enum(ALLOWED_IMAGE_TYPES),
   fileSize: z.number().int().positive().max(MAX_FILE_SIZE).optional(),
+  toolKey: z.string().trim().min(1).max(80).default("redink"),
   purpose: z.string().trim().min(1).max(80).default("product_image"),
   retentionClass: z
     .enum(["permanent", "long_term", "temporary", "ephemeral"])
@@ -71,7 +75,12 @@ export const POST = withApiLogging(async (request: Request) => {
   const bucket = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
   const extension =
     payload.data.filename.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ".png";
-  const key = `redink/product-images/${session.user.id}/${nanoid()}${extension}`;
+  const prefix = await resolveToolStoragePrefix({
+    toolKey: payload.data.toolKey,
+    purpose: payload.data.purpose,
+    fallbackPrefix: `${payload.data.toolKey}/product-images/`,
+  });
+  const key = `${prefix}${session.user.id}/${nanoid()}${extension}`;
   const provider = getStorageProvider();
   const uploadUrl = await provider.getSignedUploadUrl(
     key,
@@ -84,7 +93,7 @@ export const POST = withApiLogging(async (request: Request) => {
     key,
     contentType: payload.data.contentType,
     ownerUserId: session.user.id,
-    toolKey: "redink",
+    toolKey: payload.data.toolKey,
     purpose: payload.data.purpose,
     retentionClass: payload.data.retentionClass,
     expiresAt: payload.data.expiresAt ? new Date(payload.data.expiresAt) : null,

@@ -119,6 +119,9 @@ const STORAGE_RULES: ToolStorageRuleDefinition[] = [
     purpose: "ai_task_temp",
     enabled: true,
   },
+];
+
+const REDINK_STORAGE_RULES: ToolStorageRuleDefinition[] = [
   {
     prefix: "redink/product-images-temp/",
     retentionClass: "temporary",
@@ -402,7 +405,6 @@ export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
       config3: 90,
       json1: STORAGE_RULES.map((item) => ({ ...item })),
     },
-    storageRules: STORAGE_RULES,
   },
   {
     toolKey: "redink",
@@ -460,6 +462,7 @@ export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
     },
     featureConfigDefaults: REDINK_FEATURE_CONFIG_DEFAULTS,
     features: REDINK_FEATURES,
+    storageRules: REDINK_STORAGE_RULES,
     defaultAIRoute: {
       requestedModel: "gpt-4o-mini",
       routeStrategy: "primary_only",
@@ -562,4 +565,11 @@ export function getBuiltInToolDefinition(toolKey: string) {
  */
 export function listBuiltInToolFeatures(toolKey: string) {
   return getBuiltInToolDefinition(toolKey)?.features ?? [];
+}
+
+/**
+ * 读取工具存储规则列表。
+ */
+export function listBuiltInToolStorageRules(toolKey: string) {
+  return getBuiltInToolDefinition(toolKey)?.storageRules ?? [];
 }

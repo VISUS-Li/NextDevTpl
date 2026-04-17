@@ -85,6 +85,13 @@
       "when": 1776391363589,
       "tag": "0011_panoramic_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776391743942,
+      "tag": "0012_dark_kronos",
+      "breakpoints": true
     }
   ]
 }

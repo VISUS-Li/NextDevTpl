@@ -16,6 +16,7 @@ import {
   type StorageRetentionClass,
   storageObject,
   toolRegistry,
+  toolStorageRule,
   user,
 } from "@/db/schema";
 import {
@@ -116,7 +117,7 @@ export function getStorageExpiryDate(
  * 读取后台维护的对象存储策略。
  */
 export async function getStoragePolicyConfig(): Promise<StoragePolicyConfig> {
-  await seedDefaultToolConfigProject({
+  const currentProject = await seedDefaultToolConfigProject({
     projectKey: DEFAULT_PROJECT_KEY,
   });
   const resolved = await getResolvedToolConfig({
@@ -124,13 +125,54 @@ export async function getStoragePolicyConfig(): Promise<StoragePolicyConfig> {
     toolKey: "storage",
   });
   const config = resolved.config as Record<string, unknown>;
+  const ruleRows = await db
+    .select()
+    .from(toolStorageRule)
+    .where(
+      and(
+        eq(toolStorageRule.projectId, currentProject.id),
+        eq(toolStorageRule.enabled, true)
+      )
+    );
 
   return {
     ephemeralHours: normalizePositiveNumber(config.config1, 6),
     temporaryDays: normalizePositiveNumber(config.config2, 3),
     longTermDays: normalizePositiveNumber(config.config3, 90),
-    prefixRules: normalizePrefixRules(config.json1),
+    prefixRules: mergeStoragePrefixRules(
+      normalizePrefixRules(config.json1),
+      normalizeToolStorageRules(ruleRows)
+    ),
   };
+}
+
+/**
+ * 按工具用途解析上传前缀。
+ */
+export async function resolveToolStoragePrefix(params: {
+  toolKey: string;
+  purpose: string;
+  fallbackPrefix: string;
+}) {
+  const currentProject = await seedDefaultToolConfigProject({
+    projectKey: DEFAULT_PROJECT_KEY,
+  });
+  const [rule] = await db
+    .select({
+      prefix: toolStorageRule.prefix,
+    })
+    .from(toolStorageRule)
+    .where(
+      and(
+        eq(toolStorageRule.projectId, currentProject.id),
+        eq(toolStorageRule.toolKey, params.toolKey),
+        eq(toolStorageRule.purpose, params.purpose),
+        eq(toolStorageRule.enabled, true)
+      )
+    )
+    .limit(1);
+
+  return rule?.prefix ?? params.fallbackPrefix;
 }
 
 /**
@@ -500,6 +542,32 @@ function normalizePrefixRules(value: unknown): StoragePrefixRule[] {
       enabled: item.enabled !== false,
     }))
     .filter((item) => item.prefix.length > 0);
+}
+
+function normalizeToolStorageRules(
+  rows: Array<typeof toolStorageRule.$inferSelect>
+): StoragePrefixRule[] {
+  return rows.map((item) => ({
+    prefix: item.prefix,
+    retentionClass: item.retentionClass,
+    ...(item.ttlHours ? { ttlHours: item.ttlHours } : {}),
+    purpose: item.purpose,
+    enabled: item.enabled,
+  }));
+}
+
+function mergeStoragePrefixRules(
+  configRules: StoragePrefixRule[],
+  toolRules: StoragePrefixRule[]
+) {
+  const mergedByPrefix = new Map<string, StoragePrefixRule>();
+  for (const rule of configRules) {
+    mergedByPrefix.set(rule.prefix, rule);
+  }
+  for (const rule of toolRules) {
+    mergedByPrefix.set(rule.prefix, rule);
+  }
+  return [...mergedByPrefix.values()];
 }
 
 function normalizeRetentionClass(value: unknown): StorageRetentionClass {

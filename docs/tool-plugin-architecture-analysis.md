@@ -4,7 +4,8 @@
 
 - 2026-04-17：阶段 1 已完成。`tool-config` 已改为消费内置工具定义，`tool_registry` 新增 `metadata` 列并写入入口、运行模式、计费和存储能力，字段展示标签与默认运行时值已从 `tool-definitions` 统一下发；新增阶段测试 `src/test/tool-config/tool-definition-phase1.test.ts`，并回归 `src/test/tool-config/service.test.ts`、`src/test/tool-config/api.test.ts`、`src/test/tool-config/external-runtime-flow.test.ts`
 - 2026-04-17：阶段 2 已完成。新增 `tool_feature` 表并在项目初始化时按工具定义写入功能清单，AI 默认计费规则改为从 `tool-definitions` 的 `features.pricing` 派生，去掉 AI 网关里只服务 RedInk 的硬编码默认规则；新增阶段测试 `src/test/platform/tool-pricing-phase2.test.ts`，并回归 `src/test/platform/ai-chat-redink-defaults.test.ts`
-- 2026-04-17：阶段 3 到阶段 5 尚未开始，本轮后续开发应继续沿用 `src/features/tool-config/tool-definitions.ts` 作为内置工具定义源，再逐步接入存储规则、外部工具票据和后台导入能力
+- 2026-04-17：阶段 3 已完成。新增 `tool_storage_rule` 表并在项目初始化时按工具定义写入工具级前缀、用途和 TTL 规则，`storage` 默认运行配置只保留平台级前缀，`presigned-image` 接口已支持显式传 `toolKey + purpose` 选择工具前缀；新增阶段测试 `src/test/platform/tool-storage-phase3.test.ts`，并回归 `src/test/platform/storage-phase2-lifecycle.test.ts`、`src/test/platform/storage-phase45-policy.test.ts`
+- 2026-04-17：阶段 4 到阶段 5 尚未开始，本轮后续开发应继续沿用 `src/features/tool-config/tool-definitions.ts` 作为内置工具定义源，再逐步接入外部工具票据和后台导入能力
 
 ## 1. 背景与目标
 

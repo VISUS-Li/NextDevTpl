@@ -948,6 +948,9 @@ export type NewToolRegistry = typeof toolRegistry.$inferInsert;
 export type ToolFeature = typeof toolFeature.$inferSelect;
 export type NewToolFeature = typeof toolFeature.$inferInsert;
 
+export type ToolStorageRule = typeof toolStorageRule.$inferSelect;
+export type NewToolStorageRule = typeof toolStorageRule.$inferInsert;
+
 export type ToolConfigField = typeof toolConfigField.$inferSelect;
 export type NewToolConfigField = typeof toolConfigField.$inferInsert;
 
@@ -1334,6 +1337,40 @@ export const toolFeature = pgTable(
       table.projectId,
       table.toolKey,
       table.featureKey
+    ),
+  ]
+);
+
+/**
+ * 工具存储规则表
+ *
+ * 用于记录工具自己的对象前缀、用途和生命周期规则。
+ */
+export const toolStorageRule = pgTable(
+  "tool_storage_rule",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    toolKey: text("tool_key").notNull(),
+    purpose: text("purpose").notNull(),
+    prefix: text("prefix").notNull(),
+    retentionClass: storageRetentionClassEnum("retention_class")
+      .notNull()
+      .default("long_term"),
+    ttlHours: integer("ttl_hours"),
+    maxSizeBytes: integer("max_size_bytes"),
+    contentTypes: json("content_types").$type<string[]>(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tool_storage_rule_project_tool_purpose_idx").on(
+      table.projectId,
+      table.toolKey,
+      table.purpose
     ),
   ]
 );
