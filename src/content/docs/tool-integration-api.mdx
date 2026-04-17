@@ -1,0 +1,704 @@
+---
+title: 工具接入接口文档
+description: 新工具接入 tripai 平台时需要满足的前提条件、后台配置步骤、接口协议与联调顺序。
+---
+
+# 工具接入接口文档
+
+<Callout type="info" title="适用范围">
+  这份文档面向 2026-04-17 已落地的工具插件架构。适合平台管理员、外部工具开发者和站内工具开发者按统一协议接入 `tripai / NextDevTpl`。
+</Callout>
+
+<Cards>
+  <Card
+    title="后台导入"
+    description="先在 /admin/tool-config 导入工具定义，再补管理员默认配置"
+  />
+  <Card
+    title="统一能力"
+    description="用户、积分、AI、存储、审计统一复用平台能力"
+  />
+  <Card
+    title="外部工具协议"
+    description="外部服务使用 launch_ticket、runtime token 和 platform API"
+  />
+</Cards>
+
+## 接入模式
+
+<Tabs items={["纯配置工具", "通用 AI 工具", "外部服务工具", "站内复杂工具"]}>
+  <Tab>
+    适合只想复用平台账号体系、后台配置和入口管理的工具。
+
+    推荐做法：
+
+    - 导入工具定义
+    - 配好字段
+    - 入口指向外部地址或内部页面
+  </Tab>
+  <Tab>
+    适合主要依赖统一 AI 网关的工具。
+
+    推荐做法：
+
+    - 导入工具定义
+    - 配置 `features`
+    - 在 `/admin/ai` 绑定模型和 provider
+  </Tab>
+  <Tab>
+    适合前后端独立部署的产品。
+
+    推荐做法：
+
+    - `authMode = launch_ticket`
+    - 平台生成启动票据
+    - 外部服务端用 `runtime token` 换用户身份并读取配置
+  </Tab>
+  <Tab>
+    适合像 `RedInk` 这样有专属页面、专属流程和专属适配层的工具。
+
+    推荐做法：
+
+    - 工具业务逻辑放工具模块
+    - 用户、AI、积分、存储仍走平台统一能力
+  </Tab>
+</Tabs>
+
+## 接入前提
+
+<Cards>
+  <Card
+    title="平台侧"
+    description="平台已部署，数据库迁移完成，/admin/tool-config、/admin/ai、/admin/storage 可正常访问"
+  />
+  <Card
+    title="工具侧"
+    description="明确 toolKey、入口类型、是否要用户配置、积分、AI、存储、外部票据"
+  />
+  <Card
+    title="外部工具额外要求"
+    description="必须有自己的服务端，用来安全保存 runtime token，不能把 token 暴露给浏览器"
+  />
+</Cards>
+
+## 命名约定
+
+<TypeTable
+  type={{
+    toolKey: {
+      type: "string",
+      required: true,
+      description: "工具唯一标识，建议稳定且语义明确，例如 `notes-ai`、`jingfang-ai`",
+    },
+    fieldKey: {
+      type: "config1 | secret1 | json1 | text1 ...",
+      required: true,
+      description: "必须复用固定槽位，平台不会接受任意字段键",
+    },
+    featureKey: {
+      type: "string",
+      required: false,
+      description: "按业务动作命名，例如 `meeting_summary`、`outline_generation`",
+    },
+    purpose: {
+      type: "string",
+      required: false,
+      description: "对象存储用途，例如 `attachment`、`product_image`、`result_archive`",
+    },
+  }}
+/>
+
+## 标准接入流程
+
+<Steps>
+  <Step>
+    管理员进入 `/zh/admin/tool-config`，导入工具定义 JSON
+  </Step>
+  <Step>
+    在 `/zh/admin/tool-config` 填管理员默认配置、密钥和 JSON 字段
+  </Step>
+  <Step>
+    如果工具需要 AI，去 `/zh/admin/ai` 给 `feature` 绑定模型和 provider
+  </Step>
+  <Step>
+    如果工具要上传资源，去 `/zh/admin/storage` 检查对象存储和前缀规则
+  </Step>
+  <Step>
+    如果工具允许用户个人覆盖配置，到 `/zh/dashboard/settings` 验证字段是否按预期暴露
+  </Step>
+  <Step>
+    如果工具是外部服务，再串联 `launch_ticket`、`session/exchange`、`runtime`、`runtime-save`
+  </Step>
+</Steps>
+
+## 工具定义结构
+
+<Callout type="success" title="后台导入和接口导入使用同一结构">
+  你在 `/admin/tool-config` 页面顶部粘贴的 JSON，和 `POST /api/platform/tools/import` 接口请求体中的 `definition` 完全一致。
+</Callout>
+
+```json
+{
+  "toolKey": "notes-ai",
+  "name": "Notes AI",
+  "description": "会议纪要和知识整理工具",
+  "entry": {
+    "type": "external_url",
+    "url": "https://notes.tripai.icu"
+  },
+  "runtimeMode": "platform_api",
+  "authMode": "launch_ticket",
+  "billingMode": "ai_gateway",
+  "storageMode": "platform_storage",
+  "capabilities": {
+    "adminConfig": true,
+    "userConfig": true,
+    "credits": true,
+    "ai": true,
+    "storage": true
+  },
+  "enabled": true,
+  "sortOrder": 60,
+  "fields": [
+    {
+      "fieldKey": "config1",
+      "label": "notes.defaultTone",
+      "description": "默认输出风格",
+      "group": "config",
+      "type": "select",
+      "adminOnly": true,
+      "userOverridable": false,
+      "defaultValueJson": "formal",
+      "optionsJson": ["formal", "concise", "friendly"]
+    },
+    {
+      "fieldKey": "secret1",
+      "label": "notes.webhookSecret",
+      "description": "外部回调签名密钥",
+      "group": "secret",
+      "type": "secret",
+      "adminOnly": true,
+      "userOverridable": false
+    },
+    {
+      "fieldKey": "json1",
+      "label": "notes.templateCatalog",
+      "description": "模板目录",
+      "group": "json",
+      "type": "json",
+      "adminOnly": true,
+      "userOverridable": false,
+      "defaultValueJson": {
+        "summary": "会议总结",
+        "todo": "待办提取"
+      }
+    }
+  ],
+  "features": [
+    {
+      "featureKey": "meeting_summary",
+      "name": "会议总结",
+      "description": "生成会议纪要",
+      "requestType": "chat",
+      "defaultOperation": "text.generate",
+      "requiredCapabilities": ["text"],
+      "enabled": true,
+      "sortOrder": 10,
+      "pricing": {
+        "billingMode": "token_based",
+        "minimumCredits": 1,
+        "inputTokensPerCredit": 1000,
+        "outputTokensPerCredit": 500
+      }
+    }
+  ],
+  "storage": {
+    "prefixRules": [
+      {
+        "prefix": "notes-ai/attachments/",
+        "purpose": "attachment",
+        "retentionClass": "temporary",
+        "ttlHours": 72,
+        "enabled": true,
+        "maxSizeBytes": 10485760,
+        "contentTypes": ["application/pdf", "image/png", "image/jpeg"]
+      }
+    ]
+  }
+}
+```
+
+## 关键字段说明
+
+### 元数据字段
+
+<TypeTable
+  type={{
+    "entry.type": {
+      type: "`internal_route` | `external_url` | `api_only`",
+      required: true,
+      description: "工具入口形态。站内页面用 `internal_route`，外部站点用 `external_url`",
+    },
+    "entry.url": {
+      type: "string",
+      required: true,
+      description: "站内路由或外部地址",
+    },
+    runtimeMode: {
+      type: "`none` | `platform_api` | `platform_ai` | `custom_adapter`",
+      required: true,
+      description: "工具运行时主要依赖的平台能力",
+    },
+    authMode: {
+      type: "`platform_session` | `launch_ticket`",
+      required: true,
+      description: "站内工具通常用 `platform_session`，外部工具通常用 `launch_ticket`",
+    },
+    billingMode: {
+      type: "`none` | `manual_credits` | `ai_gateway`",
+      required: true,
+      description: "积分结算方式。`manual_credits` 为工具自己调用扣费接口，`ai_gateway` 为 AI 网关自动结算",
+    },
+    storageMode: {
+      type: "`none` | `platform_storage`",
+      required: true,
+      description: "是否走平台对象存储",
+    },
+  }}
+/>
+
+### 字段定义
+
+<TypeTable
+  type={{
+    fieldKey: {
+      type: "string",
+      required: true,
+      description: "固定槽位，例如 `config1`、`secret1`、`json1`",
+    },
+    group: {
+      type: "`config` | `secret` | `json` | `text`",
+      required: true,
+      description: "后台分组展示用",
+    },
+    type: {
+      type: "`string` | `textarea` | `number` | `boolean` | `select` | `json` | `secret`",
+      required: true,
+      description: "字段编辑器类型",
+    },
+    adminOnly: {
+      type: "boolean",
+      required: false,
+      description: "仅管理员可见",
+    },
+    userOverridable: {
+      type: "boolean",
+      required: false,
+      description: "用户是否允许覆盖管理员默认值",
+    },
+    defaultValueJson: {
+      type: "string | number | boolean | object | array | null",
+      required: false,
+      description: "默认值",
+    },
+  }}
+/>
+
+### 功能定义
+
+<TypeTable
+  type={{
+    featureKey: {
+      type: "string",
+      required: true,
+      description: "功能唯一键，对应平台 AI 计费和请求日志",
+    },
+    requestType: {
+      type: "`chat`",
+      required: true,
+      description: "当前阶段固定为 `chat`",
+    },
+    defaultOperation: {
+      type: "string",
+      required: false,
+      description: "推荐 AI 操作，例如 `text.generate`、`image.generate`",
+    },
+    requiredCapabilities: {
+      type: "string[]",
+      required: false,
+      description: "要求模型具备的能力标签",
+    },
+    pricing: {
+      type: "object",
+      required: true,
+      description: "默认积分规则，会同步到平台计费规则表",
+    },
+  }}
+/>
+
+## 常用平台接口
+
+### 1. 会话与账户
+
+#### `GET /api/platform/session`
+
+返回当前登录用户、套餐和积分余额。
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": "user_xxx",
+    "name": "Alice",
+    "email": "alice@example.com",
+    "image": null,
+    "role": "user"
+  },
+  "plan": {
+    "code": "pro",
+    "name": "Pro",
+    "hasActiveSubscription": true
+  },
+  "credits": {
+    "balance": 520,
+    "status": "active"
+  }
+}
+```
+
+### 2. 积分
+
+#### `POST /api/platform/credits/check`
+
+```json
+{
+  "amount": 3
+}
+```
+
+#### `POST /api/platform/credits/consume`
+
+```json
+{
+  "amount": 3,
+  "serviceName": "notes_ai_summary",
+  "description": "生成会议纪要",
+  "metadata": {
+    "tool": "notes-ai",
+    "feature": "meeting_summary"
+  }
+}
+```
+
+### 3. AI 网关
+
+#### `POST /api/platform/ai/chat`
+
+<Tabs items={["最小请求", "多消息请求", "常见 operation"]}>
+  <Tab>
+
+```json
+{
+  "tool": "notes-ai",
+  "feature": "meeting_summary",
+  "input": "请整理这段会议记录"
+}
+```
+
+  </Tab>
+  <Tab>
+
+```json
+{
+  "tool": "notes-ai",
+  "feature": "meeting_summary",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是会议纪要助手"
+    },
+    {
+      "role": "user",
+      "content": "请总结下面内容"
+    }
+  ],
+  "model": "gpt-4o-mini",
+  "operation": "text.generate"
+}
+```
+
+  </Tab>
+  <Tab>
+
+<p>支持的常见 <code>operation</code>：</p>
+
+<ul>
+  <li><code>text.generate</code></li>
+  <li><code>image.understand</code></li>
+  <li><code>image.generate</code></li>
+  <li><code>image.edit</code></li>
+  <li><code>video.understand</code></li>
+  <li><code>video.generate</code></li>
+  <li><code>audio.understand</code></li>
+  <li><code>audio.generate</code></li>
+  <li><code>file.understand</code></li>
+</ul>
+
+  </Tab>
+</Tabs>
+
+#### `GET /api/platform/ai/chat/result?requestId=...`
+
+用于查询任务型 AI 结果。
+
+### 4. 用户配置
+
+#### `GET /api/platform/tool-config/editor?projectKey=nextdevtpl&tool=notes-ai`
+
+读取用户侧可见配置表单。
+
+#### `POST /api/platform/tool-config/user`
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "notes-ai",
+  "values": {
+    "config2": "friendly"
+  },
+  "clearSecrets": []
+}
+```
+
+### 5. 对象存储
+
+#### `POST /api/platform/storage/presigned-image`
+
+```json
+{
+  "filename": "cover.png",
+  "contentType": "image/png",
+  "toolKey": "notes-ai",
+  "purpose": "attachment",
+  "retentionClass": "temporary",
+  "requestId": "req_xxx"
+}
+```
+
+### 6. 结果归档
+
+#### `POST /api/platform/results/save`
+
+```json
+{
+  "tool": "notes-ai",
+  "type": "meeting_summary",
+  "payload": {
+    "title": "周会纪要",
+    "content": "..."
+  },
+  "requestId": "req_xxx"
+}
+```
+
+## 外部工具接入协议
+
+<Callout type="idea" title="外部工具的核心原则">
+  浏览器不应该直接持有 `runtime token`。正确做法是：平台前端拿一次性 `ticket`，外部工具服务端持有 `runtime token` 去换用户身份和读写配置。
+</Callout>
+
+### 启动时序
+
+<Steps>
+  <Step>
+    平台前端调用 `GET /api/platform/tools/{toolKey}/launch`
+  </Step>
+  <Step>
+    平台拿到 `ticket` 和 `launchUrl` 后跳转到外部工具
+  </Step>
+  <Step>
+    外部工具服务端用 `POST /api/platform/tools/session/exchange` 换到当前用户
+  </Step>
+  <Step>
+    外部工具服务端再调用 `runtime` / `runtime-save` 读取和写回工具配置
+  </Step>
+</Steps>
+
+### `GET /api/platform/tools/{toolKey}/launch`
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "tool": "notes-ai",
+  "ticket": "ticket_xxx",
+  "launchUrl": "https://notes.tripai.icu?ticket=ticket_xxx&projectKey=nextdevtpl",
+  "expiresAt": "2026-04-17T10:30:00.000Z"
+}
+```
+
+### `POST /api/platform/tools/session/exchange`
+
+请求头：
+
+```http
+Authorization: Bearer <runtime-token>
+```
+
+请求体：
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "notes-ai",
+  "ticket": "ticket_xxx"
+}
+```
+
+成功响应：
+
+```json
+{
+  "success": true,
+  "toolKey": "notes-ai",
+  "user": {
+    "id": "user_xxx",
+    "name": "Alice",
+    "email": "alice@example.com"
+  },
+  "expiresAt": "2026-04-17T10:35:00.000Z"
+}
+```
+
+### `POST /api/platform/tool-config/runtime`
+
+请求头：
+
+```http
+Authorization: Bearer <runtime-token>
+```
+
+请求体：
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "notes-ai",
+  "userId": "user_xxx",
+  "knownRevision": 12
+}
+```
+
+### `POST /api/platform/tool-config/runtime-save`
+
+请求头：
+
+```http
+Authorization: Bearer <runtime-token>
+```
+
+请求体：
+
+```json
+{
+  "projectKey": "nextdevtpl",
+  "tool": "notes-ai",
+  "userId": "user_xxx",
+  "values": {
+    "config2": "friendly"
+  },
+  "clearSecrets": []
+}
+```
+
+### `GET /api/platform/tool-config/revision?projectKey=nextdevtpl&tool=notes-ai`
+
+请求头：
+
+```http
+Authorization: Bearer <runtime-token>
+```
+
+用途：
+
+- 只读取版本号
+- 适合检测配置是否变化
+
+## 管理后台接口
+
+<Cards>
+  <Card title="GET /api/platform/tools" description="读取工具状态列表、最近导入、最近 AI 请求和运行时访问情况" />
+  <Card title="POST /api/platform/tools/import" description="导入一份新的工具定义" />
+  <Card title="POST /api/platform/tools/{toolKey}/disable" description="停用工具但保留历史记录" />
+  <Card title="POST /api/platform/tools/{toolKey}/rollback" description="回滚最近一次工具定义变更" />
+</Cards>
+
+## 推荐联调顺序
+
+<Steps>
+  <Step>
+    先完成工具定义导入，不要先写接口调用
+  </Step>
+  <Step>
+    先把后台默认配置、密钥和 JSON 字段填完整
+  </Step>
+  <Step>
+    再绑定 AI provider 和模型
+  </Step>
+  <Step>
+    再验证上传和对象存储前缀
+  </Step>
+  <Step>
+    再打通外部票据和运行时配置
+  </Step>
+  <Step>
+    最后串联完整业务流：AI、积分、归档、错误处理
+  </Step>
+</Steps>
+
+## 常见失败原因
+
+<Tabs items={["导入后不能用", "用户看不到配置", "外部工具拿不到用户", "上传路径不对"]}>
+  <Tab>
+
+<ul>
+  <li>只导入了工具定义，没有补后台默认配置</li>
+  <li>AI 功能没有在 <code>/admin/ai</code> 绑定模型</li>
+  <li>工具被停用</li>
+</ul>
+
+  </Tab>
+  <Tab>
+
+<ul>
+  <li>字段被设置成 <code>adminOnly = true</code></li>
+  <li>没开 <code>userOverridable = true</code></li>
+</ul>
+
+  </Tab>
+  <Tab>
+
+<ul>
+  <li><code>authMode</code> 不是 <code>launch_ticket</code></li>
+  <li><code>runtime token</code> 没有 <code>session:exchange</code> 权限</li>
+  <li>启动票据过期或已被消费</li>
+</ul>
+
+  </Tab>
+  <Tab>
+
+<ul>
+  <li><code>toolKey</code> 传错</li>
+  <li><code>purpose</code> 传错</li>
+  <li>后台没有对应的工具存储规则</li>
+</ul>
+
+  </Tab>
+</Tabs>
+
+## 一句话结论
+
+<Callout type="success" title="推荐做法">
+  新工具接入时，先导入工具定义，再补管理员配置，再绑定 AI 和存储，最后按是否为外部服务决定是否接 `launch_ticket` 和运行时接口。不要反过来做。
+</Callout>

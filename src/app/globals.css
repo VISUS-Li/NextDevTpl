@@ -1,3 +1,4 @@
+@import "fumadocs-ui/style.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -168,9 +169,14 @@
   body {
     @apply bg-background text-foreground;
   }
-  /* 锚点跳转时考虑 sticky header 的高度 */
+  /* 锚点跳转时给固定导航预留空间，移动端还要避开文档页的快捷链接条 */
   [id] {
-    scroll-margin-top: 5rem;
+    scroll-margin-top: 6rem;
+  }
+  @media (max-width: 767px) {
+    [id] {
+      scroll-margin-top: 9rem;
+    }
   }
   .container {
     width: 100%;
@@ -214,4 +220,17 @@
   transform: rotateY(0deg);
   opacity: 1;
   position: relative;
+}
+
+@layer components {
+  /* 文档页搜索弹窗需要避开固定头部，但仍保持桌面端接近中上的位置。 */
+  .tripai-docs-page [role="dialog"] {
+    top: calc(4rem + 1rem);
+  }
+
+  @media (min-width: 768px) {
+    .tripai-docs-page [role="dialog"] {
+      top: max(5rem, calc(50% - 250px));
+    }
+  }
 }

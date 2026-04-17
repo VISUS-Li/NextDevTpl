@@ -1,6 +1,13 @@
 "use client";
 
-import { Grid2x2, House, LifeBuoy, NotebookPen, UserRound } from "lucide-react";
+import {
+  BookOpen,
+  Grid2x2,
+  House,
+  LifeBuoy,
+  NotebookPen,
+  UserRound,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -20,6 +27,7 @@ interface HeaderUser {
 
 interface HeaderProps {
   user?: HeaderUser | null;
+  variant?: "marketing" | "docs";
 }
 
 /**
@@ -27,10 +35,14 @@ interface HeaderProps {
  *
  * 布局: [Logo + Nav 靠左] -------- [Actions 靠右]
  */
-export function Header({ user }: HeaderProps) {
+export function Header({
+  user,
+  variant = "marketing",
+}: HeaderProps) {
   const t = useTranslations("Header");
   const locale = useLocale();
   const pathname = usePathname();
+  const isDocsVariant = variant === "docs";
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const { data: session } = useSession();
@@ -52,6 +64,11 @@ export function Header({ user }: HeaderProps) {
       key: "pricing",
       href: "/#pricing",
       label: locale === "zh" ? "订阅方案" : "Plans",
+    },
+    {
+      key: "docs",
+      href: "/docs/tool-integration-api",
+      label: locale === "zh" ? "接口文档" : "API Docs",
     },
     {
       key: "pseo",
@@ -84,6 +101,12 @@ export function Header({ user }: HeaderProps) {
       icon: Grid2x2,
     },
     {
+      key: "docs",
+      href: "/docs/tool-integration-api",
+      label: locale === "zh" ? "文档" : "Docs",
+      icon: BookOpen,
+    },
+    {
       key: "account",
       href: currentUser ? "/dashboard" : "/sign-in",
       label: locale === "zh" ? "我的" : "My",
@@ -104,6 +127,12 @@ export function Header({ user }: HeaderProps) {
       href: "/#pricing",
       label: locale === "zh" ? "方案" : "Plans",
       icon: NotebookPen,
+    },
+    {
+      key: "docs",
+      href: "/docs/tool-integration-api",
+      label: locale === "zh" ? "接口文档" : "API Docs",
+      icon: BookOpen,
     },
     {
       key: "pseo",
@@ -179,6 +208,9 @@ export function Header({ user }: HeaderProps) {
    * 判断导航项是否处于当前页面
    */
   const isNavItemActive = (href: string) => {
+    if (href.startsWith("/docs")) {
+      return pathname.startsWith(`/${locale}/docs`);
+    }
     if (href.startsWith("/#")) {
       return /^\/[a-z]{2}$/.test(pathname) && activeSection === href.slice(2);
     }
@@ -202,6 +234,83 @@ export function Header({ user }: HeaderProps) {
       .toUpperCase()
       .slice(0, 2);
   };
+
+  if (isDocsVariant) {
+    return (
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-[#10131a]/85 shadow-[0_4px_20px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href="/"
+              className="bg-gradient-to-br from-[#0A84FF] to-[#5AC8FA] bg-clip-text font-['Manrope'] text-xl font-extrabold tracking-[-0.04em] text-transparent"
+            >
+              tripai
+            </Link>
+            <div className="hidden h-5 w-px bg-white/10 sm:block" />
+            <Link
+              href="/docs/tool-integration-api"
+              className="hidden items-center gap-2 rounded-full border border-[#0A84FF]/20 bg-[#0A84FF]/10 px-3 py-1.5 text-sm font-semibold text-[#74d1ff] sm:inline-flex"
+            >
+              <BookOpen className="h-4 w-4" />
+              <span>{locale === "zh" ? "接口文档" : "API Docs"}</span>
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <LanguageSwitcher />
+            <ModeToggle />
+            {currentUser ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex",
+                  })}
+                >
+                  {t("dashboard")}
+                </Link>
+                <Link href="/dashboard" className="hidden md:block">
+                  <Avatar className="h-9 w-9 ring-1 ring-white/10">
+                    <AvatarImage
+                      src={currentUser.image || undefined}
+                      alt={currentUser.name}
+                    />
+                    <AvatarFallback className="bg-[#0A84FF] text-xs text-white">
+                      {getInitials(currentUser.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/sign-in"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "hidden h-10 rounded-full px-5 text-[#e1e2eb]/70 hover:bg-white/5 hover:text-[#e1e2eb] md:inline-flex",
+                  })}
+                >
+                  {t("login")}
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className={buttonVariants({
+                    className:
+                      "h-10 rounded-full bg-[linear-gradient(135deg,#0A84FF_0%,#5AC8FA_100%)] px-5 text-sm font-bold text-[#003064] shadow-lg shadow-blue-500/20 transition-transform hover:scale-105 hover:shadow-blue-500/30",
+                  })}
+                >
+                  {t("getStarted")}
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <>
