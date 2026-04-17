@@ -1,6 +1,4 @@
-import {
-  sql,
-} from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   integer,
@@ -217,6 +215,7 @@ export const toolRegistry = pgTable(
     toolKey: text("tool_key").notNull(),
     name: text("name").notNull(),
     description: text("description"),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
     enabled: boolean("enabled").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -293,7 +292,13 @@ export const toolConfigValue = pgTable(
       .on(table.projectId, table.toolKey, table.fieldKey, table.scope)
       .where(sql`${table.scope} = 'project_admin'`),
     uniqueIndex("tool_config_value_user_idx")
-      .on(table.projectId, table.toolKey, table.fieldKey, table.scope, table.userId)
+      .on(
+        table.projectId,
+        table.toolKey,
+        table.fieldKey,
+        table.scope,
+        table.userId
+      )
       .where(sql`${table.scope} = 'user'`),
   ]
 );

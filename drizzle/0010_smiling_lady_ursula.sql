@@ -1,0 +1,1 @@
+ALTER TABLE "tool_registry" ADD COLUMN "metadata" json;

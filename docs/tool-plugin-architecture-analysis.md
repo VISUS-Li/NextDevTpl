@@ -1,5 +1,10 @@
 # 工具可插拔接入架构分析
 
+## 当前进度
+
+- 2026-04-17：阶段 1 已完成。`tool-config` 已改为消费内置工具定义，`tool_registry` 新增 `metadata` 列并写入入口、运行模式、计费和存储能力，字段展示标签与默认运行时值已从 `tool-definitions` 统一下发；新增阶段测试 `src/test/tool-config/tool-definition-phase1.test.ts`，并回归 `src/test/tool-config/service.test.ts`、`src/test/tool-config/api.test.ts`、`src/test/tool-config/external-runtime-flow.test.ts`
+- 2026-04-17：阶段 2 到阶段 5 尚未开始，本轮后续开发应继续沿用 `src/features/tool-config/tool-definitions.ts` 作为内置工具定义源，再逐步接入计费规则、存储规则、外部工具票据和后台导入能力
+
 ## 1. 背景与目标
 
 当前 `NextDevTpl` 已经有用户登录、管理员后台、用户设置、工具配置、积分账户、AI 网关、对象存储和平台 API。`redink`、`jingfang-ai` 这类工具已经能绑定这些平台能力，但接入方式仍有不少代码级绑定。

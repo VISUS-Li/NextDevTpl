@@ -71,6 +71,13 @@
       "when": 1775701770717,
       "tag": "0009_past_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776391015777,
+      "tag": "0010_smiling_lady_ursula",
+      "breakpoints": true
     }
   ]
 }

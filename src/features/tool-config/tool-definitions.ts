@@ -1,0 +1,558 @@
+import type {
+  AIBillingMode,
+  AIRouteStrategy,
+  ToolConfigFieldType,
+} from "@/db/schema";
+import type { ToolConfigValueInput } from "./schema";
+
+export const DEFAULT_PROJECT_KEY = "nextdevtpl";
+export const SLOT_CONFIG_COUNT = 10;
+export const SLOT_SECRET_COUNT = 10;
+export const SLOT_JSON_COUNT = 4;
+export const SLOT_TEXT_COUNT = 4;
+
+export type ToolStorageRuleDefinition = {
+  prefix: string;
+  purpose: string;
+  retentionClass: "permanent" | "long_term" | "temporary" | "ephemeral";
+  ttlHours: number;
+  enabled: boolean;
+  maxSizeBytes?: number | null;
+  contentTypes?: string[] | null;
+};
+
+export type ToolFeaturePricingDefinition = {
+  billingMode: AIBillingMode;
+  minimumCredits: number;
+  fixedCredits?: number;
+  inputTokensPerCredit?: number;
+  outputTokensPerCredit?: number;
+};
+
+export type ToolFeatureDefinition = {
+  featureKey: string;
+  name: string;
+  description?: string;
+  requestType: "chat";
+  defaultOperation?: string;
+  requiredCapabilities?: string[];
+  enabled?: boolean;
+  sortOrder?: number;
+  pricing: ToolFeaturePricingDefinition;
+};
+
+export type ToolFieldOverrideDefinition = {
+  settingLabel?: string;
+  label?: string;
+  description?: string;
+  type?: ToolConfigFieldType;
+  required?: boolean;
+  adminOnly?: boolean;
+  userOverridable?: boolean;
+  defaultValueJson?: ToolConfigValueInput;
+  optionsJson?: string[];
+  validationJson?: Record<string, unknown>;
+};
+
+export type ToolDefinitionMetadata = {
+  entry: {
+    type: "internal_route" | "external_url" | "api_only";
+    url: string;
+  };
+  runtimeMode: "none" | "platform_api" | "platform_ai" | "custom_adapter";
+  authMode: "platform_session" | "launch_ticket";
+  billingMode: "none" | "manual_credits" | "ai_gateway";
+  storageMode: "none" | "platform_storage";
+  capabilities: {
+    adminConfig: boolean;
+    userConfig: boolean;
+    credits: boolean;
+    ai: boolean;
+    storage: boolean;
+  };
+};
+
+export type BuiltInToolDefinition = {
+  toolKey: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  metadata: ToolDefinitionMetadata;
+  slotSettingLabels?: Record<string, string>;
+  fieldOverrides?: Record<string, ToolFieldOverrideDefinition>;
+  runtimeDefaults?: Partial<Record<string, ToolConfigValueInput>>;
+  featureConfigDefaults?: Record<
+    string,
+    {
+      enabled?: boolean;
+      billingMode?: AIBillingMode;
+      defaultCredits?: number;
+      minimumCredits?: number;
+    }
+  >;
+  features?: ToolFeatureDefinition[];
+  storageRules?: ToolStorageRuleDefinition[];
+  defaultAIRoute?: {
+    requestedModel: string;
+    routeStrategy: AIRouteStrategy;
+    preferredProviderKey: string | null;
+    allowedModels: string[];
+    allowedProviderKeys: string[];
+    assetUrlMode: "public" | "proxy" | "signed";
+  };
+};
+
+const PLATFORM_REGISTRATION_BONUS = 200;
+
+const STORAGE_RULES: ToolStorageRuleDefinition[] = [
+  {
+    prefix: "platform/ai-assets/request/",
+    retentionClass: "ephemeral",
+    ttlHours: 24,
+    purpose: "ai_input_temp",
+    enabled: true,
+  },
+  {
+    prefix: "platform/ai-assets/task/",
+    retentionClass: "temporary",
+    ttlHours: 72,
+    purpose: "ai_task_temp",
+    enabled: true,
+  },
+  {
+    prefix: "redink/product-images-temp/",
+    retentionClass: "temporary",
+    ttlHours: 168,
+    purpose: "product_image_temp",
+    enabled: true,
+  },
+  {
+    prefix: "redink/product-videos-temp/",
+    retentionClass: "temporary",
+    ttlHours: 168,
+    purpose: "product_video_temp",
+    enabled: true,
+  },
+];
+
+const REDINK_FEATURES: ToolFeatureDefinition[] = [
+  {
+    featureKey: "outline",
+    name: "提纲生成",
+    requestType: "chat",
+    defaultOperation: "text.generate",
+    requiredCapabilities: ["text"],
+    pricing: {
+      billingMode: "token_based",
+      inputTokensPerCredit: 600,
+      outputTokensPerCredit: 300,
+      minimumCredits: 2,
+    },
+  },
+  {
+    featureKey: "content",
+    name: "正文生成",
+    requestType: "chat",
+    defaultOperation: "text.generate",
+    requiredCapabilities: ["text"],
+    pricing: {
+      billingMode: "token_based",
+      inputTokensPerCredit: 600,
+      outputTokensPerCredit: 300,
+      minimumCredits: 2,
+    },
+  },
+  {
+    featureKey: "product-copy",
+    name: "商品文案",
+    requestType: "chat",
+    defaultOperation: "text.generate",
+    requiredCapabilities: ["text"],
+    pricing: {
+      billingMode: "token_based",
+      inputTokensPerCredit: 600,
+      outputTokensPerCredit: 300,
+      minimumCredits: 2,
+    },
+  },
+  {
+    featureKey: "product-post-content",
+    name: "商品帖子文案",
+    requestType: "chat",
+    defaultOperation: "text.generate",
+    requiredCapabilities: ["text"],
+    pricing: {
+      billingMode: "token_based",
+      inputTokensPerCredit: 600,
+      outputTokensPerCredit: 300,
+      minimumCredits: 2,
+    },
+  },
+  {
+    featureKey: "product-image-analysis",
+    name: "商品图片理解",
+    requestType: "chat",
+    defaultOperation: "image.analyze",
+    requiredCapabilities: ["text", "image_input"],
+    pricing: {
+      billingMode: "token_based",
+      inputTokensPerCredit: 400,
+      outputTokensPerCredit: 200,
+      minimumCredits: 3,
+    },
+  },
+  {
+    featureKey: "product-post-image",
+    name: "商品配图",
+    requestType: "chat",
+    defaultOperation: "image.generate",
+    requiredCapabilities: ["image_generation"],
+    pricing: {
+      billingMode: "fixed_credits",
+      fixedCredits: 8,
+      minimumCredits: 8,
+    },
+  },
+  {
+    featureKey: "image-generation",
+    name: "通用出图",
+    requestType: "chat",
+    defaultOperation: "image.generate",
+    requiredCapabilities: ["image_generation"],
+    pricing: {
+      billingMode: "fixed_credits",
+      fixedCredits: 8,
+      minimumCredits: 8,
+    },
+  },
+];
+
+const REDINK_FEATURE_CONFIG_DEFAULTS = {
+  rewrite: {
+    enabled: true,
+    billingMode: "fixed_credits" as const,
+    defaultCredits: 3,
+    minimumCredits: 3,
+  },
+  outline: {
+    enabled: true,
+    billingMode: "token_based" as const,
+    minimumCredits: 2,
+  },
+  content: {
+    enabled: true,
+    billingMode: "token_based" as const,
+    minimumCredits: 2,
+  },
+  "product-copy": {
+    enabled: true,
+    billingMode: "token_based" as const,
+    minimumCredits: 2,
+  },
+  "product-post-content": {
+    enabled: true,
+    billingMode: "token_based" as const,
+    minimumCredits: 2,
+  },
+  "product-image-analysis": {
+    enabled: true,
+    billingMode: "token_based" as const,
+    minimumCredits: 3,
+  },
+  "product-post-image": {
+    enabled: true,
+    billingMode: "fixed_credits" as const,
+    defaultCredits: 8,
+    minimumCredits: 8,
+  },
+  "image-generation": {
+    enabled: true,
+    billingMode: "fixed_credits" as const,
+    defaultCredits: 8,
+    minimumCredits: 8,
+  },
+};
+
+const REDINK_MODEL_CATALOG = {
+  text_generation: {
+    defaultModel: "gpt-4o-mini",
+    options: [
+      {
+        modelKey: "gpt-4o-mini",
+        label: "标准文案模型",
+        description: "适合标题和正文生成",
+      },
+    ],
+  },
+  image_generation: {
+    defaultModel: null,
+    options: [],
+  },
+} as const;
+
+export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
+  {
+    toolKey: "platform",
+    name: "tripai",
+    description: "平台基础设置",
+    sortOrder: 10,
+    metadata: {
+      entry: {
+        type: "internal_route",
+        url: "/admin/tool-config",
+      },
+      runtimeMode: "platform_api",
+      authMode: "platform_session",
+      billingMode: "none",
+      storageMode: "none",
+      capabilities: {
+        adminConfig: true,
+        userConfig: false,
+        credits: false,
+        ai: false,
+        storage: false,
+      },
+    },
+    slotSettingLabels: {
+      config1: "新用户注册奖励积分",
+    },
+    fieldOverrides: {
+      config1: {
+        label: "platform.registrationBonusCredits",
+        description: "新用户首次获得注册奖励时发放的积分数量",
+        type: "number",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: PLATFORM_REGISTRATION_BONUS,
+        validationJson: {
+          min: 1,
+          max: 100000,
+        },
+      },
+    },
+    runtimeDefaults: {
+      config1: PLATFORM_REGISTRATION_BONUS,
+    },
+  },
+  {
+    toolKey: "storage",
+    name: "Storage",
+    description: "对象存储生命周期策略",
+    sortOrder: 20,
+    metadata: {
+      entry: {
+        type: "internal_route",
+        url: "/admin/storage",
+      },
+      runtimeMode: "platform_api",
+      authMode: "platform_session",
+      billingMode: "none",
+      storageMode: "platform_storage",
+      capabilities: {
+        adminConfig: true,
+        userConfig: false,
+        credits: false,
+        ai: false,
+        storage: true,
+      },
+    },
+    slotSettingLabels: {
+      config1: "短期资源保留小时",
+      config2: "临时资源保留天数",
+      config3: "长期资源保留天数",
+      json1: "前缀生命周期规则",
+    },
+    fieldOverrides: {
+      config1: {
+        label: "storage.ephemeralHours",
+        description: "请求级短期资源默认保留小时数",
+        type: "number",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: 6,
+      },
+      config2: {
+        label: "storage.temporaryDays",
+        description: "会话级临时资源默认保留天数",
+        type: "number",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: 3,
+      },
+      config3: {
+        label: "storage.longTermDays",
+        description: "长期资源默认保留天数",
+        type: "number",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: 90,
+      },
+      json1: {
+        label: "storage.prefixRules",
+        description:
+          "按对象前缀管理生命周期规则，供平台清理和云厂商生命周期配置参考",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: STORAGE_RULES.map((item) => ({ ...item })),
+      },
+    },
+    runtimeDefaults: {
+      config1: 6,
+      config2: 3,
+      config3: 90,
+      json1: STORAGE_RULES.map((item) => ({ ...item })),
+    },
+    storageRules: STORAGE_RULES,
+  },
+  {
+    toolKey: "redink",
+    name: "RedInk",
+    description: "小红书内容工具",
+    sortOrder: 30,
+    metadata: {
+      entry: {
+        type: "internal_route",
+        url: "/dashboard/tools/redink",
+      },
+      runtimeMode: "custom_adapter",
+      authMode: "platform_session",
+      billingMode: "ai_gateway",
+      storageMode: "platform_storage",
+      capabilities: {
+        adminConfig: true,
+        userConfig: true,
+        credits: true,
+        ai: true,
+        storage: true,
+      },
+    },
+    slotSettingLabels: {
+      json4: "用户可见模型目录",
+      config10: "AI 资源访问方式",
+    },
+    fieldOverrides: {
+      config10: {
+        label: "ai.assetUrlMode",
+        description:
+          "控制 AI 上游读取平台资源时走公开 OSS 地址还是平台代理地址",
+        type: "select",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: "public",
+        optionsJson: ["public", "proxy"],
+      },
+      json4: {
+        label: "redink.userModelCatalog",
+        description:
+          "配置 RedInk 对用户展示的模型子集与别名，必须是 AI 网关模型绑定的子集",
+        adminOnly: true,
+        userOverridable: false,
+      },
+    },
+    runtimeDefaults: {
+      config1: "gpt-4o-mini",
+      config2: "primary_only",
+      config3: "geek-default",
+      json1: ["gpt-4o-mini"],
+      json2: REDINK_FEATURE_CONFIG_DEFAULTS,
+      json3: ["geek-default"],
+      json4: REDINK_MODEL_CATALOG,
+    },
+    featureConfigDefaults: REDINK_FEATURE_CONFIG_DEFAULTS,
+    features: REDINK_FEATURES,
+    defaultAIRoute: {
+      requestedModel: "gpt-4o-mini",
+      routeStrategy: "primary_only",
+      preferredProviderKey: "geek-default",
+      allowedModels: ["gpt-4o-mini"],
+      allowedProviderKeys: ["geek-default"],
+      assetUrlMode: "public",
+    },
+  },
+  {
+    toolKey: "jingfang-ai",
+    name: "Jingfang AI",
+    description: "警方案件内容工具",
+    sortOrder: 40,
+    metadata: {
+      entry: {
+        type: "external_url",
+        url: "https://jingfang.tripai.icu",
+      },
+      runtimeMode: "platform_api",
+      authMode: "launch_ticket",
+      billingMode: "manual_credits",
+      storageMode: "platform_storage",
+      capabilities: {
+        adminConfig: true,
+        userConfig: true,
+        credits: true,
+        ai: false,
+        storage: true,
+      },
+    },
+    slotSettingLabels: {
+      config1: "聊天平台",
+      config2: "火山存储空间名",
+      config3: "语音识别 App ID",
+      config4: "语音识别 App Type",
+      config5: "豆包视觉 Endpoint",
+      config6: "火山区域 Region",
+      config10: "AI 资源访问方式",
+      secret1: "主聊天 API Key",
+      secret2: "云雾 API Key",
+      secret3: "火山 Access Key ID",
+      secret4: "火山 Secret Access Key",
+      secret5: "语音识别 Access Token",
+      secret6: "高级设置密码",
+    },
+    fieldOverrides: {
+      config10: {
+        label: "ai.assetUrlMode",
+        description:
+          "控制 AI 上游读取平台资源时走公开 OSS 地址还是平台代理地址",
+        type: "select",
+        adminOnly: true,
+        userOverridable: false,
+        defaultValueJson: "public",
+        optionsJson: ["public", "proxy"],
+      },
+    },
+  },
+] as const;
+
+/**
+ * 返回内置工具定义快照。
+ */
+export function listBuiltInToolDefinitions() {
+  return BUILT_IN_TOOL_DEFINITIONS.map((item) => ({
+    ...item,
+    metadata: structuredClone(item.metadata),
+    slotSettingLabels: item.slotSettingLabels
+      ? { ...item.slotSettingLabels }
+      : undefined,
+    fieldOverrides: item.fieldOverrides
+      ? structuredClone(item.fieldOverrides)
+      : undefined,
+    runtimeDefaults: item.runtimeDefaults
+      ? structuredClone(item.runtimeDefaults)
+      : undefined,
+    featureConfigDefaults: item.featureConfigDefaults
+      ? structuredClone(item.featureConfigDefaults)
+      : undefined,
+    features: item.features ? structuredClone(item.features) : undefined,
+    storageRules: item.storageRules
+      ? structuredClone(item.storageRules)
+      : undefined,
+    defaultAIRoute: item.defaultAIRoute
+      ? structuredClone(item.defaultAIRoute)
+      : undefined,
+  }));
+}
+
+/**
+ * 按工具键读取单个内置工具定义。
+ */
+export function getBuiltInToolDefinition(toolKey: string) {
+  return listBuiltInToolDefinitions().find((item) => item.toolKey === toolKey);
+}
