@@ -438,8 +438,67 @@ export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
       json3: "允许服务商列表",
       json4: "用户可见模型目录",
       config10: "AI 资源访问方式",
+      text1: "商品图片理解提示词",
+      text2: "商品文案生成提示词",
+      text3: "商品发布文案提示词",
+      text4: "商品发布图基础提示词",
     },
     fieldOverrides: {
+      // 这些字段决定平台 AI 选模和路由，只允许管理员查看和修改。
+      config1: {
+        label: "redink.defaultModel",
+        description: "RedInk 默认使用的文本模型键",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config2: {
+        label: "redink.routeStrategy",
+        description: "RedInk 调用 AI 网关时使用的路由策略",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config3: {
+        label: "redink.preferredProvider",
+        description: "RedInk 优先使用的服务商键",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config4: {
+        label: "redink.config4",
+        description: "RedInk 预留配置槽位 4，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config5: {
+        label: "redink.config5",
+        description: "RedInk 预留配置槽位 5，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config6: {
+        label: "redink.config6",
+        description: "RedInk 预留配置槽位 6，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config7: {
+        label: "redink.config7",
+        description: "RedInk 预留配置槽位 7，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config8: {
+        label: "redink.config8",
+        description: "RedInk 预留配置槽位 8，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      config9: {
+        label: "redink.config9",
+        description: "RedInk 预留配置槽位 9，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
       config10: {
         label: "ai.assetUrlMode",
         description:
@@ -450,12 +509,111 @@ export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
         defaultValueJson: "public",
         optionsJson: ["public", "proxy"],
       },
+      secret1: {
+        label: "redink.overrideApiKey",
+        description: "仅管理员可用的上游服务密钥",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret2: {
+        label: "redink.secret2",
+        description: "RedInk 预留密钥槽位 2，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret3: {
+        label: "redink.secret3",
+        description: "RedInk 预留密钥槽位 3，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret4: {
+        label: "redink.secret4",
+        description: "RedInk 预留密钥槽位 4，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret5: {
+        label: "redink.secret5",
+        description: "RedInk 预留密钥槽位 5，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret6: {
+        label: "redink.secret6",
+        description: "RedInk 预留密钥槽位 6，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret7: {
+        label: "redink.secret7",
+        description: "RedInk 预留密钥槽位 7，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret8: {
+        label: "redink.secret8",
+        description: "RedInk 预留密钥槽位 8，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret9: {
+        label: "redink.secret9",
+        description: "RedInk 预留密钥槽位 9，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      secret10: {
+        label: "redink.secret10",
+        description: "RedInk 预留密钥槽位 10，仅管理员可用",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      json1: {
+        label: "redink.allowedModels",
+        description: "RedInk 允许调用的模型白名单",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      json2: {
+        label: "redink.featureRules",
+        description: "RedInk 各功能的启用状态和计费规则",
+        adminOnly: true,
+        userOverridable: false,
+      },
+      json3: {
+        label: "redink.allowedProviders",
+        description: "RedInk 允许使用的服务商白名单",
+        adminOnly: true,
+        userOverridable: false,
+      },
       json4: {
         label: "redink.userModelCatalog",
         description:
           "配置 RedInk 对用户展示的模型子集与别名，必须是 AI 网关模型绑定的子集",
         adminOnly: true,
         userOverridable: false,
+      },
+      // 用户侧只保留提示词类配置，用于个性化自己的生成偏好。
+      text1: {
+        label: "redink.productImageAnalysisPrompt",
+        description: "分析商品图片时追加给 AI 的个人默认提示词",
+        userOverridable: true,
+      },
+      text2: {
+        label: "redink.productCopyPrompt",
+        description: "生成商品文案时使用的个人默认提示词",
+        userOverridable: true,
+      },
+      text3: {
+        label: "redink.productPostPrompt",
+        description: "生成商品发布文案时使用的个人默认提示词",
+        userOverridable: true,
+      },
+      text4: {
+        label: "redink.productPostImagePrompt",
+        description: "生成商品发布图提示词时使用的个人默认提示词",
+        userOverridable: true,
       },
     },
     runtimeDefaults: {
