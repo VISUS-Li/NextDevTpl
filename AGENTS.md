@@ -32,6 +32,7 @@
 
 ## 最近记录
 
+- 2026-04-18：完成 RedInk 配置分层改造阶段 C 联调回归确认，阶段 A/B/C 组合后用户侧仍只暴露 `text1~text4`，且平台默认提示词模板没有影响用户态字段过滤；原因是图片提示词现已引用文案提示词和生成文案，需要确认平台端阶段 A 的权限边界没有被后续阶段打穿；已通过 `pnpm test:run src/test/platform/redink-user-settings-phaseA.test.ts --reporter=dot` 验证
 - 2026-04-18：完成 RedInk 配置分层改造阶段 B，在 `src/features/tool-config/tool-definitions.ts` 给 `redink.text1~text4` 写入平台默认提示词模板，供外部 RedInk 用户设置页直接读取和覆盖；原因是阶段 A 虽然收口了权限边界，但用户提示词还没有默认值，不能直接拿来驱动生成链路；已通过 `pnpm exec biome check src/features/tool-config/tool-definitions.ts` 与 `pnpm test:run src/test/platform/redink-user-settings-phaseA.test.ts --reporter=dot` 验证未回退
 - 2026-04-18：完成 RedInk 配置分层改造阶段 A，把 `src/features/tool-config/tool-definitions.ts` 中 `redink` 的非提示词槽位全部改成仅管理员可见可配，用户态只保留 `text1~text4` 四个提示词字段，并新增接口级测试 `src/test/platform/redink-user-settings-phaseA.test.ts` 覆盖“用户只看得到提示词字段”和“用户不能写入管理员字段”；原因是 `redink` 的默认模型、路由策略、首选服务商、白名单与功能规则不应再出现在用户自己的设置里；已通过 `pnpm exec biome check src/features/tool-config/tool-definitions.ts src/test/platform/redink-user-settings-phaseA.test.ts` 与 `pnpm test:run src/test/platform/redink-user-settings-phaseA.test.ts --reporter=dot` 验证
 - 2026-04-17：修复 `start-dev.sh` 重启开发服务时只结束监听端口的 `next-server` 子进程、父级 `node/sh/pnpm` 仍持有 `.next/dev/lock`，导致再次执行脚本触发 `Unable to acquire lock`；现改为 Unix 按进程组结束旧实例、Windows 用 `taskkill /T /F` 结束整棵树，并在端口未释放时补一次强制停止；已通过 `bash -n start-dev.sh`、`START_TUNNEL=0 SKIP_INSTALL=1 DETACH=1 ./start-dev.sh` 连续执行两次，确认第二次会先清理旧实例再重启，日志中不再出现 lock 报错验证
