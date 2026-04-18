@@ -8,6 +8,7 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 APP_DIR="${APP_DIR:-$(pwd)}"
 PORT="${PORT:-3000}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pnpm}"
+NEXT_DEV_BUNDLER="${NEXT_DEV_BUNDLER:-webpack}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 START_TUNNEL="${START_TUNNEL:-1}"
 DETACH="${DETACH:-0}"
@@ -17,6 +18,9 @@ CF_CONFIG_FILE="${CF_CONFIG_FILE:-$HOME/.cloudflared/config.yml}"
 TUNNEL_NAME="${TUNNEL_NAME:-redink-tripai}"
 TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-platform.tripai.icu}"
 PUBLIC_URL="${PUBLIC_URL:-https://platform.tripai.icu}"
+APP_READY_PATH="${APP_READY_PATH:-/site.webmanifest}"
+APP_READY_RETRIES="${APP_READY_RETRIES:-6}"
+APP_READY_CURL_TIMEOUT="${APP_READY_CURL_TIMEOUT:-2}"
 APP_LOG_FILE="${APP_LOG_FILE:-/tmp/nextdevtpl-dev.log}"
 TUNNEL_LOG_FILE="${TUNNEL_LOG_FILE:-/tmp/nextdevtpl-dev-cloudflared.log}"
 NGROK_LOG_FILE="${NGROK_LOG_FILE:-/tmp/nextdevtpl-dev-ngrok.log}"
@@ -46,6 +50,22 @@ pick_package_manager() {
   fi
 
   printf '%s\n' "npm"
+}
+
+# 统一生成 Next dev bundler 参数，默认避开当前仓库在 Turbopack 下的冷启动卡顿。
+pick_next_dev_bundler_arg() {
+  case "$NEXT_DEV_BUNDLER" in
+    webpack)
+      printf '%s\n' "--webpack"
+      ;;
+    turbopack)
+      printf '%s\n' "--turbopack"
+      ;;
+    *)
+      printf '%s\n' "无效的 NEXT_DEV_BUNDLER: ${NEXT_DEV_BUNDLER}，可选 webpack 或 turbopack" >&2
+      return 1
+      ;;
+  esac
 }
 
 # 按锁文件安装依赖，兼容现有仓库习惯
@@ -113,14 +133,95 @@ const platform = process.platform;
 const pids = (process.env.PIDS_TO_KILL || "")
   .split(/\s+/)
   .map((item) => item.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map((item) => Number(item))
+  .filter((item) => Number.isInteger(item) && item > 0);
+const pgids = new Set();
+
+// Unix 下先结束进程组，避免只停掉 next-server 子进程而留下父进程继续占着 lock。
+if (platform !== "win32") {
+  for (const pid of pids) {
+    try {
+      const pgid = Number(
+        execSync(`ps -o pgid= -p ${pid}`, {
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .toString()
+          .trim()
+      );
+      if (Number.isInteger(pgid) && pgid > 1) {
+        pgids.add(pgid);
+      }
+    } catch {}
+  }
+}
+
+for (const pgid of pgids) {
+  try {
+    process.kill(-pgid, "SIGTERM");
+  } catch {}
+}
 
 for (const pid of pids) {
   try {
     if (platform === "win32") {
-      execSync(`taskkill /PID ${pid} /F`, { stdio: "ignore" });
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
     } else {
-      process.kill(Number(pid), "SIGTERM");
+      process.kill(pid, "SIGTERM");
+    }
+  } catch {}
+}
+EOF
+
+  # 给 Next 的父子进程一点时间退出，并在必要时补一次强制结束。
+  for _ in $(seq 1 10); do
+    REMAINING_PIDS="$(lsof -ti tcp:${PORT} -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' | xargs 2>/dev/null || true)"
+    [ -z "$REMAINING_PIDS" ] && return 0
+    sleep 1
+  done
+
+  printf '%s\n' "端口 ${PORT} 仍未释放，改为强制停止: ${EXISTING_PIDS}"
+  PIDS_TO_KILL="$EXISTING_PIDS" node - <<'EOF'
+const { execSync } = require("node:child_process");
+
+const platform = process.platform;
+const pids = (process.env.PIDS_TO_KILL || "")
+  .split(/\s+/)
+  .map((item) => item.trim())
+  .filter(Boolean)
+  .map((item) => Number(item))
+  .filter((item) => Number.isInteger(item) && item > 0);
+const pgids = new Set();
+
+if (platform !== "win32") {
+  for (const pid of pids) {
+    try {
+      const pgid = Number(
+        execSync(`ps -o pgid= -p ${pid}`, {
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .toString()
+          .trim()
+      );
+      if (Number.isInteger(pgid) && pgid > 1) {
+        pgids.add(pgid);
+      }
+    } catch {}
+  }
+}
+
+for (const pgid of pgids) {
+  try {
+    process.kill(-pgid, "SIGKILL");
+  } catch {}
+}
+
+for (const pid of pids) {
+  try {
+    if (platform === "win32") {
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+    } else {
+      process.kill(pid, "SIGKILL");
     }
   } catch {}
 }
@@ -134,7 +235,7 @@ http_ready() {
   local url=$1
   [ -n "$url" ] || return 1
   command -v curl >/dev/null 2>&1 || return 0
-  HTTP_CODE="$(curl -L -o /dev/null -s -w '%{http_code}' --max-time 10 "$url" || true)"
+  HTTP_CODE="$(curl -L -o /dev/null -s -w '%{http_code}' --max-time "$APP_READY_CURL_TIMEOUT" "${url%/}${APP_READY_PATH}" || true)"
   [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "307" ] || [ "$HTTP_CODE" = "308" ]
 }
 
@@ -238,13 +339,17 @@ wait_for_local_http() {
     return
   fi
 
-  for _ in $(seq 1 60); do
-    HTTP_CODE="$(curl -L -o /dev/null -s -w '%{http_code}' --max-time 5 "http://127.0.0.1:${PORT}" || true)"
+  for _ in $(seq 1 "$APP_READY_RETRIES"); do
+    HTTP_CODE="$(curl -L -o /dev/null -s -w '%{http_code}' --max-time "$APP_READY_CURL_TIMEOUT" "http://127.0.0.1:${PORT}${APP_READY_PATH}" || true)"
     if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "307" ] || [ "$HTTP_CODE" = "308" ]; then
-      return
+      return 0
     fi
     sleep 1
   done
+
+  printf '%s\n' "等待本地服务超时: http://127.0.0.1:${PORT}${APP_READY_PATH}"
+  printf '%s\n' "可继续查看应用日志判断是否卡在 Next 编译或接口初始化"
+  return 1
 }
 
 # 前台模式退出时同时关闭子进程
@@ -266,6 +371,7 @@ cleanup() {
 }
 
 PACKAGE_MANAGER_CMD="$(pick_package_manager)"
+NEXT_DEV_BUNDLER_ARG="$(pick_next_dev_bundler_arg)"
 install_dependencies
 kill_existing_port_processes
 
@@ -274,18 +380,22 @@ if [ "$DETACH" != "1" ]; then
 fi
 
 printf '%s\n' "调试服务启动中: http://127.0.0.1:${PORT}"
+printf '%s\n' "开发 bundler: ${NEXT_DEV_BUNDLER}"
 if [ "$DETACH" = "1" ]; then
   : > "$APP_LOG_FILE"
-  setsid node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" </dev/null > "$APP_LOG_FILE" 2>&1 &
+  setsid node node_modules/next/dist/bin/next dev "$NEXT_DEV_BUNDLER_ARG" -H 0.0.0.0 -p "$PORT" </dev/null > "$APP_LOG_FILE" 2>&1 &
   DEV_PID=$!
 else
-  node node_modules/next/dist/bin/next dev --turbopack -H 0.0.0.0 -p "$PORT" &
+  node node_modules/next/dist/bin/next dev "$NEXT_DEV_BUNDLER_ARG" -H 0.0.0.0 -p "$PORT" &
   DEV_PID=$!
 fi
 
-wait_for_local_http
 print_local_access
-start_tunnel
+if wait_for_local_http; then
+  start_tunnel
+else
+  printf '%s\n' "跳过公网隧道，待本地服务可响应后再启动"
+fi
 
 if [ "$DETACH" = "1" ]; then
   printf '%s\n' "调试服务已转入后台: PID=${DEV_PID}"

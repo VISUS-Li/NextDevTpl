@@ -4,11 +4,6 @@ import { captcha } from "better-auth/plugins";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import {
-  ResetPasswordEmail,
-  VerifyEmailEmail,
-} from "@/features/mail/templates/primary-action-email";
-import { sendEmail } from "@/features/mail/utils";
 
 const STATIC_TRUSTED_ORIGINS = [
   process.env.NEXT_PUBLIC_APP_URL,
@@ -55,6 +50,22 @@ async function getTrustedOrigins(request?: Request) {
 const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY?.trim();
 const turnstileEnabled = Boolean(turnstileSiteKey && turnstileSecretKey);
+
+/**
+ * 需要发送认证邮件时再加载邮件依赖，避免登录态读取把邮件模板一起编译。
+ */
+async function loadAuthEmailDeps() {
+  const [{ sendEmail }, templates] = await Promise.all([
+    import("@/features/mail/utils"),
+    import("@/features/mail/templates/primary-action-email"),
+  ]);
+
+  return {
+    sendEmail,
+    ResetPasswordEmail: templates.ResetPasswordEmail,
+    VerifyEmailEmail: templates.VerifyEmailEmail,
+  };
+}
 
 /**
  * Better Auth 服务端配置
@@ -132,6 +143,7 @@ export const auth = betterAuth({
     // 官网以快速注册和立即体验为主，开发和演示环境不强制邮箱验证
     requireEmailVerification: false,
     sendResetPassword: async ({ user, url }) => {
+      const { sendEmail, ResetPasswordEmail } = await loadAuthEmailDeps();
       await sendEmail({
         to: user.email,
         subject: "Reset your password - tripai",
@@ -150,6 +162,7 @@ export const auth = betterAuth({
     // 保留验证能力，但默认不在注册后阻塞登录
     sendOnSignUp: false,
     sendVerificationEmail: async ({ user, url }) => {
+      const { sendEmail, VerifyEmailEmail } = await loadAuthEmailDeps();
       await sendEmail({
         to: user.email,
         subject: "Verify your email - tripai",
