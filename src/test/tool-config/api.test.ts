@@ -100,7 +100,7 @@ describe("Tool config platform API", () => {
         (field: { fieldKey: string }) => field.fieldKey === "secret1"
       )
     ).toMatchObject({
-      settingLabel: "secret1",
+      settingLabel: "自定义密钥",
       secretSet: true,
       source: "project_admin",
     });

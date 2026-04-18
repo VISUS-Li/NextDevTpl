@@ -429,6 +429,13 @@ export const BUILT_IN_TOOL_DEFINITIONS: readonly BuiltInToolDefinition[] = [
       },
     },
     slotSettingLabels: {
+      config1: "默认模型",
+      config2: "路由策略",
+      config3: "首选服务商",
+      secret1: "自定义密钥",
+      json1: "允许模型列表",
+      json2: "功能规则",
+      json3: "允许服务商列表",
       json4: "用户可见模型目录",
       config10: "AI 资源访问方式",
     },
