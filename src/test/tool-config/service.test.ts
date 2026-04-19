@@ -1,7 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { project, toolConfigAuditLog, toolConfigValue } from "@/db/schema";
+import {
+  project,
+  toolConfigAuditLog,
+  toolConfigField,
+  toolConfigValue,
+} from "@/db/schema";
 import {
   getResolvedToolConfig,
   getToolConfigEditorData,
@@ -68,24 +73,18 @@ describe("Tool config service", () => {
       userId: user.id,
       mode: "user",
     });
-    const apiKeyField = userEditor.fields.find(
-      (field) => field.fieldKey === "secret1"
-    );
-
-    expect(apiKeyField).toMatchObject({
-      type: "secret",
-      secretSet: true,
-      source: "project_admin",
-    });
-    expect(apiKeyField).not.toHaveProperty("value");
+    expect(userEditor.fields.map((field) => field.fieldKey)).toEqual([
+      "text1",
+      "text2",
+      "text3",
+      "text4",
+    ]);
 
     const userRevision = await saveUserToolConfig({
       projectKey,
       toolKey: "redink",
       actorId: user.id,
       values: {
-        secret1: "user-secret",
-        config2: "gpt-user",
         text1: "用户自己的提示词",
       },
     });
@@ -98,26 +97,9 @@ describe("Tool config service", () => {
     expect(userRevision).toBe(adminRevision + 1);
     expect(userResolved.config).toMatchObject({
       config1: "deepseek",
-      secret1: "user-secret",
-      config2: "gpt-user",
-      text1: "用户自己的提示词",
-    });
-
-    await saveUserToolConfig({
-      projectKey,
-      toolKey: "redink",
-      actorId: user.id,
-      values: {},
-      clearSecrets: ["secret1"],
-    });
-    const fallbackResolved = await getResolvedToolConfig({
-      projectKey,
-      toolKey: "redink",
-      userId: user.id,
-    });
-
-    expect(fallbackResolved.config).toMatchObject({
       secret1: "admin-secret",
+      config2: "deepseek-chat",
+      text1: "用户自己的提示词",
     });
   });
 
@@ -194,5 +176,53 @@ describe("Tool config service", () => {
       toolKey: "platform",
     });
     expect(updatedConfig.config.config1).toBe(80);
+  });
+
+  it("重新 seed 时应恢复 RedInk 用户提示词字段的启用状态和默认值", async () => {
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
+    const [currentProject] = await testDb
+      .select()
+      .from(project)
+      .where(eq(project.key, projectKey))
+      .limit(1);
+    const currentProjectId = currentProject?.id;
+    expect(currentProjectId).toBeDefined();
+
+    await testDb
+      .update(toolConfigField)
+      .set({
+        enabled: false,
+        defaultValueJson: null,
+      })
+      .where(
+        and(
+          eq(toolConfigField.projectId, currentProjectId as string),
+          eq(toolConfigField.toolKey, "redink"),
+          eq(toolConfigField.fieldKey, "text1")
+        )
+      );
+
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
+
+    const [restoredField] = await testDb
+      .select()
+      .from(toolConfigField)
+      .where(
+        and(
+          eq(toolConfigField.projectId, currentProjectId as string),
+          eq(toolConfigField.toolKey, "redink"),
+          eq(toolConfigField.fieldKey, "text1")
+        )
+      )
+      .limit(1);
+
+    expect(restoredField?.enabled).toBe(true);
+    expect(typeof restoredField?.defaultValueJson).toBe("string");
   });
 });

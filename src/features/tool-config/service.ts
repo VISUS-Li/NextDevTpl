@@ -244,11 +244,19 @@ export async function seedDefaultToolConfigProject(params?: {
       existingField.required !== (field.required ?? false) ||
       existingField.adminOnly !== (field.adminOnly ?? false) ||
       existingField.userOverridable !== (field.userOverridable ?? false) ||
-      existingField.sortOrder !== field.sortOrder
+      existingField.sortOrder !== field.sortOrder ||
+      existingField.enabled !== true ||
+      JSON.stringify(existingField.defaultValueJson ?? null) !==
+        JSON.stringify(field.defaultValueJson ?? null) ||
+      JSON.stringify(existingField.optionsJson ?? null) !==
+        JSON.stringify(field.optionsJson ?? null) ||
+      JSON.stringify(existingField.validationJson ?? null) !==
+        JSON.stringify(field.validationJson ?? null)
     ) {
       await db
         .update(toolConfigField)
         .set({
+          // 工具定义是平台的真实来源，历史上被停用的内置字段在这里自动恢复。
           label: field.label,
           description: field.description ?? null,
           group: field.group,
@@ -256,7 +264,11 @@ export async function seedDefaultToolConfigProject(params?: {
           required: field.required ?? false,
           adminOnly: field.adminOnly ?? false,
           userOverridable: field.userOverridable ?? false,
+          defaultValueJson: field.defaultValueJson,
+          optionsJson: field.optionsJson,
+          validationJson: field.validationJson,
           sortOrder: field.sortOrder,
+          enabled: true,
           updatedAt: now,
         })
         .where(eq(toolConfigField.id, existingField.id));
