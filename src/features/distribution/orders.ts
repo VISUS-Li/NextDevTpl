@@ -2,15 +2,14 @@ import { and, desc, eq, or } from "drizzle-orm";
 import { getPriceAmountById } from "@/config/payment";
 import { db } from "@/db";
 import {
-  normalizeDistributionCurrency,
-} from "@/features/distribution/presentation";
-import {
   distributionAttribution,
+  type paymentIntent,
   salesAfterSalesEvent,
   salesOrder,
   salesOrderItem,
 } from "@/db/schema";
 import { reverseCommissionForSalesOrderItem } from "@/features/distribution/commission";
+import { normalizeDistributionCurrency } from "@/features/distribution/presentation";
 import type {
   CreemCheckoutCompletedData,
   CreemSubscription,
@@ -376,6 +375,104 @@ export async function upsertSalesOrderFromCheckoutCompleted(
   });
 }
 
+/**
+ * 从 payment_intent 落一次性支付订单。
+ */
+export async function upsertSalesOrderFromPaymentIntent(params: {
+  intent: typeof paymentIntent.$inferSelect;
+  eventType: string;
+  eventIdempotencyKey: string;
+  providerOrderId?: string | null;
+  providerPaymentId?: string | null;
+  paidAt?: Date | undefined;
+  metadata?: Record<string, unknown> | null | undefined;
+}) {
+  const paidAt = params.paidAt ?? new Date();
+  const attribution = await getPaymentOrderAttribution(
+    asStringRecord(params.intent.metadata)
+  );
+  const payload: PaymentOrderPayload = {
+    order: {
+      id: crypto.randomUUID(),
+      userId: params.intent.userId,
+      provider: params.intent.provider,
+      providerOrderId:
+        params.providerOrderId ??
+        params.intent.providerOrderId ??
+        params.intent.outTradeNo,
+      providerCheckoutId: params.intent.providerCheckoutId,
+      providerSubscriptionId: null,
+      providerPaymentId:
+        params.providerPaymentId ??
+        params.intent.providerPaymentId ??
+        params.intent.outTradeNo,
+      orderType: "credit_purchase",
+      status: "paid",
+      afterSalesStatus: "none",
+      currency: normalizeDistributionCurrency(params.intent.currency),
+      grossAmount: params.intent.amount,
+      paidAt,
+      eventTime: paidAt,
+      eventType: params.eventType,
+      eventIdempotencyKey: params.eventIdempotencyKey,
+      referralCode: attribution.referralCode,
+      attributedAgentUserId: attribution.attributedAgentUserId,
+      attributionId: attribution.attributionId,
+      attributionSnapshot: attribution.attributionSnapshot,
+      metadata: {
+        paymentIntentId: params.intent.id,
+        outTradeNo: params.intent.outTradeNo,
+        packageId: params.intent.packageId,
+        credits: params.intent.credits,
+        ...(params.intent.metadata ?? {}),
+        ...(params.metadata ?? {}),
+      },
+    },
+    item: {
+      id: crypto.randomUUID(),
+      orderId: "",
+      productType: "credit_package",
+      productId: params.intent.packageId,
+      priceId: params.intent.packageId,
+      planId: null,
+      quantity: 1,
+      grossAmount: params.intent.amount,
+      netAmount: params.intent.amount,
+      commissionBaseAmount: params.intent.amount,
+      refundedAmount: 0,
+      refundableAmount: params.intent.amount,
+      metadata: {
+        paymentIntentId: params.intent.id,
+        provider: params.intent.provider,
+        credits: params.intent.credits,
+        ...(params.metadata ?? {}),
+      },
+    },
+  };
+
+  return await db.transaction(async (tx) => {
+    const [existingOrder] = await tx
+      .select({ id: salesOrder.id })
+      .from(salesOrder)
+      .where(
+        eq(salesOrder.eventIdempotencyKey, payload.order.eventIdempotencyKey)
+      )
+      .limit(1);
+
+    if (existingOrder) {
+      return existingOrder.id;
+    }
+
+    const orderId = payload.order.id;
+    await tx.insert(salesOrder).values(payload.order);
+    await tx.insert(salesOrderItem).values({
+      ...payload.item,
+      orderId,
+    });
+    return orderId;
+  });
+}
+
 async function confirmExistingSubscriptionOrder(
   tx: DistributionTx,
   sub: CreemSubscription,
@@ -494,7 +591,8 @@ export async function upsertSalesOrderFromSubscriptionEvent(
       ...payload.order,
       referralCode: attribution?.referralCode ?? payload.order.referralCode,
       attributedAgentUserId:
-        attribution?.attributedAgentUserId ?? payload.order.attributedAgentUserId,
+        attribution?.attributedAgentUserId ??
+        payload.order.attributedAgentUserId,
       attributionId: attribution?.attributionId ?? payload.order.attributionId,
       attributionSnapshot:
         attribution?.attributionSnapshot ?? payload.order.attributionSnapshot,
@@ -619,4 +717,18 @@ export async function applySalesAfterSalesEvent(
 
     return eventId;
   });
+}
+
+function asStringRecord(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, field] of Object.entries(value)) {
+    if (typeof field === "string") {
+      result[key] = field;
+    }
+  }
+  return result;
 }

@@ -5,7 +5,7 @@
  * 使用 @neondatabase/serverless 的 WebSocket 模式以支持事务
  */
 
-import { neonConfig, Pool as NeonPool } from "@neondatabase/serverless";
+import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { eq, inArray, or, sql } from "drizzle-orm";
 import { drizzle as drizzleNeonWs } from "drizzle-orm/neon-serverless";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
@@ -27,15 +27,15 @@ let pool: NeonPool | Pool | null = null;
  * 获取测试数据库连接字符串
  */
 function getTestDatabaseUrl(): string {
-	const url = process.env.DATABASE_URL;
-	if (!url) {
-		throw new Error(
-			"DATABASE_URL 环境变量未设置。\n" +
-				"请创建 .env.test 文件并添加:\n" +
-				"DATABASE_URL=postgresql://...(你的 Neon test branch 连接字符串)"
-		);
-	}
-	return url;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL 环境变量未设置。\n" +
+        "请创建 .env.test 文件并添加:\n" +
+        "DATABASE_URL=postgresql://...(你的 Neon test branch 连接字符串)"
+    );
+  }
+  return url;
 }
 
 /**
@@ -46,19 +46,19 @@ function getTestDatabaseUrl(): string {
  * - 本地或标准 PostgreSQL 使用 node-postgres
  */
 function createTestDb() {
-	const databaseUrl = getTestDatabaseUrl();
-	const isNeon = databaseUrl.includes("neon.tech");
+  const databaseUrl = getTestDatabaseUrl();
+  const isNeon = databaseUrl.includes("neon.tech");
 
-	if (isNeon) {
-		neonConfig.webSocketConstructor = ws;
-		const neonPool = new NeonPool({ connectionString: databaseUrl });
-		pool = neonPool;
-		return drizzleNeonWs(neonPool, { schema });
-	}
+  if (isNeon) {
+    neonConfig.webSocketConstructor = ws;
+    const neonPool = new NeonPool({ connectionString: databaseUrl });
+    pool = neonPool;
+    return drizzleNeonWs(neonPool, { schema });
+  }
 
-	const pgPool = new Pool({ connectionString: databaseUrl });
-	pool = pgPool;
-	return drizzlePg(pgPool, { schema });
+  const pgPool = new Pool({ connectionString: databaseUrl });
+  pool = pgPool;
+  return drizzlePg(pgPool, { schema });
 }
 
 /**
@@ -70,10 +70,10 @@ export const testDb = createTestDb();
  * 关闭测试数据库连接
  */
 export async function closeTestDb() {
-	if (pool) {
-		await pool.end();
-		pool = null;
-	}
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
 }
 
 // ============================================
@@ -84,352 +84,328 @@ export async function closeTestDb() {
  * 清理指定用户的所有测试数据
  */
 export async function cleanupUserData(userId: string) {
-	// 按外键依赖顺序删除
-	const orderIds = await testDb
-		.select({ id: schema.salesOrder.id })
-		.from(schema.salesOrder)
-		.where(eq(schema.salesOrder.userId, userId));
+  // 按外键依赖顺序删除
+  const orderIds = await testDb
+    .select({ id: schema.salesOrder.id })
+    .from(schema.salesOrder)
+    .where(eq(schema.salesOrder.userId, userId));
 
-	const commissionEventIds = await testDb
-		.select({ id: schema.commissionEvent.id })
-		.from(schema.commissionEvent)
-		.where(eq(schema.commissionEvent.triggerUserId, userId));
+  const commissionEventIds = await testDb
+    .select({ id: schema.commissionEvent.id })
+    .from(schema.commissionEvent)
+    .where(eq(schema.commissionEvent.triggerUserId, userId));
 
-	await testDb
-		.delete(schema.commissionLedger)
-		.where(eq(schema.commissionLedger.userId, userId));
+  await testDb
+    .delete(schema.commissionLedger)
+    .where(eq(schema.commissionLedger.userId, userId));
 
-	await testDb
-		.delete(schema.withdrawalRequest)
-		.where(eq(schema.withdrawalRequest.userId, userId));
+  await testDb
+    .delete(schema.withdrawalRequest)
+    .where(eq(schema.withdrawalRequest.userId, userId));
 
-	await testDb
-		.delete(schema.commissionBalance)
-		.where(eq(schema.commissionBalance.userId, userId));
+  await testDb
+    .delete(schema.commissionBalance)
+    .where(eq(schema.commissionBalance.userId, userId));
 
-	await testDb
-		.delete(schema.commissionRecord)
-		.where(eq(schema.commissionRecord.beneficiaryUserId, userId));
+  await testDb
+    .delete(schema.commissionRecord)
+    .where(eq(schema.commissionRecord.beneficiaryUserId, userId));
 
-	if (commissionEventIds.length > 0) {
-		await testDb
-			.delete(schema.commissionRecord)
-			.where(
-				inArray(
-					schema.commissionRecord.eventId,
-					commissionEventIds.map((event) => event.id)
-				)
-			);
-	}
+  if (commissionEventIds.length > 0) {
+    await testDb.delete(schema.commissionRecord).where(
+      inArray(
+        schema.commissionRecord.eventId,
+        commissionEventIds.map((event) => event.id)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.commissionEvent)
-		.where(eq(schema.commissionEvent.triggerUserId, userId));
+  await testDb
+    .delete(schema.commissionEvent)
+    .where(eq(schema.commissionEvent.triggerUserId, userId));
 
-	if (orderIds.length > 0) {
-		const orderCommissionEvents = await testDb
-			.select({ id: schema.commissionEvent.id })
-			.from(schema.commissionEvent)
-			.where(
-				inArray(
-					schema.commissionEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+  if (orderIds.length > 0) {
+    const orderCommissionEvents = await testDb
+      .select({ id: schema.commissionEvent.id })
+      .from(schema.commissionEvent)
+      .where(
+        inArray(
+          schema.commissionEvent.orderId,
+          orderIds.map((order) => order.id)
+        )
+      );
 
-		if (orderCommissionEvents.length > 0) {
-			await testDb
-				.delete(schema.commissionRecord)
-				.where(
-					inArray(
-						schema.commissionRecord.eventId,
-						orderCommissionEvents.map((event) => event.id)
-					)
-				);
-		}
+    if (orderCommissionEvents.length > 0) {
+      await testDb.delete(schema.commissionRecord).where(
+        inArray(
+          schema.commissionRecord.eventId,
+          orderCommissionEvents.map((event) => event.id)
+        )
+      );
+    }
 
-		await testDb
-			.delete(schema.commissionEvent)
-			.where(
-				inArray(
-					schema.commissionEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+    await testDb.delete(schema.commissionEvent).where(
+      inArray(
+        schema.commissionEvent.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
 
-		await testDb
-			.delete(schema.salesAfterSalesEvent)
-			.where(
-				inArray(
-					schema.salesAfterSalesEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+    await testDb.delete(schema.salesAfterSalesEvent).where(
+      inArray(
+        schema.salesAfterSalesEvent.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
 
-		await testDb
-			.delete(schema.salesOrderItem)
-			.where(
-				inArray(
-					schema.salesOrderItem.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
-	}
+    await testDb.delete(schema.salesOrderItem).where(
+      inArray(
+        schema.salesOrderItem.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.salesOrder)
-		.where(eq(schema.salesOrder.userId, userId));
+  await testDb
+    .delete(schema.salesOrder)
+    .where(eq(schema.salesOrder.userId, userId));
 
-	await testDb
-		.delete(schema.distributionAttribution)
-		.where(
-			or(
-				eq(schema.distributionAttribution.userId, userId),
-				eq(schema.distributionAttribution.agentUserId, userId)
-			)
-		);
+  await testDb
+    .delete(schema.paymentIntent)
+    .where(eq(schema.paymentIntent.userId, userId));
 
-	await testDb
-		.delete(schema.distributionReferralCode)
-		.where(eq(schema.distributionReferralCode.agentUserId, userId));
+  await testDb
+    .delete(schema.distributionAttribution)
+    .where(
+      or(
+        eq(schema.distributionAttribution.userId, userId),
+        eq(schema.distributionAttribution.agentUserId, userId)
+      )
+    );
 
-	await testDb
-		.delete(schema.distributionProfile)
-		.where(eq(schema.distributionProfile.userId, userId));
+  await testDb
+    .delete(schema.distributionReferralCode)
+    .where(eq(schema.distributionReferralCode.agentUserId, userId));
 
-	await testDb
-		.delete(schema.aiBillingRecord)
-		.where(eq(schema.aiBillingRecord.userId, userId));
+  await testDb
+    .delete(schema.distributionProfile)
+    .where(eq(schema.distributionProfile.userId, userId));
 
-	const aiRequests = await testDb
-		.select({ requestId: schema.aiRequestLog.requestId })
-		.from(schema.aiRequestLog)
-		.where(eq(schema.aiRequestLog.userId, userId));
+  await testDb
+    .delete(schema.aiBillingRecord)
+    .where(eq(schema.aiBillingRecord.userId, userId));
 
-	if (aiRequests.length > 0) {
-		await testDb
-			.delete(schema.aiRequestAttempt)
-			.where(
-				inArray(
-					schema.aiRequestAttempt.requestId,
-					aiRequests.map((item) => item.requestId)
-				)
-			);
-	}
+  const aiRequests = await testDb
+    .select({ requestId: schema.aiRequestLog.requestId })
+    .from(schema.aiRequestLog)
+    .where(eq(schema.aiRequestLog.userId, userId));
 
-	await testDb
-		.delete(schema.aiRequestLog)
-		.where(eq(schema.aiRequestLog.userId, userId));
+  if (aiRequests.length > 0) {
+    await testDb.delete(schema.aiRequestAttempt).where(
+      inArray(
+        schema.aiRequestAttempt.requestId,
+        aiRequests.map((item) => item.requestId)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.creditsTransaction)
-		.where(eq(schema.creditsTransaction.userId, userId));
+  await testDb
+    .delete(schema.aiRequestLog)
+    .where(eq(schema.aiRequestLog.userId, userId));
 
-	await testDb
-		.delete(schema.creditsBatch)
-		.where(eq(schema.creditsBatch.userId, userId));
+  await testDb
+    .delete(schema.creditsTransaction)
+    .where(eq(schema.creditsTransaction.userId, userId));
 
-	await testDb
-		.delete(schema.creditsBalance)
-		.where(eq(schema.creditsBalance.userId, userId));
+  await testDb
+    .delete(schema.creditsBatch)
+    .where(eq(schema.creditsBatch.userId, userId));
 
-	// 删除用户相关的 session 和 account
-	await testDb
-		.delete(schema.session)
-		.where(eq(schema.session.userId, userId));
+  await testDb
+    .delete(schema.creditsBalance)
+    .where(eq(schema.creditsBalance.userId, userId));
 
-	await testDb
-		.delete(schema.account)
-		.where(eq(schema.account.userId, userId));
+  // 删除用户相关的 session 和 account
+  await testDb.delete(schema.session).where(eq(schema.session.userId, userId));
 
-	// 最后删除用户
-	await testDb.delete(schema.user).where(eq(schema.user.id, userId));
+  await testDb.delete(schema.account).where(eq(schema.account.userId, userId));
+
+  // 最后删除用户
+  await testDb.delete(schema.user).where(eq(schema.user.id, userId));
 }
 
 /**
  * 批量清理测试用户数据
  */
 export async function cleanupTestUsers(userIds: string[]) {
-	if (userIds.length === 0) return;
+  if (userIds.length === 0) return;
 
-	// 按外键依赖顺序删除
+  // 按外键依赖顺序删除
 
-	// 0. 清理统一订单
-	const orderIds = await testDb
-		.select({ id: schema.salesOrder.id })
-		.from(schema.salesOrder)
-		.where(inArray(schema.salesOrder.userId, userIds));
+  // 0. 清理统一订单
+  const orderIds = await testDb
+    .select({ id: schema.salesOrder.id })
+    .from(schema.salesOrder)
+    .where(inArray(schema.salesOrder.userId, userIds));
 
-	const commissionEventIds = await testDb
-		.select({ id: schema.commissionEvent.id })
-		.from(schema.commissionEvent)
-		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+  const commissionEventIds = await testDb
+    .select({ id: schema.commissionEvent.id })
+    .from(schema.commissionEvent)
+    .where(inArray(schema.commissionEvent.triggerUserId, userIds));
 
-	await testDb
-		.delete(schema.commissionLedger)
-		.where(inArray(schema.commissionLedger.userId, userIds));
+  await testDb
+    .delete(schema.commissionLedger)
+    .where(inArray(schema.commissionLedger.userId, userIds));
 
-	await testDb
-		.delete(schema.withdrawalRequest)
-		.where(inArray(schema.withdrawalRequest.userId, userIds));
+  await testDb
+    .delete(schema.withdrawalRequest)
+    .where(inArray(schema.withdrawalRequest.userId, userIds));
 
-	await testDb
-		.delete(schema.commissionBalance)
-		.where(inArray(schema.commissionBalance.userId, userIds));
+  await testDb
+    .delete(schema.commissionBalance)
+    .where(inArray(schema.commissionBalance.userId, userIds));
 
-	await testDb
-		.delete(schema.commissionRecord)
-		.where(inArray(schema.commissionRecord.beneficiaryUserId, userIds));
+  await testDb
+    .delete(schema.commissionRecord)
+    .where(inArray(schema.commissionRecord.beneficiaryUserId, userIds));
 
-	if (commissionEventIds.length > 0) {
-		await testDb
-			.delete(schema.commissionRecord)
-			.where(
-				inArray(
-					schema.commissionRecord.eventId,
-					commissionEventIds.map((event) => event.id)
-				)
-			);
-	}
+  if (commissionEventIds.length > 0) {
+    await testDb.delete(schema.commissionRecord).where(
+      inArray(
+        schema.commissionRecord.eventId,
+        commissionEventIds.map((event) => event.id)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.commissionEvent)
-		.where(inArray(schema.commissionEvent.triggerUserId, userIds));
+  await testDb
+    .delete(schema.commissionEvent)
+    .where(inArray(schema.commissionEvent.triggerUserId, userIds));
 
-	if (orderIds.length > 0) {
-		const orderCommissionEvents = await testDb
-			.select({ id: schema.commissionEvent.id })
-			.from(schema.commissionEvent)
-			.where(
-				inArray(
-					schema.commissionEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+  if (orderIds.length > 0) {
+    const orderCommissionEvents = await testDb
+      .select({ id: schema.commissionEvent.id })
+      .from(schema.commissionEvent)
+      .where(
+        inArray(
+          schema.commissionEvent.orderId,
+          orderIds.map((order) => order.id)
+        )
+      );
 
-		if (orderCommissionEvents.length > 0) {
-			await testDb
-				.delete(schema.commissionRecord)
-				.where(
-					inArray(
-						schema.commissionRecord.eventId,
-						orderCommissionEvents.map((event) => event.id)
-					)
-				);
-		}
+    if (orderCommissionEvents.length > 0) {
+      await testDb.delete(schema.commissionRecord).where(
+        inArray(
+          schema.commissionRecord.eventId,
+          orderCommissionEvents.map((event) => event.id)
+        )
+      );
+    }
 
-		await testDb
-			.delete(schema.commissionEvent)
-			.where(
-				inArray(
-					schema.commissionEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+    await testDb.delete(schema.commissionEvent).where(
+      inArray(
+        schema.commissionEvent.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
 
-		await testDb
-			.delete(schema.salesAfterSalesEvent)
-			.where(
-				inArray(
-					schema.salesAfterSalesEvent.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
+    await testDb.delete(schema.salesAfterSalesEvent).where(
+      inArray(
+        schema.salesAfterSalesEvent.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
 
-		await testDb
-			.delete(schema.salesOrderItem)
-			.where(
-				inArray(
-					schema.salesOrderItem.orderId,
-					orderIds.map((order) => order.id)
-				)
-			);
-	}
+    await testDb.delete(schema.salesOrderItem).where(
+      inArray(
+        schema.salesOrderItem.orderId,
+        orderIds.map((order) => order.id)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.salesOrder)
-		.where(inArray(schema.salesOrder.userId, userIds));
+  await testDb
+    .delete(schema.salesOrder)
+    .where(inArray(schema.salesOrder.userId, userIds));
 
-	await testDb
-		.delete(schema.distributionAttribution)
-		.where(
-			or(
-				inArray(schema.distributionAttribution.userId, userIds),
-				inArray(schema.distributionAttribution.agentUserId, userIds)
-			)
-		);
+  await testDb
+    .delete(schema.distributionAttribution)
+    .where(
+      or(
+        inArray(schema.distributionAttribution.userId, userIds),
+        inArray(schema.distributionAttribution.agentUserId, userIds)
+      )
+    );
 
-	await testDb
-		.delete(schema.distributionReferralCode)
-		.where(inArray(schema.distributionReferralCode.agentUserId, userIds));
+  await testDb
+    .delete(schema.distributionReferralCode)
+    .where(inArray(schema.distributionReferralCode.agentUserId, userIds));
 
-	await testDb
-		.delete(schema.distributionProfile)
-		.where(inArray(schema.distributionProfile.userId, userIds));
+  await testDb
+    .delete(schema.distributionProfile)
+    .where(inArray(schema.distributionProfile.userId, userIds));
 
-	// 1. 清理工单消息（依赖 ticket 和 user）
-	await testDb
-		.delete(schema.ticketMessage)
-		.where(inArray(schema.ticketMessage.userId, userIds));
+  // 1. 清理工单消息（依赖 ticket 和 user）
+  await testDb
+    .delete(schema.ticketMessage)
+    .where(inArray(schema.ticketMessage.userId, userIds));
 
-	// 2. 清理工单（依赖 user）
-	await testDb
-		.delete(schema.ticket)
-		.where(inArray(schema.ticket.userId, userIds));
+  // 2. 清理工单（依赖 user）
+  await testDb
+    .delete(schema.ticket)
+    .where(inArray(schema.ticket.userId, userIds));
 
-	// 3. 清理积分相关
-	await testDb
-		.delete(schema.aiBillingRecord)
-		.where(inArray(schema.aiBillingRecord.userId, userIds));
+  // 3. 清理积分相关
+  await testDb
+    .delete(schema.aiBillingRecord)
+    .where(inArray(schema.aiBillingRecord.userId, userIds));
 
-	const aiRequestIds = await testDb
-		.select({ requestId: schema.aiRequestLog.requestId })
-		.from(schema.aiRequestLog)
-		.where(inArray(schema.aiRequestLog.userId, userIds));
+  const aiRequestIds = await testDb
+    .select({ requestId: schema.aiRequestLog.requestId })
+    .from(schema.aiRequestLog)
+    .where(inArray(schema.aiRequestLog.userId, userIds));
 
-	if (aiRequestIds.length > 0) {
-		await testDb
-			.delete(schema.aiRequestAttempt)
-			.where(
-				inArray(
-					schema.aiRequestAttempt.requestId,
-					aiRequestIds.map((item) => item.requestId)
-				)
-			);
-	}
+  if (aiRequestIds.length > 0) {
+    await testDb.delete(schema.aiRequestAttempt).where(
+      inArray(
+        schema.aiRequestAttempt.requestId,
+        aiRequestIds.map((item) => item.requestId)
+      )
+    );
+  }
 
-	await testDb
-		.delete(schema.aiRequestLog)
-		.where(inArray(schema.aiRequestLog.userId, userIds));
+  await testDb
+    .delete(schema.aiRequestLog)
+    .where(inArray(schema.aiRequestLog.userId, userIds));
 
-	await testDb
-		.delete(schema.creditsTransaction)
-		.where(inArray(schema.creditsTransaction.userId, userIds));
+  await testDb
+    .delete(schema.creditsTransaction)
+    .where(inArray(schema.creditsTransaction.userId, userIds));
 
-	await testDb
-		.delete(schema.creditsBatch)
-		.where(inArray(schema.creditsBatch.userId, userIds));
+  await testDb
+    .delete(schema.creditsBatch)
+    .where(inArray(schema.creditsBatch.userId, userIds));
 
-	await testDb
-		.delete(schema.creditsBalance)
-		.where(inArray(schema.creditsBalance.userId, userIds));
+  await testDb
+    .delete(schema.creditsBalance)
+    .where(inArray(schema.creditsBalance.userId, userIds));
 
-	// 4. 清理订阅
-	await testDb
-		.delete(schema.subscription)
-		.where(inArray(schema.subscription.userId, userIds));
+  // 4. 清理订阅
+  await testDb
+    .delete(schema.subscription)
+    .where(inArray(schema.subscription.userId, userIds));
 
-	// 5. 清理认证相关
-	await testDb
-		.delete(schema.session)
-		.where(inArray(schema.session.userId, userIds));
+  // 5. 清理认证相关
+  await testDb
+    .delete(schema.session)
+    .where(inArray(schema.session.userId, userIds));
 
-	await testDb
-		.delete(schema.account)
-		.where(inArray(schema.account.userId, userIds));
+  await testDb
+    .delete(schema.account)
+    .where(inArray(schema.account.userId, userIds));
 
-	// 6. 最后删除用户
-	await testDb.delete(schema.user).where(inArray(schema.user.id, userIds));
+  // 6. 最后删除用户
+  await testDb.delete(schema.user).where(inArray(schema.user.id, userIds));
 }
 
 /**
@@ -438,14 +414,14 @@ export async function cleanupTestUsers(userIds: string[]) {
  * 只清理带有 test_ 前缀的数据
  */
 export async function cleanupTestData() {
-	// 只清理测试用户（以 test_ 开头的）
-	const testUsers = await testDb
-		.select({ id: schema.user.id })
-		.from(schema.user)
-		.where(sql`${schema.user.id} LIKE 'test_%'`);
+  // 只清理测试用户（以 test_ 开头的）
+  const testUsers = await testDb
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(sql`${schema.user.id} LIKE 'test_%'`);
 
-	const userIds = testUsers.map((u) => u.id);
-	await cleanupTestUsers(userIds);
+  const userIds = testUsers.map((u) => u.id);
+  await cleanupTestUsers(userIds);
 }
 
 // ============================================
@@ -456,117 +432,117 @@ export async function cleanupTestData() {
  * 检查数据库连接是否正常
  */
 export async function checkDbConnection(): Promise<boolean> {
-	try {
-		await testDb.execute(sql`SELECT 1`);
-		return true;
-	} catch {
-		return false;
-	}
+  try {
+    await testDb.execute(sql`SELECT 1`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * 获取用户的积分账户状态
  */
 export async function getUserCreditsState(userId: string) {
-	const [balance] = await testDb
-		.select()
-		.from(schema.creditsBalance)
-		.where(eq(schema.creditsBalance.userId, userId))
-		.limit(1);
+  const [balance] = await testDb
+    .select()
+    .from(schema.creditsBalance)
+    .where(eq(schema.creditsBalance.userId, userId))
+    .limit(1);
 
-	const batches = await testDb
-		.select()
-		.from(schema.creditsBatch)
-		.where(eq(schema.creditsBatch.userId, userId));
+  const batches = await testDb
+    .select()
+    .from(schema.creditsBatch)
+    .where(eq(schema.creditsBatch.userId, userId));
 
-	const transactions = await testDb
-		.select()
-		.from(schema.creditsTransaction)
-		.where(eq(schema.creditsTransaction.userId, userId));
+  const transactions = await testDb
+    .select()
+    .from(schema.creditsTransaction)
+    .where(eq(schema.creditsTransaction.userId, userId));
 
-	return { balance, batches, transactions };
+  return { balance, batches, transactions };
 }
 
 /**
  * 获取工单及其消息
  */
 export async function getTicketWithMessages(ticketId: string) {
-	const [ticketData] = await testDb
-		.select()
-		.from(schema.ticket)
-		.where(eq(schema.ticket.id, ticketId))
-		.limit(1);
+  const [ticketData] = await testDb
+    .select()
+    .from(schema.ticket)
+    .where(eq(schema.ticket.id, ticketId))
+    .limit(1);
 
-	const messages = await testDb
-		.select()
-		.from(schema.ticketMessage)
-		.where(eq(schema.ticketMessage.ticketId, ticketId))
-		.orderBy(schema.ticketMessage.createdAt);
+  const messages = await testDb
+    .select()
+    .from(schema.ticketMessage)
+    .where(eq(schema.ticketMessage.ticketId, ticketId))
+    .orderBy(schema.ticketMessage.createdAt);
 
-	return { ticket: ticketData, messages };
+  return { ticket: ticketData, messages };
 }
 
 /**
  * 获取用户的所有工单
  */
 export async function getUserTickets(userId: string) {
-	return await testDb
-		.select()
-		.from(schema.ticket)
-		.where(eq(schema.ticket.userId, userId))
-		.orderBy(schema.ticket.createdAt);
+  return await testDb
+    .select()
+    .from(schema.ticket)
+    .where(eq(schema.ticket.userId, userId))
+    .orderBy(schema.ticket.createdAt);
 }
 
 /**
  * 获取用户的订阅信息
  */
 export async function getUserSubscription(userId: string) {
-	const [sub] = await testDb
-		.select()
-		.from(schema.subscription)
-		.where(eq(schema.subscription.userId, userId))
-		.limit(1);
+  const [sub] = await testDb
+    .select()
+    .from(schema.subscription)
+    .where(eq(schema.subscription.userId, userId))
+    .limit(1);
 
-	return sub;
+  return sub;
 }
 
 /**
  * 清理测试 Newsletter 订阅者
  */
 export async function cleanupTestNewsletterSubscribers(emails: string[]) {
-	if (emails.length === 0) return;
+  if (emails.length === 0) return;
 
-	for (const email of emails) {
-		await testDb
-			.delete(schema.newsletterSubscriber)
-			.where(eq(schema.newsletterSubscriber.email, email.toLowerCase()));
-	}
+  for (const email of emails) {
+    await testDb
+      .delete(schema.newsletterSubscriber)
+      .where(eq(schema.newsletterSubscriber.email, email.toLowerCase()));
+  }
 }
 
 /**
  * 创建测试 Newsletter 订阅者
  */
 export async function createTestNewsletterSubscriber(options: {
-	email: string;
-	isSubscribed?: boolean;
+  email: string;
+  isSubscribed?: boolean;
 }): Promise<schema.NewsletterSubscriber> {
-	const id = `test_newsletter_${Date.now()}`;
-	const normalizedEmail = options.email.toLowerCase().trim();
+  const id = `test_newsletter_${Date.now()}`;
+  const normalizedEmail = options.email.toLowerCase().trim();
 
-	const data: schema.NewNewsletterSubscriber = {
-		id,
-		email: normalizedEmail,
-		isSubscribed: options.isSubscribed ?? true,
-	};
+  const data: schema.NewNewsletterSubscriber = {
+    id,
+    email: normalizedEmail,
+    isSubscribed: options.isSubscribed ?? true,
+  };
 
-	const [subscriber] = await testDb
-		.insert(schema.newsletterSubscriber)
-		.values(data)
-		.returning();
+  const [subscriber] = await testDb
+    .insert(schema.newsletterSubscriber)
+    .values(data)
+    .returning();
 
-	if (!subscriber) {
-		throw new Error("创建测试 Newsletter 订阅者失败");
-	}
+  if (!subscriber) {
+    throw new Error("创建测试 Newsletter 订阅者失败");
+  }
 
-	return subscriber;
+  return subscriber;
 }

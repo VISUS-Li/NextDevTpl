@@ -30,6 +30,29 @@
 
 - 阶段 2：接微信支付和支付宝 webhook 验签、回写支付成功状态、统一订单落单、积分发放与分销结算
 
+### 阶段 2 已完成
+
+- 已新增 webhook：
+  - `POST /api/webhooks/wechat-pay`
+  - `POST /api/webhooks/alipay`
+- 已新增统一支付成功处理器，打通：
+  - `payment_intent.status=paid`
+  - `sales_order / sales_order_item`
+  - `creditsBatch / grantCredits`
+  - `settleCommissionForSalesOrder`
+- 已补齐微信、支付宝回调接口测试，覆盖：
+  - 微信回调成功入账
+  - 支付宝重复回调幂等
+
+### 阶段 2 验证
+
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/payment-webhook-phase2.test.ts --reporter=dot`
+
+### 最后阶段
+
+- 阶段 3：补充支付配置入口、最终验收测试和使用说明，让当前积分购买链路达到可直接配置使用的完成态
+
 ## 一、`go-pay/gopay` 的核心逻辑
 
 项目地址：
