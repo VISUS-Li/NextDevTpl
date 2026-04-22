@@ -785,3 +785,553 @@ Schema 在：
 - 暂不做自动续费订阅
 
 这是当前仓库最稳、最值得先落地的一步。
+
+## 十三、后续扩展范围分析
+
+当前“积分包购买”已经完成，但如果后面要继续做：
+
+- 微信连续扣费
+- 支付宝代扣订阅
+- 后台退款
+- 后台查单
+
+就不能继续只靠 `payment_intent` 这一张表。原因很直接：
+
+- `payment_intent` 只适合描述一次性的待支付单
+- 自动续费需要单独记录“签约关系”和“扣款周期”
+- 后台退款和查单需要单独记录支付网关交互和售后状态
+
+结合当前仓库现状，可以直接复用的基础已经有：
+
+- `subscription`
+- `sales_order`
+- `sales_order_item`
+- `sales_after_sales_event`
+- `sales_order_item.refundableAmount / refundedAmount`
+
+真正缺的是：
+
+- 多渠道订阅协议层
+- 多渠道订阅任务调度层
+- 后台支付运营入口
+
+## 十四、参考 `gopay` 的后续能力拆解
+
+### 1. 微信连续扣费
+
+`gopay` 在 `wechat/papay.go` 里把微信代扣拆成了几类动作：
+
+- 签约：
+  - `EntrustPublic`
+  - `EntrustAppPre`
+  - `EntrustH5`
+  - `EntrustPaying`
+- 扣款：
+  - `EntrustApplyPay`
+- 解约：
+  - `EntrustDelete`
+- 查约：
+  - `EntrustQuery`
+
+这个拆法说明微信连续扣费不是“普通支付 + recurring 字段”这么简单，而是两层协议：
+
+1. 先签约，拿到可持续扣费的协议关系
+2. 后续每个计费周期再按协议发起扣款
+
+这和当前项目里“一次性支付成功后直接入账”的链路不是同一种模型。
+
+### 2. 支付宝代扣订阅
+
+`gopay` 在 `alipay/member_api.go` 里把代扣协议拆成了：
+
+- 签约页拉起：
+  - `UserAgreementPageSign`
+  - `UserAgreementPageSignInQRCode`
+- 查约：
+  - `UserAgreementQuery`
+- 解约：
+  - `UserAgreementPageUnSign`
+- 计划变更：
+  - `UserAgreementExecutionplanModify`
+
+这也说明支付宝代扣的核心不是下单，而是“用户授权协议”。
+
+对你当前项目来说，这意味着：
+
+- 订阅购买页不能只返回一个支付链接
+- 必须能区分“签约成功”和“本期已扣费成功”
+- 协议存在但本期扣费失败，也要落状态
+
+### 3. 查单与退款
+
+`gopay` 对查单和退款也是单独建能力，不和支付创建混在一起：
+
+- 微信：
+  - 交易查询
+  - 退款申请
+  - 退款查询
+- 支付宝：
+  - `TradeQuery`
+  - `TradeRefund`
+  - `TradeClose`
+
+这和你项目现在的统一订单设计是匹配的。也就是说：
+
+- “支付创建”负责进入支付流程
+- “webhook”负责异步确认
+- “查单/退款”负责运营和补偿
+
+这三层应该分开，不要继续堆在一个文件里。
+
+## 十五、对当前项目的承接方案
+
+### 1. 不建议直接复用 `payment_intent` 承接自动续费
+
+原因：
+
+- `payment_intent.bizType` 目前只有 `credit_purchase`
+- 自动续费需要长期存在的签约关系，不是一次性待支付单
+- 一个订阅会产生多次扣款，不应全部压成同一类 intent
+
+更合适的做法是：
+
+- 保留 `payment_intent` 只处理一次性下单
+- 让 `subscription` 继续表示用户订阅主状态
+- 新增“订阅协议”和“订阅扣款记录”两层
+
+### 2. 建议新增两张订阅支付表
+
+建议新增：
+
+- `subscription_contract`
+- `subscription_billing`
+
+#### `subscription_contract`
+
+职责：记录用户和渠道之间的持续扣费协议。
+
+建议字段：
+
+- `id`
+- `userId`
+- `subscriptionId`
+- `provider`
+- `providerContractId`
+- `providerPlanId`
+- `providerExternalUserId`
+- `status`
+- `signedAt`
+- `terminatedAt`
+- `nextBillingAt`
+- `metadata`
+- `createdAt`
+- `updatedAt`
+
+状态建议：
+
+- `pending_sign`
+- `active`
+- `paused`
+- `terminated`
+- `failed`
+
+#### `subscription_billing`
+
+职责：记录每一个计费周期的扣款尝试。
+
+建议字段：
+
+- `id`
+- `subscriptionId`
+- `contractId`
+- `provider`
+- `billingSequence`
+- `periodStart`
+- `periodEnd`
+- `amount`
+- `currency`
+- `outTradeNo`
+- `providerOrderId`
+- `providerPaymentId`
+- `status`
+- `paidAt`
+- `failedAt`
+- `failureReason`
+- `metadata`
+- `createdAt`
+- `updatedAt`
+
+状态建议：
+
+- `scheduled`
+- `processing`
+- `paid`
+- `failed`
+- `refunded`
+- `closed`
+
+### 3. `subscription` 表暂时不需要重做
+
+当前 `subscription` 虽然还沿用历史列名：
+
+- `stripe_subscription_id`
+- `stripe_price_id`
+
+但它作为“站内订阅主状态”仍然能继续用。
+
+建议做法：
+
+- 本轮先不改老表列名
+- 继续让 `subscription.status/currentPeriodStart/currentPeriodEnd` 作为用户态订阅真值
+- 把渠道协议细节放进新表
+
+这样可以避免一次把现有 `Creem` 订阅链路打散。
+
+## 十六、微信连续扣费方案
+
+### 1. 业务目标
+
+微信连续扣费更适合承接：
+
+- 月度订阅
+- 年度订阅
+- 自动续费会员
+
+不建议拿来做：
+
+- 积分包
+- 零散一次性购买
+
+### 2. 推荐落地顺序
+
+#### 阶段 A：只做签约，不做自动扣款切换
+
+范围：
+
+- 新增“微信连续扣费签约”入口
+- 签约成功后写入 `subscription_contract`
+- 后台能看到协议状态
+
+先不切换生产计费，只验证：
+
+- 用户能签约
+- webhook 能回写协议状态
+- 后台能查约和解约
+
+#### 阶段 B：做首期扣款与续费扣款
+
+范围：
+
+- 首次签约后发起首期扣款
+- 周期到期后由任务触发 `EntrustApplyPay`
+- webhook 成功后：
+  - 更新 `subscription_billing`
+  - 更新 `subscription`
+  - 写 `sales_order`
+  - 发放订阅积分
+  - 结算分销佣金
+
+#### 阶段 C：做失败补偿
+
+范围：
+
+- 扣款失败重试
+- 失败后暂停订阅
+- 后台手工补扣
+- 后台手工查单
+
+### 3. 服务端流程建议
+
+#### 签约
+
+1. 用户在订阅页选择微信连续扣费
+2. 服务端创建本地签约申请
+3. 调微信签约接口，返回签约 URL 或拉起参数
+4. 用户完成签约
+5. 微信签约回调到平台
+6. 平台写入 `subscription_contract`
+7. 平台决定是否立即发起首期扣款
+
+#### 周期扣款
+
+1. 定时任务扫描即将续费的 `subscription_contract`
+2. 生成一条 `subscription_billing`
+3. 调微信申请扣款
+4. 收到异步通知后再确认入账
+5. 落 `sales_order`
+6. 发订阅积分
+7. 更新 `subscription.currentPeriodStart/currentPeriodEnd`
+
+### 4. 风险点
+
+- 微信签约成功不等于当期已收款
+- 连续扣费失败后，订阅状态要和权益状态一起收紧
+- 要避免同一计费周期重复发积分
+
+当前仓库其实已经有一部分现成经验可复用：
+
+- `src/app/api/webhooks/creem/route.ts` 里已经把
+  - `subscription.active`
+  - `subscription.renewed`
+  - 积分发放
+  - 佣金结算
+  串起来了
+
+微信连续扣费要做的不是重写这段业务，而是把“事件来源”从 `Creem` 扩成 `wechat_pay`。
+
+## 十七、支付宝代扣订阅方案
+
+### 1. 业务目标
+
+支付宝代扣与微信连续扣费在平台内的职责基本一致：
+
+- 管订阅协议
+- 管周期扣款
+- 管解约和查约
+
+所以在你项目里，微信和支付宝应共用一套站内抽象：
+
+- 协议层：`subscription_contract`
+- 计费层：`subscription_billing`
+- 订单层：`sales_order`
+
+不要分别长出两套业务模型。
+
+### 2. 推荐落地顺序
+
+#### 阶段 A：签约闭环
+
+范围：
+
+- 订阅页增加支付宝代扣入口
+- 生成签约页 URL 或二维码
+- 签约完成后写入 `subscription_contract`
+- 提供后台查约和解约
+
+#### 阶段 B：周期扣款闭环
+
+范围：
+
+- 按账期生成 `subscription_billing`
+- 调支付宝代扣或周期扣款接口
+- 回调成功后更新订阅与权益
+
+#### 阶段 C：变更计划
+
+范围：
+
+- 升级套餐
+- 降级套餐
+- 下周期生效
+
+这里可以参考 `gopay` 里和协议计划变更有关的接口思想，但项目内部仍然应该先改本地账期，再驱动渠道变更。
+
+### 3. 服务端流程建议
+
+#### 签约
+
+1. 用户选择支付宝代扣订阅
+2. 创建本地签约申请
+3. 调 `UserAgreementPageSign` 或二维码签约
+4. 用户完成协议授权
+5. 回调后写 `subscription_contract`
+6. 需要首期收款时，再创建 `subscription_billing`
+
+#### 周期扣款
+
+1. 调度器创建本期账单
+2. 发起扣款
+3. 回调或查单确认后落业务单
+4. 发放订阅权益
+5. 更新下期扣费时间
+
+### 4. 风险点
+
+- 协议成功但首期扣费失败，要分开处理
+- 计划升级和降级要避免穿透到历史账期
+- 同一个用户同时保留 `Creem + 微信 + 支付宝` 多条有效订阅时，要加站内互斥规则
+
+建议的站内互斥规则：
+
+- 一个用户同一时刻只允许一条 `active` 自动续费订阅
+- 新渠道签约成功前，先检查是否已有活动订阅
+- 如需迁移渠道，走“先签新协议，再停旧协议”的后台流程
+
+## 十八、后台退款与查单界面方案
+
+### 1. 当前基础已经够用
+
+你项目里已经有这些基础字段和表：
+
+- `sales_order.providerOrderId`
+- `sales_order.providerPaymentId`
+- `sales_order.providerSubscriptionId`
+- `sales_after_sales_event`
+- `sales_order_item.refundableAmount`
+- `sales_order_item.refundedAmount`
+
+所以后台不需要先补数据库大改，先做页面和服务就行。
+
+### 2. 后台查单页建议
+
+建议增加 `admin/payments` 或 `admin/orders` 下的支付运营页，支持：
+
+- 按用户邮箱查
+- 按站内订单号查
+- 按 `outTradeNo` 查
+- 按渠道单号查
+- 按支付方式查
+- 按状态查
+- 查看订单项、积分发放、分销归因、售后记录
+
+订单详情页建议展示：
+
+- 基本订单信息
+- `payment_intent` 原始下单信息
+- 渠道返回原始响应
+- 最近一次 webhook 内容
+- 售后事件
+- 当前可退金额
+
+### 3. 后台退款页建议
+
+退款能力建议只对一次性支付先开放：
+
+- 积分包退款
+- 一次性会员退款
+
+订阅退款放后面，原因是它通常还牵涉：
+
+- 已发积分回收
+- 已用权益回滚
+- 当前周期终止
+
+#### 一次性支付退款流程
+
+1. 管理员在后台选择订单项
+2. 输入退款金额和原因
+3. 服务端校验 `refundableAmount`
+4. 调用渠道退款接口
+5. 写一条 `sales_after_sales_event`
+6. 更新订单项 `refundedAmount / refundableAmount`
+7. 需要时回退积分或释放权益
+8. 反向处理分销佣金
+
+### 4. 查单与退款的服务分层
+
+建议新增服务边界：
+
+- `payment-query-service`
+- `payment-refund-service`
+- `payment-admin-service`
+
+职责建议：
+
+- `payment-query-service`
+  - 按 provider 查远端订单
+  - 统一返回支付状态
+- `payment-refund-service`
+  - 按 provider 发起退款
+  - 统一写售后事件
+- `payment-admin-service`
+  - 管理台列表查询
+  - 详情拼装
+  - 后台操作权限校验
+
+### 5. 退款时的权益处理建议
+
+#### 积分包退款
+
+建议规则：
+
+- 若该批积分还有剩余，可直接扣回
+- 若积分已被消费，需要后台阻止退款或走人工处理
+
+这部分可以复用当前积分账本思路，但必须先明确业务规则，再落代码。
+
+#### 订阅退款
+
+建议规则：
+
+- 首期付款后短时间内退款：可撤销订阅并回滚当期积分
+- 已进入续费周期后退款：按售后策略决定是否只退现金、不补权益
+
+这类规则不应写死在支付适配层，应放在业务服务里。
+
+## 十九、推荐的实施阶段
+
+### 阶段 4：后台查单
+
+目标：
+
+- 先把后台查单页做出来
+- 支持 `payment_intent + sales_order + webhook` 联查
+
+完成标志：
+
+- 管理员能从后台定位一笔微信或支付宝支付
+- 能看到当前支付状态与原始响应
+
+### 阶段 5：后台退款
+
+目标：
+
+- 支持一次性支付退款
+- 打通售后事件和佣金回退
+
+完成标志：
+
+- 管理员可发起部分退款和全额退款
+- `sales_after_sales_event`、订单项退款金额、佣金回退能同步落库
+
+### 阶段 6：微信连续扣费
+
+目标：
+
+- 新增微信签约
+- 新增周期扣款
+- 打通订阅周期权益发放
+
+完成标志：
+
+- 用户能签约微信自动续费
+- 周期任务能发起扣款
+- 成功后订阅与积分都能按周期推进
+
+### 阶段 7：支付宝代扣订阅
+
+目标：
+
+- 新增支付宝签约
+- 新增周期扣款
+- 和微信共用站内协议与账单模型
+
+完成标志：
+
+- 用户能签约支付宝自动续费
+- 平台能查约、解约、续费、查单
+
+## 二十、最终建议
+
+如果继续往下做，我建议顺序固定为：
+
+1. 先做后台查单
+2. 再做后台退款
+3. 然后做微信连续扣费
+4. 最后做支付宝代扣订阅
+
+原因：
+
+- 查单和退款能直接复用现有订单中心，收益最快
+- 自动续费会引入新数据模型和调度任务，复杂度明显更高
+- 微信和支付宝代扣应在同一套站内抽象下推进，不要各做一半
+
+也就是说，后续不是继续在现有一次性支付代码上“打补丁”，而是进入下一层：
+
+- 一次性支付层：`payment_intent`
+- 订阅协议层：`subscription_contract`
+- 周期账单层：`subscription_billing`
+- 统一订单层：`sales_order`
+- 售后层：`sales_after_sales_event`
+
+这套分层和 `gopay` 的接口组织方式是一致的，也和你当前仓库已经形成的订单中心方向一致。
