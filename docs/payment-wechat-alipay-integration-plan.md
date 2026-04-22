@@ -84,6 +84,30 @@
 - `pnpm exec tsc --noEmit --pretty false`
 - `pnpm test:run src/test/payment/admin-payment-phase4.test.ts --reporter=dot`
 
+### 阶段 5 已完成
+
+- 已新增管理员退款接口：
+  - `POST /api/platform/payments/admin/refund`
+- 已新增 `src/features/payment/refund-service.ts`，统一处理：
+  - 渠道退款请求
+  - 积分回收
+  - `sales_after_sales_event` 落库
+  - 全额退款后的 `payment_intent.status=refunded`
+- 已把后台支付详情页接上退款表单
+- 当前阶段退款范围先收口为：
+  - 积分包订单
+  - 用户当前余额足够回收对应积分时才允许退款
+- 已补齐阶段 5 接口测试，覆盖：
+  - 用户支付成功
+  - 管理员发起全额退款
+  - 订单、支付单、积分余额和售后事件同步回写
+
+### 阶段 5 验证
+
+- `pnpm exec biome check src/features/payment/refund-service.ts src/app/api/platform/payments/admin/refund/route.ts src/features/payment/components/admin-payment-view.tsx src/test/payment/admin-payment-phase5-refund.test.ts`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/admin-payment-phase5-refund.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -136,10 +160,10 @@ ALIPAY_PUBLIC_KEY=
   - 发放积分
   - 结算分销佣金
 - 管理员可在 `/admin/payments` 查看支付列表和单笔详情
+- 管理员可在 `/admin/payments` 对积分包订单发起退款
 
 ### 5. 当前未纳入本轮范围
 
-- 后台退款
 - 微信连续扣费
 - 支付宝代扣订阅
 

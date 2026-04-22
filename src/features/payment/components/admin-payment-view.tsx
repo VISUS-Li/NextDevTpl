@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,9 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const detail = data.detail;
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("人工退款");
+  const [refundLoading, setRefundLoading] = useState(false);
   const [filters, setFilters] = useState({
     query: data.list.filters.query,
     provider: data.list.filters.provider,
@@ -85,6 +89,45 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
     const next = new URLSearchParams(searchParams.toString());
     next.set("page", String(page));
     router.push(`${pathname}?${next.toString()}`);
+  };
+
+  useEffect(() => {
+    if (!detail?.items[0]) {
+      setRefundAmount("");
+      return;
+    }
+    setRefundAmount(String(detail.items[0].refundableAmount));
+  }, [detail?.items]);
+
+  /**
+   * 发起退款。
+   */
+  const submitRefund = async () => {
+    if (!detail?.items[0]) {
+      return;
+    }
+    setRefundLoading(true);
+    const response = await fetch("/api/platform/payments/admin/refund", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        orderId: detail.order.id,
+        amount: Number(refundAmount),
+        reason: refundReason,
+      }),
+    });
+    const payload = await response.json();
+    setRefundLoading(false);
+
+    if (!response.ok || !payload.success) {
+      toast.error(payload.message ?? "退款失败");
+      return;
+    }
+
+    toast.success("退款已提交");
+    router.refresh();
   };
 
   return (
@@ -392,6 +435,48 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
                     )}
                   </div>
                 </div>
+                {detail.order.orderType === "credit_purchase" &&
+                detail.items[0] ? (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="font-medium">发起退款</div>
+                    <div className="space-y-2">
+                      <Label htmlFor="refund-amount">退款金额（分）</Label>
+                      <Input
+                        id="refund-amount"
+                        value={refundAmount}
+                        onChange={(event) =>
+                          setRefundAmount(event.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="refund-reason">退款原因</Label>
+                      <Input
+                        id="refund-reason"
+                        value={refundReason}
+                        onChange={(event) =>
+                          setRefundReason(event.target.value)
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={submitRefund}
+                      loading={refundLoading}
+                      loadingText="退款中..."
+                      disabled={
+                        refundLoading ||
+                        Number(refundAmount) <= 0 ||
+                        Number(refundAmount) > detail.items[0].refundableAmount
+                      }
+                    >
+                      提交退款
+                    </Button>
+                    <div className="text-xs text-muted-foreground">
+                      当前阶段只开放积分包退款，且退款前会先回收对应积分。
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">暂无详情</div>
