@@ -64,6 +64,26 @@
 - `pnpm exec tsc --noEmit --pretty false`
 - `pnpm test:run src/test/payment/payment-phase3-acceptance.test.ts --reporter=dot`
 
+### 阶段 4 已完成
+
+- 已新增管理员支付查询接口：
+  - `GET /api/platform/payments/admin`
+  - `GET /api/platform/payments/admin/[orderId]`
+- 已新增后台支付中心页：
+  - `/admin/payments`
+- 已把 `payment_intent`、`sales_order`、`sales_order_item`、`sales_after_sales_event` 串成统一详情视图
+- 已支持按用户邮箱、订单号、渠道单号、支付方式和订单类型筛选
+- 已补齐阶段 4 接口测试，覆盖：
+  - 普通用户创建并支付成功
+  - 管理员按接口方式查询支付列表
+  - 管理员读取单笔支付详情
+
+### 阶段 4 验证
+
+- `pnpm exec biome check src/features/payment/admin.ts src/app/api/platform/payments/admin/route.ts src/app/api/platform/payments/admin/[orderId]/route.ts src/features/payment/components/admin-payment-view.tsx src/app/[locale]/(admin)/admin/payments/page.tsx src/config/nav.ts src/test/payment/admin-payment-phase4.test.ts`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/admin-payment-phase4.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -115,12 +135,13 @@ ALIPAY_PUBLIC_KEY=
   - 落 `sales_order`
   - 发放积分
   - 结算分销佣金
+- 管理员可在 `/admin/payments` 查看支付列表和单笔详情
 
 ### 5. 当前未纳入本轮范围
 
+- 后台退款
 - 微信连续扣费
 - 支付宝代扣订阅
-- 后台退款和查单界面
 
 这些不影响当前“积分包购买”直接使用。
 

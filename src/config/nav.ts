@@ -263,6 +263,11 @@ export const adminNav: NavGroup[] = [
         href: "/admin/storage",
         icon: HardDrive,
       },
+      {
+        title: "支付中心",
+        href: "/admin/payments",
+        icon: CreditCard,
+      },
     ],
   },
 ];
