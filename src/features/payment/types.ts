@@ -19,6 +19,23 @@ export enum PaymentType {
 }
 
 /**
+ * 支付渠道
+ */
+export enum PaymentProvider {
+  CREEM = "creem",
+  WECHAT_PAY = "wechat_pay",
+  ALIPAY = "alipay",
+}
+
+/**
+ * 支付展示方式
+ */
+export enum PaymentDisplayMode {
+  REDIRECT = "redirect",
+  QRCODE = "qrcode",
+}
+
+/**
  * 计划周期
  */
 export enum PlanInterval {
@@ -197,4 +214,19 @@ export interface SubscriptionData {
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+}
+
+/**
+ * 创建支付结果
+ */
+export interface PaymentCreateResult {
+  provider: PaymentProvider;
+  displayMode: PaymentDisplayMode;
+  checkoutUrl: string | null;
+  qrCodeUrl: string | null;
+  providerOrderId?: string | null;
+  providerCheckoutId?: string | null;
+  providerPaymentId?: string | null;
+  expiresAt?: Date | null;
+  rawResponse?: Record<string, unknown> | null;
 }

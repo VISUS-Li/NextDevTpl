@@ -452,6 +452,33 @@ export const salesOrderProviderEnum = pgEnum("sales_order_provider", [
 ]);
 
 /**
+ * 支付意图状态枚举
+ */
+export const paymentIntentStatusEnum = pgEnum("payment_intent_status", [
+  "created",
+  "pending",
+  "paid",
+  "closed",
+  "failed",
+  "refunded",
+]);
+
+/**
+ * 支付意图业务类型枚举
+ */
+export const paymentIntentBizTypeEnum = pgEnum("payment_intent_biz_type", [
+  "credit_purchase",
+]);
+
+/**
+ * 支付页展示方式枚举
+ */
+export const paymentIntentDisplayModeEnum = pgEnum(
+  "payment_intent_display_mode",
+  ["redirect", "qrcode"]
+);
+
+/**
  * 订单类型枚举
  */
 export const salesOrderTypeEnum = pgEnum("sales_order_type", [
@@ -608,6 +635,50 @@ export const salesOrder = pgTable("sales_order", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * 支付意图表
+ *
+ * 在调用第三方支付前，先保存本地待支付单，便于查单、补单和回调幂等。
+ */
+export const paymentIntent = pgTable(
+  "payment_intent",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: salesOrderProviderEnum("provider").notNull(),
+    bizType: paymentIntentBizTypeEnum("biz_type").notNull(),
+    status: paymentIntentStatusEnum("status").notNull().default("created"),
+    displayMode: paymentIntentDisplayModeEnum("display_mode")
+      .notNull()
+      .default("redirect"),
+    packageId: text("package_id").notNull(),
+    credits: integer("credits").notNull().default(0),
+    amount: integer("amount").notNull().default(0),
+    currency: text("currency").notNull(),
+    subject: text("subject").notNull(),
+    outTradeNo: text("out_trade_no").notNull(),
+    providerOrderId: text("provider_order_id"),
+    providerCheckoutId: text("provider_checkout_id"),
+    providerPaymentId: text("provider_payment_id"),
+    checkoutUrl: text("checkout_url"),
+    qrCodeUrl: text("qr_code_url"),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    providerResponse:
+      json("provider_response").$type<Record<string, unknown>>(),
+    expiresAt: timestamp("expires_at"),
+    paidAt: timestamp("paid_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    outTradeNoUnique: uniqueIndex("payment_intent_out_trade_no_idx").on(
+      table.outTradeNo
+    ),
+  })
+);
 
 // ============================================
 // 统一订单项表 (Sales Order Items)
@@ -983,6 +1054,9 @@ export type ToolConfigAuditAction =
 export type Subscription = typeof subscription.$inferSelect;
 export type NewSubscription = typeof subscription.$inferInsert;
 
+export type PaymentIntent = typeof paymentIntent.$inferSelect;
+export type NewPaymentIntent = typeof paymentIntent.$inferInsert;
+
 export type SalesOrder = typeof salesOrder.$inferSelect;
 export type NewSalesOrder = typeof salesOrder.$inferInsert;
 
@@ -1012,6 +1086,15 @@ export type NewWithdrawalRequest = typeof withdrawalRequest.$inferInsert;
 
 export type SalesOrderProvider =
   (typeof salesOrderProviderEnum.enumValues)[number];
+
+export type PaymentIntentStatus =
+  (typeof paymentIntentStatusEnum.enumValues)[number];
+
+export type PaymentIntentBizType =
+  (typeof paymentIntentBizTypeEnum.enumValues)[number];
+
+export type PaymentIntentDisplayMode =
+  (typeof paymentIntentDisplayModeEnum.enumValues)[number];
 
 export type SalesOrderType = (typeof salesOrderTypeEnum.enumValues)[number];
 

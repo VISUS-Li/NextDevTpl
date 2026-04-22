@@ -6,11 +6,12 @@
  * 提供积分系统的前端调用接口
  */
 
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import { getRequestBaseUrl } from "@/config/payment";
-import { buildCheckoutAttributionMetadata } from "@/features/distribution/attribution";
-import { creem } from "@/features/payment/creem";
+import { createCreditPurchaseCheckoutIntent } from "@/features/payment/credit-purchase";
+import { PaymentProvider } from "@/features/payment/types";
 import { logEvent } from "@/lib/logger";
 import { actionClient, protectedAction } from "@/lib/safe-action";
 
@@ -358,66 +359,58 @@ export const purchaseCredits = withProtectedCreditsAction("purchaseCredits")
 // ============================================
 
 /**
- * 创建积分购买 Checkout Session
+ * 创建积分购买支付单
  *
- * 创建 Creem Checkout Session 用于购买积分套餐
- * metadata 中包含 type: 'credit_purchase' 和 credits 数量
- * Webhook 会根据这些信息发放积分
+ * 当前先创建本地待支付单，再按渠道生成支付参数。
  */
 export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
   "createCreditsPurchaseCheckout"
 )
   .schema(
     z.object({
-      packageId: z.enum(["lite", "standard", "pro"]),
+      packageId: z.enum(["starter", "standard", "premium"]),
+      provider: z.nativeEnum(PaymentProvider).default(PaymentProvider.CREEM),
       successUrl: z.string().optional(),
       cancelUrl: z.string().optional(),
     })
   )
   .action(async ({ parsedInput, ctx }) => {
-    const { packageId, successUrl } = parsedInput;
+    const { packageId, provider } = parsedInput;
     const { userId } = ctx;
 
-    // 查找套餐配置
     const pkg = CREDIT_PACKAGES.find((p) => p.id === packageId);
     if (!pkg) {
       throw new Error("无效的积分套餐");
     }
 
     const baseUrl = await getRequestBaseUrl();
-    const attributionMetadata = await buildCheckoutAttributionMetadata(userId);
-    const clientOrderKey = `credit_purchase_${userId}_${Date.now()}`;
+    const headerList = await headers();
+    const result = await createCreditPurchaseCheckoutIntent({
+      userId,
+      provider,
+      packageId,
+      baseUrl,
+      userAgent: headerList.get("user-agent"),
+      userIp:
+        headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        headerList.get("x-real-ip"),
+    });
 
     logEvent("payment.checkout.started", {
       userId,
       packageId: pkg.id,
       credits: pkg.credits,
-      provider: "creem",
+      provider,
       checkoutType: "credits",
+      paymentIntentId: result.intent.id,
+      outTradeNo: result.intent.outTradeNo,
     });
 
-    // 创建 Creem Checkout Session（一次性支付）
-    // 注意：Creem 需要预先在后台创建产品，这里使用 packageId 作为 product_id
-    // 实际使用时需要在 Creem 后台创建对应的积分产品
-    const checkout = await creem.createCheckout({
-      product_id: `credits_${packageId}`, // 需要在 Creem 后台创建对应产品
-      success_url:
-        successUrl ??
-        `${baseUrl}/dashboard/settings?tab=usage&success=true&credits=${pkg.credits}`,
-      request_id: clientOrderKey,
-      metadata: {
-        userId,
-        type: "credit_purchase", // 关键: Webhook 用此判断类型
-        credits: String(pkg.credits),
-        packageId: pkg.id,
-        checkoutType: "credit_purchase",
-        productType: "credit_package",
-        clientOrderKey,
-        ...attributionMetadata,
-      },
-    });
-
-    return { url: checkout.checkout_url };
+    return {
+      intentId: result.intent.id,
+      redirectUrl: result.redirectUrl,
+      provider: result.intent.provider,
+    };
   });
 
 /**

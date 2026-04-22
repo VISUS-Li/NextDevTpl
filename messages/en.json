@@ -761,6 +761,20 @@
     "processing": "Processing...",
     "buy": "Buy {name}",
     "back": "← Back to Usage",
+    "provider": {
+      "title": "Payment Method",
+      "description": "Choose a provider first, then create the matching payment order.",
+      "options": {
+        "creem": "Creem / Card",
+        "wechat": "WeChat Pay",
+        "alipay": "Alipay"
+      },
+      "hints": {
+        "creem": "Keep the existing international card flow",
+        "wechat": "Desktop shows a QR code, mobile prefers WeChat H5",
+        "alipay": "Redirect to the web payment page for the current device"
+      }
+    },
     "features": {
       "instant": "Instant delivery",
       "validity": "Valid for 90 days",

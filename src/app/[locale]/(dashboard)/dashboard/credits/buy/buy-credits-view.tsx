@@ -10,7 +10,7 @@ import { Check, Coins, Loader2, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { createCreditsPurchaseCheckout } from "@/features/credits/actions";
 import { CREDIT_PACKAGES } from "@/features/credits/config";
+import { PaymentProvider } from "@/features/payment/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,12 +37,13 @@ export function BuyCreditPackagesView() {
   const t = useTranslations("DashboardCreditsBuy");
   const searchParams = useSearchParams();
   const canceled = searchParams.get("canceled");
+  const [provider, setProvider] = useState(PaymentProvider.CREEM);
 
-  // 创建 Checkout Session
+  // 创建积分购买支付单。
   const { execute, isPending } = useAction(createCreditsPurchaseCheckout, {
     onSuccess: ({ data }) => {
-      if (data?.url) {
-        window.location.href = data.url;
+      if (data?.redirectUrl) {
+        window.location.href = data.redirectUrl;
       }
     },
     onError: ({ error }) => {
@@ -61,8 +63,8 @@ export function BuyCreditPackagesView() {
   /**
    * 处理购买按钮点击
    */
-  const handlePurchase = (packageId: "lite" | "standard" | "pro") => {
-    execute({ packageId });
+  const handlePurchase = (packageId: "starter" | "standard" | "premium") => {
+    execute({ packageId, provider });
   };
 
   return (
@@ -72,6 +74,49 @@ export function BuyCreditPackagesView() {
         <h1 className="text-3xl font-bold">{t("title")}</h1>
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">{t("provider.title")}</CardTitle>
+          <CardDescription>{t("provider.description")}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          {[
+            {
+              key: PaymentProvider.CREEM,
+              label: t("provider.options.creem"),
+              description: t("provider.hints.creem"),
+            },
+            {
+              key: PaymentProvider.WECHAT_PAY,
+              label: t("provider.options.wechat"),
+              description: t("provider.hints.wechat"),
+            },
+            {
+              key: PaymentProvider.ALIPAY,
+              label: t("provider.options.alipay"),
+              description: t("provider.hints.alipay"),
+            },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={cn(
+                "rounded-xl border p-4 text-left transition-colors",
+                provider === item.key
+                  ? "border-primary bg-primary/5"
+                  : "hover:bg-muted/50"
+              )}
+              onClick={() => setProvider(item.key)}
+            >
+              <p className="font-medium">{item.label}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {item.description}
+              </p>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
 
       {/* 套餐列表 */}
       <div className="grid gap-6 md:grid-cols-3">
@@ -140,7 +185,7 @@ export function BuyCreditPackagesView() {
                   variant={isPopular ? "default" : "outline"}
                   disabled={isPending}
                   onClick={() =>
-                    handlePurchase(pkg.id as "lite" | "standard" | "pro")
+                    handlePurchase(pkg.id as "starter" | "standard" | "premium")
                   }
                 >
                   {isPending ? (

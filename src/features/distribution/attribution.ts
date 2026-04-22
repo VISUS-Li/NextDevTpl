@@ -1,15 +1,12 @@
 import { and, eq, gt } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/db";
+import { distributionAttribution, distributionReferralCode } from "@/db/schema";
 import {
-  distributionAttribution,
-  distributionReferralCode,
-} from "@/db/schema";
-import {
-  decodeAttributionCookie,
   DISTRIBUTION_ATTRIBUTION_COOKIE,
   DISTRIBUTION_ATTRIBUTION_WINDOW_DAYS,
   type DistributionAttributionCookiePayload,
+  decodeAttributionCookie,
 } from "./attribution-cookie";
 
 /**
@@ -28,10 +25,15 @@ export interface CheckoutAttributionContext {
  * 获取当前请求中的归因 Cookie
  */
 export async function getAttributionCookiePayload() {
-  const cookieStore = await cookies();
-  return decodeAttributionCookie(
-    cookieStore.get(DISTRIBUTION_ATTRIBUTION_COOKIE)?.value
-  );
+  // 某些接口测试和后台流程没有 Next 请求上下文，此时直接跳过归因 cookie 读取。
+  try {
+    const cookieStore = await cookies();
+    return decodeAttributionCookie(
+      cookieStore.get(DISTRIBUTION_ATTRIBUTION_COOKIE)?.value
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -60,7 +62,6 @@ export async function resolveCheckoutAttributionFromPayload(
   userId: string,
   payload: DistributionAttributionCookiePayload
 ): Promise<CheckoutAttributionContext | null> {
-
   const [referral] = await db
     .select()
     .from(distributionReferralCode)
