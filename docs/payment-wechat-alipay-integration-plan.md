@@ -53,6 +53,77 @@
 
 - 阶段 3：补充支付配置入口、最终验收测试和使用说明，让当前积分购买链路达到可直接配置使用的完成态
 
+### 阶段 3 已完成
+
+- 已把微信支付、支付宝和 `PAYMENT_MOCK_MODE` 所需环境变量写入 `.env.example`
+- 已补充最终验收测试，覆盖“创建支付单 -> 模拟支付成功回调 -> 重新读取支付状态”
+- 当前实现范围已经达到“积分包购买可直接配置使用”的完成态
+
+### 阶段 3 验证
+
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/payment-phase3-acceptance.test.ts --reporter=dot`
+
+## 使用前配置
+
+### 1. 开发或联调用模拟模式
+
+```env
+PAYMENT_MOCK_MODE=true
+```
+
+此模式下：
+
+- 创建支付单不会请求真实微信或支付宝
+- 收银台会使用模拟跳转地址或模拟二维码链接
+- 适合本地调 UI、接口、回调和积分入账
+
+### 2. 微信支付正式配置
+
+```env
+WECHAT_PAY_MCH_ID=
+WECHAT_PAY_SERIAL_NO=
+WECHAT_PAY_API_V3_KEY=
+WECHAT_PAY_PRIVATE_KEY=
+WECHAT_PAY_PUBLIC_KEY=
+WECHAT_PAY_APP_ID=
+```
+
+回调地址默认使用：
+
+- `https://你的域名/api/webhooks/wechat-pay`
+
+### 3. 支付宝正式配置
+
+```env
+ALIPAY_APP_ID=
+ALIPAY_PRIVATE_KEY=
+ALIPAY_PUBLIC_KEY=
+```
+
+回调地址默认使用：
+
+- `https://你的域名/api/webhooks/alipay`
+
+### 4. 当前可直接使用的能力
+
+- 用户在 `/dashboard/credits/buy` 选择支付方式
+- 创建本地 `payment_intent`
+- 进入站内收银台页
+- 微信支付和支付宝异步回调成功后自动：
+  - 回写 `payment_intent`
+  - 落 `sales_order`
+  - 发放积分
+  - 结算分销佣金
+
+### 5. 当前未纳入本轮范围
+
+- 微信连续扣费
+- 支付宝代扣订阅
+- 后台退款和查单界面
+
+这些不影响当前“积分包购买”直接使用。
+
 ## 一、`go-pay/gopay` 的核心逻辑
 
 项目地址：
