@@ -278,6 +278,20 @@ export function getPlanPrice(
 }
 
 /**
+ * 按计划和周期读取价格配置。
+ */
+export function getPlanPriceById(
+  planId: "starter" | "pro" | "ultra",
+  interval: PlanInterval
+) {
+  const plan = paymentConfig.plans[planId];
+  if (!plan || !plan.prices) {
+    return null;
+  }
+  return plan.prices.find((price) => price.interval === interval) ?? null;
+}
+
+/**
  * 获取应用的基础 URL
  */
 export function getBaseUrl(): string {

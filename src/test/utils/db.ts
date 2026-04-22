@@ -175,6 +175,14 @@ export async function cleanupUserData(userId: string) {
     .where(eq(schema.paymentIntent.userId, userId));
 
   await testDb
+    .delete(schema.subscriptionBilling)
+    .where(eq(schema.subscriptionBilling.userId, userId));
+
+  await testDb
+    .delete(schema.subscriptionContract)
+    .where(eq(schema.subscriptionContract.userId, userId));
+
+  await testDb
     .delete(schema.distributionAttribution)
     .where(
       or(
@@ -327,6 +335,18 @@ export async function cleanupTestUsers(userIds: string[]) {
   await testDb
     .delete(schema.salesOrder)
     .where(inArray(schema.salesOrder.userId, userIds));
+
+  await testDb
+    .delete(schema.paymentIntent)
+    .where(inArray(schema.paymentIntent.userId, userIds));
+
+  await testDb
+    .delete(schema.subscriptionBilling)
+    .where(inArray(schema.subscriptionBilling.userId, userIds));
+
+  await testDb
+    .delete(schema.subscriptionContract)
+    .where(inArray(schema.subscriptionContract.userId, userIds));
 
   await testDb
     .delete(schema.distributionAttribution)

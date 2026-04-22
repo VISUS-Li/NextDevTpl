@@ -108,6 +108,28 @@
 - `pnpm exec tsc --noEmit --pretty false`
 - `pnpm test:run src/test/payment/admin-payment-phase5-refund.test.ts --reporter=dot`
 
+### 阶段 6 已完成
+
+- 已新增 `subscription_contract / subscription_billing` 表，专门承接连续扣费签约与周期账单
+- 已新增连续扣费服务 `src/features/payment/subscription-recurring.ts`
+- 已新增微信连续扣费接口：
+  - `POST /api/platform/payment/subscription/contracts`
+  - `GET /api/platform/payment/subscription/contracts/[contractId]`
+  - `POST /api/platform/payment/subscription/contracts/[contractId]/bill`
+  - `POST /api/webhooks/wechat-pay/subscription-contract`
+  - `POST /api/webhooks/wechat-pay/subscription-billing`
+- 已打通签约激活、首期账单生成、账单成功回调、订阅状态回写、统一订单落单、订阅积分发放与分销结算
+- 当前微信连续扣费阶段采用：
+  - 站内协议模型 + 周期账单模型
+  - 模拟签约与模拟扣款回调完成联调
+
+### 阶段 6 验证
+
+- `set -a; source .env.test; set +a; psql "$DATABASE_URL" -f drizzle/0017_swift_agreement.sql`
+- `pnpm exec biome check src/db/schema.ts drizzle/meta/_journal.json src/test/utils/db.ts src/config/payment.ts src/features/payment/subscription-recurring.ts src/app/api/platform/payment/subscription/contracts/route.ts src/app/api/platform/payment/subscription/contracts/[contractId]/route.ts src/app/api/platform/payment/subscription/contracts/[contractId]/bill/route.ts src/app/api/webhooks/wechat-pay/subscription-contract/route.ts src/app/api/webhooks/wechat-pay/subscription-billing/route.ts src/test/payment/subscription-wechat-phase6.test.ts`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/subscription-wechat-phase6.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -161,10 +183,10 @@ ALIPAY_PUBLIC_KEY=
   - 结算分销佣金
 - 管理员可在 `/admin/payments` 查看支付列表和单笔详情
 - 管理员可在 `/admin/payments` 对积分包订单发起退款
+- 已可通过连续扣费接口完成微信签约、账单生成与回调入账
 
 ### 5. 当前未纳入本轮范围
 
-- 微信连续扣费
 - 支付宝代扣订阅
 
 这些不影响当前“积分包购买”直接使用。

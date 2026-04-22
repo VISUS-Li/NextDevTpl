@@ -680,6 +680,92 @@ export const paymentIntent = pgTable(
   })
 );
 
+/**
+ * 连续扣费签约状态枚举
+ */
+export const subscriptionContractStatusEnum = pgEnum(
+  "subscription_contract_status",
+  ["pending_sign", "active", "paused", "terminated", "failed"]
+);
+
+/**
+ * 连续扣费账单状态枚举
+ */
+export const subscriptionBillingStatusEnum = pgEnum(
+  "subscription_billing_status",
+  ["scheduled", "processing", "paid", "failed", "refunded", "closed"]
+);
+
+/**
+ * 连续扣费签约表。
+ */
+export const subscriptionContract = pgTable("subscription_contract", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  subscriptionRecordId: text("subscription_record_id").references(
+    () => subscription.id,
+    { onDelete: "set null" }
+  ),
+  provider: salesOrderProviderEnum("provider").notNull(),
+  planId: text("plan_id").notNull(),
+  priceId: text("price_id").notNull(),
+  billingInterval: text("billing_interval").notNull(),
+  currency: text("currency").notNull(),
+  amount: integer("amount").notNull().default(0),
+  providerContractId: text("provider_contract_id"),
+  providerPlanId: text("provider_plan_id"),
+  providerExternalUserId: text("provider_external_user_id"),
+  signingUrl: text("signing_url"),
+  status: subscriptionContractStatusEnum("status")
+    .notNull()
+    .default("pending_sign"),
+  signedAt: timestamp("signed_at"),
+  terminatedAt: timestamp("terminated_at"),
+  nextBillingAt: timestamp("next_billing_at"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 连续扣费周期账单表。
+ */
+export const subscriptionBilling = pgTable("subscription_billing", {
+  id: text("id").primaryKey(),
+  contractId: text("contract_id")
+    .notNull()
+    .references(() => subscriptionContract.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  subscriptionRecordId: text("subscription_record_id").references(
+    () => subscription.id,
+    { onDelete: "set null" }
+  ),
+  provider: salesOrderProviderEnum("provider").notNull(),
+  planId: text("plan_id").notNull(),
+  priceId: text("price_id").notNull(),
+  billingSequence: integer("billing_sequence").notNull().default(1),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  amount: integer("amount").notNull().default(0),
+  currency: text("currency").notNull(),
+  outTradeNo: text("out_trade_no").notNull().unique(),
+  providerOrderId: text("provider_order_id"),
+  providerPaymentId: text("provider_payment_id"),
+  status: subscriptionBillingStatusEnum("status")
+    .notNull()
+    .default("scheduled"),
+  paidAt: timestamp("paid_at"),
+  failedAt: timestamp("failed_at"),
+  failureReason: text("failure_reason"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // ============================================
 // 统一订单项表 (Sales Order Items)
 // ============================================
@@ -1057,6 +1143,12 @@ export type NewSubscription = typeof subscription.$inferInsert;
 export type PaymentIntent = typeof paymentIntent.$inferSelect;
 export type NewPaymentIntent = typeof paymentIntent.$inferInsert;
 
+export type SubscriptionContract = typeof subscriptionContract.$inferSelect;
+export type NewSubscriptionContract = typeof subscriptionContract.$inferInsert;
+
+export type SubscriptionBilling = typeof subscriptionBilling.$inferSelect;
+export type NewSubscriptionBilling = typeof subscriptionBilling.$inferInsert;
+
 export type SalesOrder = typeof salesOrder.$inferSelect;
 export type NewSalesOrder = typeof salesOrder.$inferInsert;
 
@@ -1095,6 +1187,12 @@ export type PaymentIntentBizType =
 
 export type PaymentIntentDisplayMode =
   (typeof paymentIntentDisplayModeEnum.enumValues)[number];
+
+export type SubscriptionContractStatus =
+  (typeof subscriptionContractStatusEnum.enumValues)[number];
+
+export type SubscriptionBillingStatus =
+  (typeof subscriptionBillingStatusEnum.enumValues)[number];
 
 export type SalesOrderType = (typeof salesOrderTypeEnum.enumValues)[number];
 
