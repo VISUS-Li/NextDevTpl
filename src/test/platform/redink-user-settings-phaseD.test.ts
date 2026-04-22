@@ -43,8 +43,8 @@ function mockSession(user: {
   } as never);
 }
 
-describe("RedInk 阶段 D 用户提示词设置", () => {
-  it("用户读取设置时应只看到可直接填写的补充提示词说明", async () => {
+describe("RedInk 提示词模板设置", () => {
+  it("用户读取设置时应只看到可直接编辑的完整模板", async () => {
     const user = await createTestUser({
       email: `1183989659+redink-phaseD-user-${Date.now()}@qq.com`,
       name: "RedInk 阶段 D 用户",
@@ -74,7 +74,7 @@ describe("RedInk 阶段 D 用户提示词设置", () => {
     expect(
       body.fields.every(
         (field: { value: string; description: string }) =>
-          field.value === "" && field.description.includes("无需填写变量")
+          field.value.includes("{") && field.description.includes("完整模板")
       )
     ).toBe(true);
   });

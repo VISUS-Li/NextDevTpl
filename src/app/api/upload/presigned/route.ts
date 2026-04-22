@@ -2,7 +2,10 @@ import { nanoid } from "nanoid";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getStorageProvider } from "@/features/storage/providers";
-import { saveStorageObjectRecord } from "@/features/storage/records";
+import {
+  findReusableStorageObject,
+  saveStorageObjectRecord,
+} from "@/features/storage/records";
 import { withApiLogging } from "@/lib/api-logger";
 import { auth } from "@/lib/auth";
 import { getFileTypeFromName } from "@/lib/file-utils";
@@ -51,6 +54,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       expiresAt?: string;
       requestId?: string;
       taskId?: string;
+      checksumSha256?: string;
     };
 
     // 验证文件名
@@ -82,6 +86,36 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       );
     }
 
+    const normalizedChecksum =
+      body.checksumSha256?.trim().toLowerCase() || null;
+    if (normalizedChecksum && /^[a-f0-9]{64}$/.test(normalizedChecksum)) {
+      const reused = await findReusableStorageObject({
+        bucket: BUCKET_NAME,
+        ownerUserId: session.user.id,
+        sha256: normalizedChecksum,
+        contentType,
+        size: fileSize,
+      });
+      if (reused) {
+        return NextResponse.json({
+          success: true,
+          reused: true,
+          presignedUrl: null,
+          fileKey: reused.key,
+          fileUrl: getStorageProvider().getPublicUrl(reused.key, reused.bucket),
+          purpose: reused.purpose,
+          retentionClass: reused.retentionClass,
+          expiresAt: reused.expiresAt,
+          requestId: reused.requestId,
+          taskId: reused.taskId,
+          status: "ready",
+          size: reused.size,
+          expiresIn: 3600,
+          confirmUrl: "/api/platform/storage/object",
+        });
+      }
+    }
+
     // 生成唯一的文件 key
     const fileExtension = filename.match(/\.[^.]+$/)?.[0] || "";
     const fileKey = `uploads/${session.user.id}/${nanoid()}${fileExtension}`;
@@ -99,6 +133,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       bucket: BUCKET_NAME,
       key: fileKey,
       contentType,
+      size: fileSize,
       ownerUserId: session.user.id,
       purpose,
       retentionClass,
@@ -106,9 +141,17 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       requestId: requestId?.trim() || null,
       taskId: taskId?.trim() || null,
       status: "pending",
+      metadata: {
+        source: "upload_presigned",
+        originalFilename: filename,
+        originalFileSize: fileSize,
+        ...(normalizedChecksum ? { sha256: normalizedChecksum } : {}),
+      },
     });
 
     return NextResponse.json({
+      success: true,
+      reused: false,
       presignedUrl,
       fileKey,
       fileUrl,
@@ -117,7 +160,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       expiresAt: storageRecord.expiresAt,
       requestId: storageRecord.requestId,
       taskId: storageRecord.taskId,
+      status: storageRecord.status,
+      size: storageRecord.size,
       expiresIn: 3600,
+      confirmUrl: "/api/platform/storage/object",
     });
   } catch (error) {
     console.error("Error creating presigned URL:", error);

@@ -9,8 +9,26 @@ export const metadata = {
 /**
  * 管理端对象存储页面
  */
-export default async function AdminStoragePage() {
-  const data = await getStorageAdminPageData();
+export default async function AdminStoragePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedParams = (await searchParams) ?? {};
+  const recentPage = Number(
+    Array.isArray(resolvedParams.recentPage)
+      ? resolvedParams.recentPage[0]
+      : resolvedParams.recentPage
+  );
+  const recentPageSize = Number(
+    Array.isArray(resolvedParams.recentPageSize)
+      ? resolvedParams.recentPageSize[0]
+      : resolvedParams.recentPageSize
+  );
+  const data = await getStorageAdminPageData({
+    ...(Number.isFinite(recentPage) ? { recentPage } : {}),
+    ...(Number.isFinite(recentPageSize) ? { recentPageSize } : {}),
+  });
 
   return <AdminStorageView data={data} />;
 }

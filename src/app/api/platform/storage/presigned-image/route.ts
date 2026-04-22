@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStorageProvider } from "@/features/storage/providers";
 import {
+  findReusableStorageObject,
   resolveToolStoragePrefix,
   saveStorageObjectRecord,
 } from "@/features/storage/records";
@@ -18,6 +19,11 @@ const presignedImageSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   contentType: z.enum(ALLOWED_IMAGE_TYPES),
   fileSize: z.number().int().positive().max(MAX_FILE_SIZE).optional(),
+  checksumSha256: z
+    .string()
+    .trim()
+    .regex(/^[a-fA-F0-9]{64}$/)
+    .optional(),
   toolKey: z.string().trim().min(1).max(80).default("redink"),
   purpose: z.string().trim().min(1).max(80).default("product_image"),
   retentionClass: z
@@ -73,6 +79,44 @@ export const POST = withApiLogging(async (request: Request) => {
   }
 
   const bucket = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
+  const normalizedChecksum = payload.data.checksumSha256?.toLowerCase() ?? null;
+  if (normalizedChecksum) {
+    const reused = await findReusableStorageObject({
+      bucket,
+      ownerUserId: session.user.id,
+      sha256: normalizedChecksum,
+      contentType: payload.data.contentType,
+      size: payload.data.fileSize ?? null,
+    });
+    if (reused) {
+      const provider = getStorageProvider();
+      const reusedUrl = resolvePublicUrl(
+        provider,
+        "",
+        reused.key,
+        reused.bucket
+      );
+      return NextResponse.json({
+        success: true,
+        reused: true,
+        uploadUrl: null,
+        publicUrl: reusedUrl,
+        key: reused.key,
+        bucket: reused.bucket,
+        purpose: reused.purpose,
+        retentionClass: reused.retentionClass,
+        expiresAt: reused.expiresAt,
+        requestId: reused.requestId,
+        taskId: reused.taskId,
+        maxFileSize: MAX_FILE_SIZE,
+        contentType: reused.contentType,
+        size: reused.size,
+        status: "ready",
+        confirmUrl: "/api/platform/storage/object",
+      });
+    }
+  }
+
   const extension =
     payload.data.filename.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ".png";
   const prefix = await resolveToolStoragePrefix({
@@ -97,9 +141,18 @@ export const POST = withApiLogging(async (request: Request) => {
     purpose: payload.data.purpose,
     retentionClass: payload.data.retentionClass,
     expiresAt: payload.data.expiresAt ? new Date(payload.data.expiresAt) : null,
+    size: payload.data.fileSize ?? null,
     requestId: payload.data.requestId ?? null,
     taskId: payload.data.taskId ?? null,
     status: "pending",
+    metadata: {
+      source: "presigned_image",
+      originalFilename: payload.data.filename,
+      ...(payload.data.fileSize
+        ? { originalFileSize: payload.data.fileSize }
+        : {}),
+      ...(normalizedChecksum ? { sha256: normalizedChecksum } : {}),
+    },
   });
 
   return NextResponse.json({
@@ -113,6 +166,10 @@ export const POST = withApiLogging(async (request: Request) => {
     expiresAt: storageRecord.expiresAt,
     requestId: storageRecord.requestId,
     taskId: storageRecord.taskId,
+    status: storageRecord.status,
+    size: storageRecord.size,
+    reused: false,
+    confirmUrl: "/api/platform/storage/object",
     maxFileSize: MAX_FILE_SIZE,
     contentType: payload.data.contentType,
   });

@@ -47,6 +47,76 @@ const REDINK_EMPTY_MODEL_CATALOG: RedinkModelCatalog = {
   },
 };
 
+const LEGACY_REDINK_RUNTIME_PROMPTS = {
+  text1: [
+    "请分析用户上传的单张商品图片，并返回结构化 JSON。",
+    "",
+    "要求：",
+    "1. 只输出 JSON",
+    "2. 信息不确定时返回空字符串或空数组",
+    "3. 尽量提取商品名称、类目、卖点、适用人群、使用场景、风格关键词和图片 OCR 文本",
+    "",
+    "JSON 结构：",
+    "{",
+    '  "product_name": "商品名称",',
+    '  "product_category": "商品类目",',
+    '  "core_selling_points": ["卖点1", "卖点2"],',
+    '  "target_people": "目标人群",',
+    '  "usage_scenarios": ["场景1", "场景2"],',
+    '  "style_keywords": ["关键词1", "关键词2"],',
+    '  "ocr_text": "图片里的可识别文字",',
+    '  "visual_summary": "对图片主体和风格的总结",',
+    '  "user_notes": "结合用户补充信息后的备注"',
+    "}",
+    "",
+    "用户补充信息：",
+    "{user_notes}",
+  ].join("\n"),
+  text2: [
+    "你是一名小红书爆款文案助手。请基于下面的商品结构化信息，返回 JSON：",
+    "",
+    "{product_info_json}",
+    "",
+    "补充要求：",
+    "- 生成 3 个标题候选",
+    "- 正文要像真实分享，语气自然，有购买理由",
+    "- 标签返回数组",
+    "- 只输出 JSON",
+    "",
+    "JSON 结构：",
+    "{",
+    '  "titles": ["标题1", "标题2", "标题3"],',
+    '  "copywriting": "正文",',
+    '  "tags": ["标签1", "标签2", "标签3"]',
+    "}",
+    "",
+    "用户补充要求：",
+    "{extra_notes}",
+  ].join("\n"),
+  text3: [
+    "你是小红书电商种草博主，请基于商品结构化信息生成可直接发布的内容草稿。",
+    "",
+    "商品信息：",
+    "{product_info_json}",
+    "",
+    "要求：",
+    "1. 生成 5 个小红书风格标题，标题要有表情符号，真实自然，避免硬广腔",
+    "2. 生成 3 个小红书风格文案，每个文案 120-260 字，包含购买理由、使用场景和互动引导",
+    "3. 生成 8-12 个标签，不要加 # 号",
+    "4. 只输出 JSON",
+    "",
+    "JSON 结构：",
+    "{",
+    '  "titles": ["标题1", "标题2", "标题3", "标题4", "标题5"],',
+    '  "copywriting_options": ["文案1", "文案2", "文案3"],',
+    '  "tags": ["标签1", "标签2", "标签3"]',
+    "}",
+    "",
+    "用户补充要求：",
+    "{extra_notes}",
+  ].join("\n"),
+} as const;
+
 export type RedinkModelCatalogOption = {
   modelKey: string;
   label: string;
@@ -366,6 +436,7 @@ async function seedBuiltInRuntimeConfig(projectId: string, now: Date) {
       }
 
       const mergedValue = mergeRuntimeDefaultValue(
+        tool.toolKey,
         fieldKey,
         defaultValue,
         currentRow.valueJson
@@ -538,10 +609,31 @@ function mergeStoragePrefixRules(
 }
 
 function mergeRuntimeDefaultValue(
+  toolKey: string,
   fieldKey: string,
   defaultValue: ToolConfigValueInput,
   currentValue: unknown
 ) {
+  if (
+    toolKey === "redink" &&
+    ["text1", "text2", "text3", "text4"].includes(fieldKey) &&
+    typeof defaultValue === "string" &&
+    typeof currentValue === "string" &&
+    !currentValue.trim()
+  ) {
+    return defaultValue;
+  }
+
+  if (
+    toolKey === "redink" &&
+    (fieldKey === "text1" || fieldKey === "text2" || fieldKey === "text3") &&
+    typeof defaultValue === "string" &&
+    typeof currentValue === "string" &&
+    currentValue === LEGACY_REDINK_RUNTIME_PROMPTS[fieldKey]
+  ) {
+    return defaultValue;
+  }
+
   if (
     fieldKey === "json1" &&
     Array.isArray(defaultValue) &&
@@ -1254,16 +1346,8 @@ function normalizeRedinkModelCatalog(
   };
 }
 
-function getRedinkRuntimeDefaults(projectKey: string) {
-  const runtimeDefaults =
-    getBuiltInToolDefinition("redink")?.runtimeDefaults ?? {};
-  if (projectKey === DEFAULT_PROJECT_KEY) {
-    return runtimeDefaults;
-  }
-
-  return {
-    json2: runtimeDefaults.json2,
-  } as const;
+function getRedinkRuntimeDefaults(_projectKey: string) {
+  return getBuiltInToolDefinition("redink")?.runtimeDefaults ?? {};
 }
 
 function getRedinkDefaultModelCatalog(projectKey: string): RedinkModelCatalog {

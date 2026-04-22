@@ -178,7 +178,7 @@ describe("Tool config service", () => {
     expect(updatedConfig.config.config1).toBe(80);
   });
 
-  it("重新 seed 时应恢复 RedInk 用户提示词字段的启用状态和默认值", async () => {
+  it("重新 seed 时应恢复 RedInk 用户提示词字段的启用状态和完整模板默认值", async () => {
     await seedDefaultToolConfigProject({
       projectKey,
       name: "Tool Config Test",
@@ -223,6 +223,57 @@ describe("Tool config service", () => {
       .limit(1);
 
     expect(restoredField?.enabled).toBe(true);
-    expect(typeof restoredField?.defaultValueJson).toBe("string");
+    expect(restoredField?.defaultValueJson).toContain(
+      "请分析用户上传的单张商品图片"
+    );
+  });
+
+  it("重新 seed 时应把空白的 RedInk 项目模板回写成完整模板", async () => {
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
+    const [currentProject] = await testDb
+      .select()
+      .from(project)
+      .where(eq(project.key, projectKey))
+      .limit(1);
+    const currentProjectId = currentProject?.id;
+    expect(currentProjectId).toBeDefined();
+
+    await testDb
+      .update(toolConfigValue)
+      .set({
+        valueJson: "",
+      })
+      .where(
+        and(
+          eq(toolConfigValue.projectId, currentProjectId as string),
+          eq(toolConfigValue.toolKey, "redink"),
+          eq(toolConfigValue.scope, "project_admin"),
+          eq(toolConfigValue.fieldKey, "text3")
+        )
+      );
+
+    await seedDefaultToolConfigProject({
+      projectKey,
+      name: "Tool Config Test",
+    });
+
+    const [restoredValue] = await testDb
+      .select()
+      .from(toolConfigValue)
+      .where(
+        and(
+          eq(toolConfigValue.projectId, currentProjectId as string),
+          eq(toolConfigValue.toolKey, "redink"),
+          eq(toolConfigValue.scope, "project_admin"),
+          eq(toolConfigValue.fieldKey, "text3")
+        )
+      )
+      .limit(1);
+
+    expect(restoredValue).toBeDefined();
+    expect(String(restoredValue?.valueJson ?? "")).toContain("商品信息：");
   });
 });

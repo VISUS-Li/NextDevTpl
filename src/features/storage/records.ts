@@ -25,6 +25,7 @@ import {
   getResolvedToolConfig,
   seedDefaultToolConfigProject,
 } from "@/features/tool-config/service";
+import { getStorageProvider } from "./providers";
 
 type SaveStorageObjectParams = {
   bucket: string;
@@ -39,6 +40,23 @@ type SaveStorageObjectParams = {
   requestId?: string | null;
   taskId?: string | null;
   status: "pending" | "ready";
+  metadata?: Record<string, unknown> | null;
+};
+
+type FindReusableStorageObjectParams = {
+  bucket: string;
+  ownerUserId: string;
+  sha256: string;
+  contentType: string;
+  size?: number | null;
+};
+
+type ConfirmStorageObjectUploadParams = {
+  bucket: string;
+  key: string;
+  ownerUserId?: string | null;
+  size?: number | null;
+  contentType?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -68,6 +86,13 @@ type StoragePolicyConfig = {
   temporaryDays: number;
   longTermDays: number;
   prefixRules: StoragePrefixRule[];
+};
+
+type StorageAccessLinks = {
+  rawUrl: string;
+  previewUrl: string;
+  downloadUrl: string;
+  previewable: boolean;
 };
 
 const DEFAULT_STORAGE_POLICY: StoragePolicyConfig = {
@@ -328,6 +353,83 @@ export async function saveStorageObjectRecord(params: SaveStorageObjectParams) {
 }
 
 /**
+ * 按用户与哈希查找可复用对象，避免重复上传。
+ */
+export async function findReusableStorageObject(
+  params: FindReusableStorageObjectParams
+) {
+  const normalizedHash = params.sha256.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalizedHash)) {
+    return null;
+  }
+
+  const filters = [
+    eq(storageObject.bucket, params.bucket),
+    eq(storageObject.ownerUserId, params.ownerUserId),
+    eq(storageObject.contentType, params.contentType),
+    eq(storageObject.status, "ready"),
+    isNull(storageObject.deletedAt),
+    sql`${storageObject.metadata} ->> 'sha256' = ${normalizedHash}`,
+  ];
+  if (params.size !== undefined && params.size !== null) {
+    filters.push(eq(storageObject.size, params.size));
+  }
+
+  const [existing] = await db
+    .select()
+    .from(storageObject)
+    .where(and(...filters))
+    .orderBy(desc(storageObject.updatedAt))
+    .limit(1);
+
+  return existing ?? null;
+}
+
+/**
+ * 回写上传完成状态，修复 pending/0B 明细。
+ */
+export async function confirmStorageObjectUpload(
+  params: ConfirmStorageObjectUploadParams
+) {
+  const conditions = [
+    eq(storageObject.bucket, params.bucket),
+    eq(storageObject.key, params.key),
+  ];
+  if (params.ownerUserId) {
+    conditions.push(eq(storageObject.ownerUserId, params.ownerUserId));
+  }
+
+  const [existing] = await db
+    .select()
+    .from(storageObject)
+    .where(and(...conditions))
+    .limit(1);
+
+  if (!existing) {
+    return null;
+  }
+
+  const nextMetadata = params.metadata
+    ? { ...(asRecord(existing.metadata) ?? {}), ...params.metadata }
+    : existing.metadata;
+
+  const [updated] = await db
+    .update(storageObject)
+    .set({
+      status: "ready",
+      size: params.size ?? existing.size ?? null,
+      contentType: params.contentType ?? existing.contentType,
+      metadata: nextMetadata,
+      deletedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(storageObject.id, existing.id))
+    .returning();
+
+  return updated ?? null;
+}
+
+/**
  * 清理过期的对象存储资源。
  */
 export async function cleanupExpiredStorageObjects(
@@ -413,7 +515,10 @@ export async function cleanupScopedStorageObjects(
 /**
  * 读取管理员存储页面数据。
  */
-export async function getStorageAdminPageData() {
+export async function getStorageAdminPageData(params?: {
+  recentPage?: number;
+  recentPageSize?: number;
+}) {
   const { currentProject } = await getStoredStoragePolicy();
   const now = new Date();
   const storagePolicy = await getStoragePolicyConfig();
@@ -425,6 +530,7 @@ export async function getStorageAdminPageData() {
     endpoint: process.env.STORAGE_ENDPOINT ?? "",
     bucket: process.env.STORAGE_BUCKET_NAME ?? "",
     publicBaseUrl: process.env.STORAGE_PUBLIC_BASE_URL ?? "",
+    cdnBaseUrl: process.env.STORAGE_CDN_BASE_URL ?? "",
     appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "",
     aiProxyBaseUrl:
       process.env.STORAGE_AI_PROXY_BASE_URL ??
@@ -496,6 +602,18 @@ export async function getStorageAdminPageData() {
     })
     .from(storageObject);
 
+  const recentPageSize = Math.min(
+    Math.max(params?.recentPageSize ?? 50, 20),
+    200
+  );
+  const recentPage = Math.max(params?.recentPage ?? 1, 1);
+  const [recentTotalRow] = await db
+    .select({ total: count(storageObject.id) })
+    .from(storageObject);
+  const recentTotal = Number(recentTotalRow?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(recentTotal / recentPageSize));
+  const safePage = Math.min(recentPage, totalPages);
+
   const recentObjects = await db
     .select({
       id: storageObject.id,
@@ -521,7 +639,8 @@ export async function getStorageAdminPageData() {
     .from(storageObject)
     .leftJoin(user, eq(user.id, storageObject.ownerUserId))
     .orderBy(desc(storageObject.createdAt))
-    .limit(50);
+    .limit(recentPageSize)
+    .offset((safePage - 1) * recentPageSize);
 
   const cleanupCandidates = await db
     .select({
@@ -568,7 +687,20 @@ export async function getStorageAdminPageData() {
       ephemeralCount: Number(retentionRow?.ephemeralCount ?? 0),
     },
     cleanupCandidates,
-    recentObjects,
+    recentObjects: recentObjects.map((item) => ({
+      ...item,
+      links: buildStorageAccessLinks({
+        bucket: item.bucket,
+        key: item.key,
+        contentType: item.contentType,
+      }),
+    })),
+    recentPagination: {
+      page: safePage,
+      pageSize: recentPageSize,
+      total: recentTotal,
+      totalPages,
+    },
   };
 }
 
@@ -760,7 +892,6 @@ function asRecord(value: unknown) {
 async function performStorageDeletion(
   objects: Array<typeof storageObject.$inferSelect>
 ) {
-  const { getStorageProvider } = await import("./providers");
   const provider = getStorageProvider();
   const items: Array<{
     id: string;
@@ -807,4 +938,44 @@ async function performStorageDeletion(
     deleted: items.filter((item) => item.status === "deleted").length,
     items,
   };
+}
+
+/**
+ * 拼接对象访问地址，CDN 配置存在时优先使用 CDN。
+ */
+function buildStorageAccessLinks(params: {
+  bucket: string;
+  key: string;
+  contentType: string;
+}): StorageAccessLinks {
+  const encodedKey = params.key
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  const encodedBucket = encodeURIComponent(params.bucket);
+  const cdnBaseUrl = process.env.STORAGE_CDN_BASE_URL?.trim();
+  const fallback = getStorageProvider().getPublicUrl(params.key, params.bucket);
+  const rawUrl = cdnBaseUrl
+    ? `${cdnBaseUrl.replace(/\/+$/, "")}/${encodedBucket}/${encodedKey}`
+    : fallback;
+  const previewable = isPreviewableContentType(params.contentType);
+  const downloadUrl = `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}download=1`;
+
+  return {
+    rawUrl,
+    previewUrl: rawUrl,
+    downloadUrl,
+    previewable,
+  };
+}
+
+function isPreviewableContentType(contentType: string) {
+  return (
+    contentType.startsWith("image/") ||
+    contentType.startsWith("video/") ||
+    contentType.startsWith("audio/") ||
+    contentType.startsWith("text/") ||
+    contentType.includes("json") ||
+    contentType === "application/pdf"
+  );
 }

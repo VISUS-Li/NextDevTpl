@@ -142,6 +142,68 @@ describe("Storage Phase 2 Lifecycle API", () => {
     expect(record?.status).toBe("pending");
   });
 
+  it("presigned-image 应支持按 sha256 复用已有对象", async () => {
+    const user = await createTestUser({
+      email: `1183989659+storage-phase2-reuse-${Date.now()}@qq.com`,
+      name: "存储阶段二复用用户",
+    });
+    createdUserIds.push(user.id);
+    mockSession(user);
+
+    const requestBody = {
+      filename: "same-image.png",
+      contentType: "image/png",
+      fileSize: 4096,
+      checksumSha256:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      purpose: "product_image",
+      retentionClass: "long_term",
+    };
+    const first = await postPresignedImage(
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      )
+    );
+    const firstData = await first.json();
+    await db
+      .update(storageObject)
+      .set({
+        status: "ready",
+        size: requestBody.fileSize,
+        updatedAt: new Date(),
+      })
+      .where(eq(storageObject.key, firstData.key));
+
+    const second = await postPresignedImage(
+      new Request(
+        "http://localhost:3000/api/platform/storage/presigned-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      )
+    );
+    const secondData = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(firstData.reused).toBe(false);
+    expect(second.status).toBe(200);
+    expect(secondData.reused).toBe(true);
+    expect(secondData.key).toBe(firstData.key);
+    expect(secondData.uploadUrl).toBeNull();
+    expect(getSignedUploadUrlMock).toHaveBeenCalledTimes(1);
+  });
+
   it("results/save 应写入长期归档资源元数据", async () => {
     const user = await createTestUser({
       email: `1183989659+storage-phase2-result-${Date.now()}@qq.com`,

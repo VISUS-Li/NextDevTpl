@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -49,6 +57,7 @@ type AdminStorageViewProps = {
       endpoint: string;
       bucket: string;
       publicBaseUrl: string;
+      cdnBaseUrl: string;
       appUrl: string;
       aiProxyBaseUrl: string;
       defaultAiUrlMode: StorageAssetUrlMode;
@@ -105,7 +114,19 @@ type AdminStorageViewProps = {
       deletedAt: Date | string | null;
       createdAt: Date | string;
       updatedAt: Date | string;
+      links: {
+        rawUrl: string;
+        previewUrl: string;
+        downloadUrl: string;
+        previewable: boolean;
+      };
     }>;
+    recentPagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
   };
 };
 
@@ -124,12 +145,16 @@ type CleanupResult = {
 };
 
 type ScopedCleanupResult = CleanupResult;
+type RecentStorageObject =
+  AdminStorageViewProps["data"]["recentObjects"][number];
 
 /**
  * 管理员对象存储页面。
  */
 export function AdminStorageView({ data }: AdminStorageViewProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [toolModes, setToolModes] = useState(() =>
     Object.fromEntries(
       data.toolModes.map((tool) => [tool.toolKey, tool.assetUrlMode])
@@ -151,6 +176,8 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
   >(null);
   const [scopedCleanupResult, setScopedCleanupResult] =
     useState<ScopedCleanupResult | null>(null);
+  const [previewingObject, setPreviewingObject] =
+    useState<RecentStorageObject | null>(null);
   const [storagePolicyForm, setStoragePolicyForm] = useState({
     ephemeralHours: String(data.config.ephemeralHours),
     temporaryDays: String(data.config.temporaryDays),
@@ -158,6 +185,27 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
     prefixRules: JSON.stringify(data.config.prefixRules, null, 2),
   });
   const [savingToolKey, setSavingToolKey] = useState<string | null>(null);
+
+  /**
+   * 切换最近资源分页。
+   */
+  const jumpRecentPage = (page: number) => {
+    const nextPage = Math.min(
+      Math.max(page, 1),
+      Math.max(data.recentPagination.totalPages, 1)
+    );
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("recentPage", String(nextPage));
+    next.set("recentPageSize", String(data.recentPagination.pageSize));
+    router.push(`${pathname}?${next.toString()}`);
+  };
+
+  /**
+   * 打开资源预览弹窗。
+   */
+  const openPreview = (item: RecentStorageObject) => {
+    setPreviewingObject(item);
+  };
 
   // 用于保存单个工具的 AI 资源访问方式。
   const { execute: saveToolConfig } = useAction(saveAdminToolConfigAction, {
@@ -366,6 +414,7 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
             <ConfigItem label="Bucket" value={data.config.bucket} />
             <ConfigItem label="Endpoint" value={data.config.endpoint} />
             <ConfigItem label="公网地址" value={data.config.publicBaseUrl} />
+            <ConfigItem label="CDN 地址" value={data.config.cdnBaseUrl} />
             <ConfigItem label="平台地址" value={data.config.appUrl} />
             <ConfigItem label="代理地址" value={data.config.aiProxyBaseUrl} />
             <ConfigItem
@@ -732,21 +781,50 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
         <CardHeader>
           <CardTitle>最近资源明细</CardTitle>
           <CardDescription>
-            默认展示最近 50
-            条对象资源记录，便于核对用途、归属、生命周期和关联请求。
+            支持分页查看全部对象资源记录，并可直接预览或下载。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm">
+            <p className="text-muted-foreground">
+              共 {data.recentPagination.total} 条，当前第{" "}
+              {data.recentPagination.page} / {data.recentPagination.totalPages}{" "}
+              页
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={data.recentPagination.page <= 1}
+                onClick={() => jumpRecentPage(data.recentPagination.page - 1)}
+              >
+                上一页
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  data.recentPagination.page >= data.recentPagination.totalPages
+                }
+                onClick={() => jumpRecentPage(data.recentPagination.page + 1)}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[1260px] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">对象</th>
                   <th className="px-3 py-2 font-medium">状态</th>
                   <th className="px-3 py-2 font-medium">用途</th>
                   <th className="px-3 py-2 font-medium">工具</th>
+                  <th className="px-3 py-2 font-medium">来源</th>
                   <th className="px-3 py-2 font-medium">所有者</th>
                   <th className="px-3 py-2 font-medium">大小</th>
+                  <th className="px-3 py-2 font-medium">访问</th>
                   <th className="px-3 py-2 font-medium">过期</th>
                   <th className="px-3 py-2 font-medium">创建时间</th>
                 </tr>
@@ -790,6 +868,9 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
                       </div>
                     </td>
                     <td className="px-3 py-3">{item.toolKey || "-"}</td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {resolveSourceInfo(item.metadata)}
+                    </td>
                     <td className="px-3 py-3">
                       <div className="space-y-1">
                         <p>{item.ownerName || "-"}</p>
@@ -799,6 +880,27 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
                       </div>
                     </td>
                     <td className="px-3 py-3">{formatBytes(item.size ?? 0)}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {item.links.previewable ? (
+                          <button
+                            type="button"
+                            className="text-xs text-blue-600 underline"
+                            onClick={() => openPreview(item)}
+                          >
+                            预览
+                          </button>
+                        ) : null}
+                        <a
+                          className="text-xs text-blue-600 underline"
+                          href={item.links.downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          下载
+                        </a>
+                      </div>
+                    </td>
                     <td className="px-3 py-3">
                       {formatDateTime(item.expiresAt)}
                     </td>
@@ -828,6 +930,120 @@ export function AdminStorageView({ data }: AdminStorageViewProps) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={previewingObject !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewingObject(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>资源预览</DialogTitle>
+            <DialogDescription className="break-all">
+              {previewingObject
+                ? `${previewingObject.bucket}/${previewingObject.key}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6 pt-2">
+            {previewingObject ? (
+              <StorageObjectPreview item={previewingObject} />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/**
+ * 根据资源类型渲染预览内容。
+ */
+function StorageObjectPreview({ item }: { item: RecentStorageObject }) {
+  const contentType = item.contentType.toLowerCase();
+
+  // 图片和视频直接在弹窗内展示，避免跳到新页面。
+  if (contentType.startsWith("image/")) {
+    return (
+      <div className="flex max-h-[72vh] items-center justify-center overflow-auto rounded-lg bg-slate-950/95 p-4">
+        <Image
+          src={item.links.previewUrl}
+          alt={item.key}
+          width={1600}
+          height={1200}
+          className="max-h-[68vh] w-auto max-w-full rounded-lg object-contain"
+          unoptimized
+        />
+      </div>
+    );
+  }
+
+  if (contentType.startsWith("video/")) {
+    return (
+      <div className="rounded-lg bg-slate-950/95 p-4">
+        <video
+          controls
+          preload="metadata"
+          className="max-h-[72vh] w-full rounded-lg"
+          src={item.links.previewUrl}
+        >
+          <track kind="captions" />
+        </video>
+      </div>
+    );
+  }
+
+  if (contentType.startsWith("audio/")) {
+    return (
+      <div className="rounded-lg bg-slate-950/95 p-6">
+        <audio
+          controls
+          preload="metadata"
+          className="w-full"
+          src={item.links.previewUrl}
+        >
+          <track kind="captions" />
+        </audio>
+      </div>
+    );
+  }
+
+  if (contentType === "application/pdf") {
+    return (
+      <iframe
+        title={item.key}
+        src={item.links.previewUrl}
+        className="h-[72vh] w-full rounded-lg border"
+      />
+    );
+  }
+
+  if (contentType.startsWith("text/") || contentType.includes("json")) {
+    return (
+      <iframe
+        title={item.key}
+        src={item.links.previewUrl}
+        className="h-[72vh] w-full rounded-lg border bg-white"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-dashed p-6">
+      <p className="text-sm text-muted-foreground">
+        当前类型暂不支持内嵌预览，请直接下载查看。
+      </p>
+      <a
+        className="text-sm text-blue-600 underline"
+        href={item.links.downloadUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        下载资源
+      </a>
     </div>
   );
 }
@@ -914,4 +1130,20 @@ function formatBytes(value: number) {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function resolveSourceInfo(metadata: Record<string, unknown> | null) {
+  if (!metadata) {
+    return "-";
+  }
+
+  const source = metadata.source;
+  if (typeof source === "string" && source.trim()) {
+    return source.trim();
+  }
+  const uploadSource = metadata.uploadSource;
+  if (typeof uploadSource === "string" && uploadSource.trim()) {
+    return uploadSource.trim();
+  }
+  return "-";
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { localProvider } from "@/features/storage/providers";
+import { confirmStorageObjectUpload } from "@/features/storage/records";
 
 // 接收本地存储上传请求并写入开发机磁盘。
 export async function PUT(request: Request) {
@@ -12,6 +13,15 @@ export async function PUT(request: Request) {
   const body = Buffer.from(await request.arrayBuffer());
 
   await localProvider.putObject(key, bucket, body, contentType);
+  await confirmStorageObjectUpload({
+    bucket,
+    key,
+    size: body.byteLength,
+    contentType,
+    metadata: {
+      uploadSource: "local_upload_route",
+    },
+  });
 
   return NextResponse.json({ success: true });
 }
