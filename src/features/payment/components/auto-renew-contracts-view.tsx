@@ -47,6 +47,9 @@ export function AutoRenewContractsView(props: AutoRenewContractsViewProps) {
   const [pendingContractId, setPendingContractId] = useState<string | null>(
     null
   );
+  const [planDrafts, setPlanDrafts] = useState<
+    Record<string, { planId: "starter" | "pro" | "ultra"; interval: PlanInterval }>
+  >({});
 
   /**
    * 创建连续扣费签约。
@@ -197,6 +200,37 @@ export function AutoRenewContractsView(props: AutoRenewContractsViewProps) {
     router.refresh();
   };
 
+  /**
+   * 保存下周期生效的套餐变更。
+   */
+  const changePlan = async (contractId: string) => {
+    const draft = planDrafts[contractId];
+    if (!draft) {
+      toast.error("请选择目标套餐");
+      return;
+    }
+
+    setPendingContractId(contractId);
+    const response = await fetch(
+      `/api/platform/payment/subscription/contracts/${contractId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      }
+    );
+    const payload = await response.json();
+    setPendingContractId(null);
+
+    if (!response.ok || !payload.success) {
+      toast.error(payload.error ?? "保存套餐变更失败");
+      return;
+    }
+
+    toast.success("已保存，下个账期生效");
+    router.refresh();
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -292,6 +326,92 @@ export function AutoRenewContractsView(props: AutoRenewContractsViewProps) {
                 下次扣款时间：
                 {contract.nextBillingAt?.toLocaleString("zh-CN") || "-"}
               </div>
+              {contract.pendingPlanId ? (
+                <div>
+                  待生效套餐：
+                  {contract.pendingPlanId} / {contract.pendingInterval} /{" "}
+                  {contract.pendingAmount
+                    ? (contract.pendingAmount / 100).toFixed(2)
+                    : "-"}{" "}
+                  {contract.currency}
+                </div>
+              ) : null}
+              {["active", "paused"].includes(contract.status) ? (
+                <div className="grid gap-3 rounded-md border p-3 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>下周期套餐</Label>
+                    <Select
+                      value={
+                        planDrafts[contract.id]?.planId ??
+                        contract.pendingPlanId ??
+                        contract.planId
+                      }
+                      onValueChange={(value) =>
+                        setPlanDrafts((current) => ({
+                          ...current,
+                          [contract.id]: {
+                            planId: value as "starter" | "pro" | "ultra",
+                            interval:
+                              current[contract.id]?.interval ??
+                              contract.pendingInterval ??
+                              contract.interval,
+                          },
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="starter">Starter</SelectItem>
+                        <SelectItem value="pro">Pro</SelectItem>
+                        <SelectItem value="ultra">Ultra</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>下周期账期</Label>
+                    <Select
+                      value={
+                        planDrafts[contract.id]?.interval ??
+                        contract.pendingInterval ??
+                        contract.interval
+                      }
+                      onValueChange={(value) =>
+                        setPlanDrafts((current) => ({
+                          ...current,
+                          [contract.id]: {
+                            planId:
+                              current[contract.id]?.planId ??
+                              contract.pendingPlanId ??
+                              contract.planId,
+                            interval: value as PlanInterval,
+                          },
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={PlanInterval.MONTH}>月付</SelectItem>
+                        <SelectItem value={PlanInterval.YEAR}>年付</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => changePlan(contract.id)}
+                      loading={pendingContractId === contract.id}
+                      loadingText="保存中..."
+                    >
+                      保存下周期变更
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {contract.signingUrl ? (
                   <Button asChild variant="outline">

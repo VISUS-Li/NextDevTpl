@@ -229,6 +229,32 @@
 - `pnpm test:run src/test/payment/subscription-admin-phase10.test.ts --reporter=dot`
 - `pnpm test:run src/test/payment/admin-payment-phase4.test.ts src/test/payment/subscription-wechat-phase6.test.ts src/test/payment/subscription-alipay-phase7.test.ts src/test/payment/subscription-recurring-phase9.test.ts --reporter=dot`
 
+### 阶段 11 已完成
+
+- 已补齐下周期生效的订阅套餐变更：
+  - `src/features/payment/subscription-recurring.ts`
+  - `src/app/api/platform/payment/subscription/contracts/[contractId]/route.ts`
+  - `src/features/payment/components/auto-renew-contracts-view.tsx`
+- 已补齐订阅订单退款策略：
+  - `src/features/payment/refund-service.ts`
+  - `src/app/api/platform/payments/admin/refund/route.ts`
+  - `src/features/payment/components/admin-payment-view.tsx`
+- 当前用户可在自动续费页为下个账期安排套餐和账期变更
+- 当下一期账单成功入账后，协议会切到新的 `planId / priceId / billingInterval`
+- 管理员现在可对订阅订单发起全额退款，退款后会：
+  - 回收本期发放积分
+  - 把当前周期账单标记为 `refunded`
+  - 把连续扣费协议标记为 `paused`
+- 已补齐阶段 11 测试，覆盖：
+  - 下周期生效的套餐变更
+  - 订阅订单全额退款与协议暂停
+
+### 阶段 11 验证
+
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/subscription-phase11-plan-change-refund.test.ts --reporter=dot`
+- `pnpm test:run src/test/payment/subscription-admin-phase10.test.ts src/test/payment/subscription-recurring-phase9.test.ts src/test/payment/subscription-wechat-phase6.test.ts src/test/payment/subscription-alipay-phase7.test.ts src/test/payment/admin-payment-phase5-refund.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -281,22 +307,21 @@ ALIPAY_PUBLIC_KEY=
   - 发放积分
   - 结算分销佣金
 - 管理员可在 `/admin/payments` 查看支付列表和单笔详情
-- 管理员可在 `/admin/payments` 对积分包订单发起退款
-- 用户可在 `/dashboard/subscription/auto-renew` 创建和查看自动续费签约
-- 模拟模式下，已可完成微信连续扣费、支付宝代扣的签约、首期账单、回调入账和解约联调
-- 真实环境下，支付宝签约页、解约、账单回调入账已接上；微信连续扣费和支付宝周期扣款还没有形成完整的生产闭环
+- 管理员可在 `/admin/payments` 对积分包和订阅订单发起退款
+- 管理员可在 `/admin/payments` 同步自动续费协议、同步账单并对失败账单手工补扣
+- 用户可在 `/dashboard/subscription/auto-renew` 创建、查看、解约自动续费签约
+- 用户可在 `/dashboard/subscription/auto-renew` 为下个账期安排套餐和账期变更
+- 模拟模式下，已可完成微信连续扣费、支付宝代扣的签约、发单、回调入账、失败补偿、套餐变更和退款联调
+- 代码层面已形成自动续费完整业务闭环，剩余主要是正式渠道联调和真实证书参数校验
 
 ### 5. 当前未纳入本轮范围
 
-- 连续扣费真实周期扣款发起
-- 连续扣费定时任务调度
-- 连续扣费回调验签
-- 微信连续扣费真实签约、查约、解约闭环
-- 支付宝周期性扣款执行计划与真实扣款闭环
-- 扣款失败补偿、重试和查单补偿
-- 更复杂的订阅变更，比如升级、降级、下周期切换计划
+- 微信、支付宝正式网关的小额真实联调与对账验收
+- 支付宝执行计划类接口在正式商户配置下的实测收口
+- 微信连续扣费正式签约页参数和商户模板配置校验
+- 更复杂的售后策略，比如部分退款、佣金回退细则和已消费权益校验
 
-这些不影响当前“积分包购买”直接使用，但会影响“自动续费是否可直接上线”。
+这些不影响当前代码继续开发和模拟联调，但正式上线前仍需要按商户配置逐项实测。
 
 ## 一、`go-pay/gopay` 的核心逻辑
 
@@ -1650,6 +1675,16 @@ Schema 在：
 - 权益和佣金回退规则
 
 这个阶段不建议提前做，原因是当前最大缺口不是套餐编排，而是渠道动作和生产联调。
+
+本阶段完成标志：
+
+- 用户可安排下周期生效的套餐变更
+- 订阅订单退款有明确的平台状态回写策略
+- 自动续费业务侧功能闭环已补齐，剩下主要是正式联调
+
+当前进度：
+
+- 已完成
 
 ### 3. 建议的代码承接方式
 

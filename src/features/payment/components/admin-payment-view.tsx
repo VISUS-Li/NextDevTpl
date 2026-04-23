@@ -624,6 +624,50 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
                     </div>
                   </div>
                 ) : null}
+                {detail.order.orderType === "subscription" && detail.items[0] ? (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="font-medium">订阅退款</div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subscription-refund-amount">
+                        退款金额（分）
+                      </Label>
+                      <Input
+                        id="subscription-refund-amount"
+                        value={refundAmount}
+                        onChange={(event) =>
+                          setRefundAmount(event.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subscription-refund-reason">
+                        退款原因
+                      </Label>
+                      <Input
+                        id="subscription-refund-reason"
+                        value={refundReason}
+                        onChange={(event) =>
+                          setRefundReason(event.target.value)
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={submitRefund}
+                      loading={refundLoading}
+                      loadingText="退款中..."
+                      disabled={
+                        refundLoading ||
+                        Number(refundAmount) !== detail.items[0].refundableAmount
+                      }
+                    >
+                      提交全额退款
+                    </Button>
+                    <div className="text-xs text-muted-foreground">
+                      当前阶段订阅只支持整单退款。退款后会回收本期积分，并暂停连续扣费协议。
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">暂无详情</div>

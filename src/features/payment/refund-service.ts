@@ -3,7 +3,14 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { paymentIntent, salesOrder, salesOrderItem } from "@/db/schema";
+import {
+  paymentIntent,
+  salesOrder,
+  salesOrderItem,
+  subscription,
+  subscriptionBilling,
+  subscriptionContract,
+} from "@/db/schema";
 import {
   consumeCredits,
   getCreditsBalance,
@@ -32,6 +39,29 @@ export type RefundPaymentResult = {
   paymentIntentId: string | null;
   refundedCredits: number;
 };
+
+/**
+ * 管理端统一退款入口。
+ */
+export async function refundAdminPayment(
+  params: RefundPaymentParams
+): Promise<RefundPaymentResult> {
+  const [order] = await db
+    .select()
+    .from(salesOrder)
+    .where(eq(salesOrder.id, params.orderId))
+    .limit(1);
+
+  if (!order) {
+    throw new Error("支付订单不存在");
+  }
+
+  if (order.orderType === "credit_purchase") {
+    return refundCreditPurchasePayment(params);
+  }
+
+  return refundSubscriptionPayment(params);
+}
 
 /**
  * 发起一次性支付退款。
@@ -150,6 +180,145 @@ export async function refundCreditPurchasePayment(
     refundAmount: params.amount,
     currency: order.currency,
     paymentIntentId: currentIntent?.id ?? null,
+    refundedCredits,
+  };
+}
+
+/**
+ * 退款订阅账单。
+ *
+ * 当前阶段只支持整单退款，退款后会暂停协议并标记当前账单已退款。
+ */
+export async function refundSubscriptionPayment(
+  params: RefundPaymentParams
+): Promise<RefundPaymentResult> {
+  const [order] = await db
+    .select()
+    .from(salesOrder)
+    .where(eq(salesOrder.id, params.orderId))
+    .limit(1);
+
+  if (!order) {
+    throw new Error("支付订单不存在");
+  }
+  if (order.orderType !== "subscription") {
+    throw new Error("当前订单不是订阅订单");
+  }
+
+  const [item] = await db
+    .select()
+    .from(salesOrderItem)
+    .where(eq(salesOrderItem.orderId, params.orderId))
+    .limit(1);
+  if (!item) {
+    throw new Error("支付订单项不存在");
+  }
+  if (params.amount !== item.refundableAmount) {
+    throw new Error("当前阶段订阅只支持全额退款");
+  }
+
+  const refundedCredits = calculateRefundedCredits({
+    grossAmount: item.grossAmount,
+    refundAmount: params.amount,
+    credits: Number(item.metadata?.credits ?? 0),
+  });
+
+  if (refundedCredits > 0) {
+    const balance = await getCreditsBalance(order.userId);
+    if (balance.balance < refundedCredits) {
+      throw new InsufficientCreditsError(refundedCredits, balance.balance);
+    }
+
+    await consumeCredits({
+      userId: order.userId,
+      amount: refundedCredits,
+      serviceName: "subscription_refund_reclaim",
+      description: `订阅退款回收积分 ${refundedCredits}`,
+      metadata: {
+        orderId: order.id,
+        orderItemId: item.id,
+        operatorUserId: params.operatorUserId,
+      },
+    });
+  }
+
+  const refundResponse = await requestProviderRefund({
+    provider: order.provider,
+    amount: params.amount,
+    totalAmount: item.grossAmount,
+    currency: order.currency,
+    orderId: order.id,
+    providerOrderId: order.providerOrderId,
+    providerPaymentId: order.providerPaymentId,
+    reason: params.reason,
+  });
+
+  const eventId = await applySalesAfterSalesEvent({
+    orderId: order.id,
+    orderItemId: item.id,
+    amount: params.amount,
+    currency: order.currency,
+    eventType: "refunded",
+    eventIdempotencyKey: `${order.provider}:subscription_refund:${order.id}:${params.amount}`,
+    providerEventId: refundResponse.providerRefundId,
+    reason: params.reason,
+    metadata: {
+      operatorUserId: params.operatorUserId,
+      providerRefundId: refundResponse.providerRefundId,
+      refundedCredits,
+      response: refundResponse.rawResponse,
+    },
+  });
+
+  const billingId = readStringMetadata(item.metadata, "billingId") ??
+    readStringMetadata(order.metadata, "billingId");
+  const contractId = readStringMetadata(item.metadata, "contractId") ??
+    readStringMetadata(order.metadata, "contractId");
+  const providerSubscriptionId =
+    order.providerSubscriptionId ?? readStringMetadata(order.metadata, "contractId");
+
+  if (billingId) {
+    await db
+      .update(subscriptionBilling)
+      .set({
+        status: "refunded",
+        updatedAt: new Date(),
+        metadata: {
+          refundedBy: params.operatorUserId,
+          providerRefundId: refundResponse.providerRefundId,
+        },
+      })
+      .where(eq(subscriptionBilling.id, billingId));
+  }
+
+  if (contractId) {
+    await db
+      .update(subscriptionContract)
+      .set({
+        status: "paused",
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionContract.id, contractId));
+  }
+
+  if (providerSubscriptionId) {
+    await db
+      .update(subscription)
+      .set({
+        cancelAtPeriodEnd: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscription.subscriptionId, providerSubscriptionId));
+  }
+
+  return {
+    orderId: order.id,
+    orderItemId: item.id,
+    eventId,
+    providerRefundId: refundResponse.providerRefundId,
+    refundAmount: params.amount,
+    currency: order.currency,
+    paymentIntentId: null,
     refundedCredits,
   };
 }

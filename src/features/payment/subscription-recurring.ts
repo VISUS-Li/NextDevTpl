@@ -86,6 +86,9 @@ export type SubscriptionContractSummary = {
   signingUrl: string | null;
   providerContractId: string | null;
   nextBillingAt: Date | null;
+  pendingPlanId: SupportedPlanId | null;
+  pendingInterval: PlanInterval | null;
+  pendingAmount: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -236,6 +239,68 @@ export async function cancelUserSubscriptionContract(
 }
 
 /**
+ * 为下一个账期安排套餐变更。
+ */
+export async function scheduleSubscriptionContractPlanChange(params: {
+  contractId: string;
+  userId: string;
+  planId: SupportedPlanId;
+  interval: PlanInterval;
+}) {
+  const [contract] = await db
+    .select()
+    .from(subscriptionContract)
+    .where(
+      and(
+        eq(subscriptionContract.id, params.contractId),
+        eq(subscriptionContract.userId, params.userId)
+      )
+    )
+    .limit(1);
+
+  if (!contract) {
+    throw new Error("连续扣费签约不存在");
+  }
+  if (!["active", "paused"].includes(contract.status)) {
+    throw new Error("当前签约状态不允许变更套餐");
+  }
+
+  const price = getPlanPriceById(params.planId, params.interval);
+  if (!price) {
+    throw new Error("目标订阅计划价格未配置");
+  }
+  if (
+    contract.planId === params.planId &&
+    contract.billingInterval === params.interval
+  ) {
+    throw new Error("新套餐与当前套餐一致");
+  }
+
+  const [updated] = await db
+    .update(subscriptionContract)
+    .set({
+      metadata: mergeMetadata(contract.metadata, {
+        pendingPlanChange: {
+          planId: params.planId,
+          interval: params.interval,
+          priceId: price.priceId || `${params.planId}_${params.interval}`,
+          amount: Math.round(price.amount * 100),
+          requestedAt: new Date().toISOString(),
+        },
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionContract.id, contract.id))
+    .returning();
+
+  if (!updated) {
+    throw new Error("保存套餐变更失败");
+  }
+
+  return toContractSummary(updated);
+}
+
+/**
  * 激活连续扣费签约。
  */
 export async function activateSubscriptionContract(
@@ -308,10 +373,13 @@ export async function triggerSubscriptionBilling(
     return existingCurrentBilling;
   }
 
-  const periodEnd = addIntervalDate(
-    periodStart,
-    contract.billingInterval as PlanInterval
-  );
+  const pendingPlanChange = readPendingPlanChange(contract.metadata);
+  const currentInterval = contract.billingInterval as PlanInterval;
+  const billingPlanId = pendingPlanChange?.planId ?? contract.planId;
+  const billingInterval = pendingPlanChange?.interval ?? currentInterval;
+  const billingPriceId = pendingPlanChange?.priceId ?? contract.priceId;
+  const billingAmount = pendingPlanChange?.amount ?? contract.amount;
+  const periodEnd = addIntervalDate(periodStart, billingInterval);
   const sequence = (latestBilling?.billingSequence ?? 0) + 1;
   const outTradeNo = buildRecurringOutTradeNo(
     contract.provider as SupportedRecurringProvider,
@@ -328,12 +396,12 @@ export async function triggerSubscriptionBilling(
       userId: contract.userId,
       subscriptionRecordId: contract.subscriptionRecordId,
       provider: contract.provider,
-      planId: contract.planId,
-      priceId: contract.priceId,
+      planId: billingPlanId,
+      priceId: billingPriceId,
       billingSequence: sequence,
       periodStart,
       periodEnd,
-      amount: contract.amount,
+      amount: billingAmount,
       currency: contract.currency,
       outTradeNo,
       providerOrderId,
@@ -414,14 +482,23 @@ export async function processDueSubscriptionBillings(params?: {
 
   const results = [];
   for (const contract of contracts) {
-    const billing = await triggerSubscriptionBilling({
-      contractId: contract.id,
-    });
-    results.push({
-      contractId: contract.id,
-      billingId: billing.id,
-      status: billing.status,
-    });
+    try {
+      const billing = await triggerSubscriptionBilling({
+        contractId: contract.id,
+      });
+      results.push({
+        contractId: contract.id,
+        billingId: billing.id,
+        status: billing.status,
+      });
+    } catch (error) {
+      results.push({
+        contractId: contract.id,
+        billingId: null,
+        status: "failed",
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+    }
   }
 
   return results;
@@ -721,8 +798,13 @@ export async function settleSubscriptionBillingPaid(
   await db
     .update(subscriptionContract)
     .set({
+      planId: paidBilling.planId,
+      priceId: paidBilling.priceId,
+      amount: paidBilling.amount,
+      billingInterval: deriveBillingInterval(contract, paidBilling),
       subscriptionRecordId: localSubscription.id,
       nextBillingAt: paidBilling.periodEnd,
+      metadata: clearPendingPlanChange(contract.metadata),
       updatedAt: new Date(),
     })
     .where(eq(subscriptionContract.id, contract.id));
@@ -730,8 +812,13 @@ export async function settleSubscriptionBillingPaid(
   return {
     contract: toContractSummary({
       ...contract,
+      planId: paidBilling.planId,
+      priceId: paidBilling.priceId,
+      amount: paidBilling.amount,
+      billingInterval: deriveBillingInterval(contract, paidBilling),
       subscriptionRecordId: localSubscription.id,
       nextBillingAt: paidBilling.periodEnd,
+      metadata: clearPendingPlanChange(contract.metadata),
     }),
     billing: paidBilling,
   };
@@ -1012,6 +1099,7 @@ function buildRecurringOutTradeNo(
 function toContractSummary(
   contract: SubscriptionContract
 ): SubscriptionContractSummary {
+  const pendingPlanChange = readPendingPlanChange(contract.metadata);
   return {
     id: contract.id,
     provider: contract.provider as SupportedRecurringProvider,
@@ -1024,6 +1112,9 @@ function toContractSummary(
     signingUrl: contract.signingUrl,
     providerContractId: contract.providerContractId,
     nextBillingAt: contract.nextBillingAt,
+    pendingPlanId: pendingPlanChange?.planId ?? null,
+    pendingInterval: pendingPlanChange?.interval ?? null,
+    pendingAmount: pendingPlanChange?.amount ?? null,
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   };
@@ -1051,4 +1142,75 @@ function mergeMetadata(
     ...(current ?? {}),
     ...extra,
   };
+}
+
+/**
+ * 读取待生效的套餐变更。
+ */
+function readPendingPlanChange(
+  metadata: Record<string, unknown> | null | undefined
+): {
+  planId: SupportedPlanId;
+  interval: PlanInterval;
+  priceId: string;
+  amount: number;
+} | null {
+  const value = metadata?.pendingPlanChange;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const planId = readStringMetadata(value as Record<string, unknown>, "planId");
+  const interval = readStringMetadata(
+    value as Record<string, unknown>,
+    "interval"
+  );
+  const priceId = readStringMetadata(value as Record<string, unknown>, "priceId");
+  const amount = Number((value as Record<string, unknown>).amount);
+  if (
+    !planId ||
+    !interval ||
+    !priceId ||
+    !Number.isFinite(amount) ||
+    !["starter", "pro", "ultra"].includes(planId) ||
+    !Object.values(PlanInterval).includes(interval as PlanInterval)
+  ) {
+    return null;
+  }
+
+  return {
+    planId: planId as SupportedPlanId,
+    interval: interval as PlanInterval,
+    priceId,
+    amount,
+  };
+}
+
+/**
+ * 清掉已生效的套餐变更字段。
+ */
+function clearPendingPlanChange(
+  metadata: Record<string, unknown> | null | undefined
+) {
+  if (!metadata?.pendingPlanChange) {
+    return metadata ?? null;
+  }
+
+  const next = { ...(metadata ?? {}) };
+  delete next.pendingPlanChange;
+  return next;
+}
+
+/**
+ * 依据账单周期推导当前协议账期。
+ */
+function deriveBillingInterval(
+  contract: SubscriptionContract,
+  billing: SubscriptionBilling
+) {
+  const pendingPlanChange = readPendingPlanChange(contract.metadata);
+  if (pendingPlanChange && pendingPlanChange.planId === billing.planId) {
+    return pendingPlanChange.interval;
+  }
+  return contract.billingInterval;
 }

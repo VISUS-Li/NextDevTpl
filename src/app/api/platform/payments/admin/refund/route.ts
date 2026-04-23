@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { refundCreditPurchasePayment } from "@/features/payment/refund-service";
+import { refundAdminPayment } from "@/features/payment/refund-service";
 import { withApiLogging } from "@/lib/api-logger";
 import { auth } from "@/lib/auth";
 
@@ -43,7 +43,7 @@ export const POST = withApiLogging(async (request: Request) => {
   }
 
   try {
-    const result = await refundCreditPurchasePayment({
+    const result = await refundAdminPayment({
       ...payload.data,
       operatorUserId: session.user.id,
     });
