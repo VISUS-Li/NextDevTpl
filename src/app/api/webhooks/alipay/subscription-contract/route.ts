@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseAlipayRecurringContractNotification } from "@/features/payment/recurring-provider-notify";
 import { activateSubscriptionContract } from "@/features/payment/subscription-recurring";
 import { withApiLogging } from "@/lib/api-logger";
 import { logError } from "@/lib/logger";
@@ -9,15 +10,9 @@ import { logError } from "@/lib/logger";
  */
 export const POST = withApiLogging(async (request: Request) => {
   try {
-    const contentType = request.headers.get("content-type") ?? "";
-    const payload = contentType.includes("application/json")
-      ? ((await request.json()) as Record<string, string>)
-      : (Object.fromEntries((await request.formData()).entries()) as Record<
-          string,
-          string
-        >);
+    const payload = await parseAlipayRecurringContractNotification(request);
 
-    if (!payload.out_agreement_no || payload.status !== "ACTIVE") {
+    if (payload.status !== "active") {
       return NextResponse.json(
         { success: false, error: "签约状态未激活" },
         { status: 400 }
@@ -25,11 +20,11 @@ export const POST = withApiLogging(async (request: Request) => {
     }
 
     const contract = await activateSubscriptionContract({
-      contractId: payload.out_agreement_no,
-      providerContractId:
-        payload.agreement_no ?? `alipay_contract_${payload.out_agreement_no}`,
-      providerExternalUserId: payload.external_logon_id ?? null,
-      rawResponse: payload,
+      contractId: payload.contractId,
+      providerContractId: payload.providerContractId,
+      providerExternalUserId: payload.providerExternalUserId,
+      rawResponse: payload.rawResponse,
+      ...(payload.nextBillingAt ? { nextBillingAt: payload.nextBillingAt } : {}),
     });
 
     return NextResponse.json({ success: true, contract });

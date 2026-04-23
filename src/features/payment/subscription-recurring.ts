@@ -20,6 +20,10 @@ import {
 } from "@/db/schema";
 import { grantCredits } from "@/features/credits/core";
 import { settleCommissionForSalesOrder } from "@/features/distribution/commission";
+import {
+  cancelRecurringProviderContract,
+  createRecurringProviderSigningUrl,
+} from "@/features/payment/recurring-provider-service";
 import { PlanInterval } from "@/features/payment/types";
 
 type SupportedRecurringProvider = Extract<
@@ -120,10 +124,10 @@ export async function createSubscriptionContractIntent(
     throw new Error("创建连续扣费签约失败");
   }
 
-  const signingUrl =
-    params.provider === "wechat_pay"
-      ? createWechatContractSigningUrl(created, params.baseUrl)
-      : createAlipayContractSigningUrl(created, params.baseUrl);
+  const signingUrl = await createRecurringProviderSigningUrl({
+    contract: created,
+    baseUrl: params.baseUrl,
+  });
 
   const [updated] = await db
     .update(subscriptionContract)
@@ -409,140 +413,6 @@ export async function settleSubscriptionBillingPaid(
   };
 }
 
-/**
- * 统一执行渠道侧解约。
- */
-async function cancelRecurringProviderContract(contract: SubscriptionContract) {
-  if (process.env.PAYMENT_MOCK_MODE === "true") {
-    return;
-  }
-  if (!contract.providerContractId) {
-    throw new Error("缺少渠道协议号，无法解约");
-  }
-
-  if (contract.provider === "alipay") {
-    await cancelAlipayRecurringContract(contract);
-    return;
-  }
-
-  throw new Error("当前版本仅支持支付宝代扣解约接口");
-}
-
-function createWechatContractSigningUrl(
-  contract: SubscriptionContract,
-  baseUrl: string
-) {
-  if (process.env.PAYMENT_MOCK_MODE === "true") {
-    return `${baseUrl}/dashboard/credits/buy/checkout?wechatContract=${contract.id}`;
-  }
-
-  const custom = process.env.WECHAT_PAY_PAPAY_SIGN_URL?.trim();
-  if (custom) {
-    const url = new URL(custom);
-    url.searchParams.set("contractId", contract.id);
-    url.searchParams.set("planId", contract.planId);
-    url.searchParams.set("interval", contract.billingInterval);
-    return url.toString();
-  }
-
-  throw new Error("缺少微信连续扣费签约地址配置: WECHAT_PAY_PAPAY_SIGN_URL");
-}
-
-function createAlipayContractSigningUrl(
-  contract: SubscriptionContract,
-  baseUrl: string
-) {
-  if (process.env.PAYMENT_MOCK_MODE === "true") {
-    return `${baseUrl}/dashboard/credits/buy/checkout?alipayContract=${contract.id}`;
-  }
-
-  const gateway = (
-    process.env.ALIPAY_GATEWAY_URL?.trim() ||
-    "https://openapi.alipay.com/gateway.do"
-  ).replace(/\/+$/, "");
-  const appId = requiredEnv("ALIPAY_APP_ID");
-  const privateKey = normalizePem(requiredEnv("ALIPAY_PRIVATE_KEY"));
-  const returnUrl =
-    process.env.ALIPAY_RETURN_URL?.trim() ||
-    `${baseUrl}/dashboard/credits/buy/checkout?contractId=${contract.id}`;
-  const notifyUrl =
-    process.env.ALIPAY_AGREEMENT_NOTIFY_URL?.trim() ||
-    `${baseUrl}/api/webhooks/alipay/subscription-contract`;
-  const requestParams = {
-    app_id: appId,
-    method: "alipay.user.agreement.page.sign",
-    format: "JSON",
-    charset: "utf-8",
-    sign_type: "RSA2",
-    timestamp: formatAlipayTimestamp(new Date()),
-    version: "1.0",
-    notify_url: notifyUrl,
-    return_url: returnUrl,
-    biz_content: JSON.stringify({
-      out_agreement_no: contract.id,
-      sign_scene: "INDUSTRY|CATALOG|SMALLAPP",
-      personal_product_code: "CYCLE_PAY_AUTH_P",
-      access_params: {
-        channel: "WEB",
-      },
-    }),
-  };
-  const sign = signAlipayRequest(requestParams, privateKey);
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(requestParams)) {
-    query.set(key, value);
-  }
-  query.set("sign", sign);
-  return `${gateway}?${query.toString()}`;
-}
-
-async function cancelAlipayRecurringContract(contract: SubscriptionContract) {
-  const gateway = (
-    process.env.ALIPAY_GATEWAY_URL?.trim() ||
-    "https://openapi.alipay.com/gateway.do"
-  ).replace(/\/+$/, "");
-  const appId = requiredEnv("ALIPAY_APP_ID");
-  const privateKey = normalizePem(requiredEnv("ALIPAY_PRIVATE_KEY"));
-  const requestParams = {
-    app_id: appId,
-    method: "alipay.user.agreement.unsign",
-    format: "JSON",
-    charset: "utf-8",
-    sign_type: "RSA2",
-    timestamp: formatAlipayTimestamp(new Date()),
-    version: "1.0",
-    biz_content: JSON.stringify({
-      personal_product_code: "CYCLE_PAY_AUTH_P",
-      agreement_no: contract.providerContractId,
-      remark: "tripai user cancel",
-    }),
-  };
-  const form = new URLSearchParams();
-  for (const [key, value] of Object.entries(requestParams)) {
-    form.set(key, value);
-  }
-  form.set("sign", signAlipayRequest(requestParams, privateKey));
-
-  const response = await fetch(gateway, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
-    },
-    body: form.toString(),
-  });
-  const text = await response.text();
-  const payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  const result = payload.alipay_user_agreement_unsign_response as
-    | Record<string, string>
-    | undefined;
-
-  if (!response.ok || result?.code !== "10000") {
-    throw new Error(
-      `支付宝代扣解约失败: ${result?.sub_msg ?? result?.msg ?? response.statusText}`
-    );
-  }
-}
-
 async function assertNoActiveAutoRenewContract(userId: string) {
   const [existingContract] = await db
     .select({ id: subscriptionContract.id })
@@ -806,38 +676,4 @@ function toContractSummary(
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   };
-}
-
-function requiredEnv(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`缺少支付配置: ${name}`);
-  }
-  return value;
-}
-
-function normalizePem(value: string) {
-  return value.includes("\\n") ? value.replace(/\\n/g, "\n") : value;
-}
-
-function signAlipayRequest(params: Record<string, string>, privateKey: string) {
-  const content = Object.entries(params)
-    .filter(([, value]) => value !== "")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-
-  return crypto
-    .createSign("RSA-SHA256")
-    .update(content, "utf8")
-    .sign(privateKey, "base64");
-}
-
-function formatAlipayTimestamp(value: Date) {
-  const pad = (input: number) => String(input).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(
-    value.getDate()
-  )} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(
-    value.getSeconds()
-  )}`;
 }
