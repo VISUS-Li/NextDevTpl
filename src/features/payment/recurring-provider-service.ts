@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import type { SubscriptionContract } from "@/db/schema";
+import type { SubscriptionBilling, SubscriptionContract } from "@/db/schema";
 
 type RecurringProviderContract = Pick<
   SubscriptionContract,
@@ -17,6 +17,18 @@ export type RecurringProviderContractQueryResult = {
   providerContractId: string | null;
   status: "pending_sign" | "active" | "terminated" | "paused" | "failed";
   nextBillingAt: Date | null;
+  rawResponse: Record<string, unknown> | null;
+};
+
+type RecurringProviderBilling = Pick<
+  SubscriptionBilling,
+  "id" | "outTradeNo" | "amount" | "currency" | "periodEnd"
+>;
+
+export type RecurringProviderBillingDispatchResult = {
+  providerOrderId: string | null;
+  providerPaymentId: string | null;
+  status: "processing" | "scheduled";
   rawResponse: Record<string, unknown> | null;
 };
 
@@ -78,6 +90,33 @@ export async function cancelRecurringProviderContract(
   }
 
   await cancelWechatRecurringContract(contract);
+}
+
+/**
+ * 发起渠道侧连续扣费。
+ */
+export async function dispatchRecurringProviderBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+  baseUrl: string;
+}) {
+  if (process.env.PAYMENT_MOCK_MODE === "true") {
+    return {
+      providerOrderId: params.billing.outTradeNo,
+      providerPaymentId: null,
+      status: "processing",
+      rawResponse: {
+        mock: true,
+        provider: params.contract.provider,
+      },
+    } satisfies RecurringProviderBillingDispatchResult;
+  }
+
+  if (params.contract.provider === "alipay") {
+    return await dispatchAlipayRecurringBilling(params);
+  }
+
+  return await dispatchWechatRecurringBilling(params);
 }
 
 /**
@@ -193,6 +232,62 @@ async function cancelWechatRecurringContract(contract: RecurringProviderContract
 }
 
 /**
+ * 微信连续扣费发单。
+ */
+async function dispatchWechatRecurringBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+  baseUrl: string;
+}) {
+  if (!params.contract.providerContractId) {
+    throw new Error("缺少微信渠道协议号，无法发起扣款");
+  }
+
+  const scheduleResponse = await callWechatPayV3({
+    method: "POST",
+    path: `/v3/papay/pay/schedules/contract-id/${encodeURIComponent(
+      params.contract.providerContractId
+    )}/schedule`,
+    body: JSON.stringify({
+      appid: requiredEnv("WECHAT_PAY_APP_ID"),
+      schedule_amount: {
+        total: params.billing.amount,
+        currency: params.billing.currency,
+      },
+    }),
+  });
+
+  const billingResponse = await callWechatPayV3({
+    method: "POST",
+    path: "/v3/papay/pay/transactions/apply",
+    body: JSON.stringify({
+      appid: requiredEnv("WECHAT_PAY_APP_ID"),
+      out_trade_no: params.billing.outTradeNo,
+      description: `tripai ${params.contract.planId} 自动续费`,
+      transaction_notify_url:
+        process.env.WECHAT_PAY_SUBSCRIPTION_BILLING_NOTIFY_URL?.trim() ||
+        `${params.baseUrl}/api/webhooks/wechat-pay/subscription-billing`,
+      contract_id: params.contract.providerContractId,
+      amount: {
+        total: params.billing.amount,
+        currency: params.billing.currency,
+      },
+      attach: params.billing.id,
+    }),
+  });
+
+  return {
+    providerOrderId: params.billing.outTradeNo,
+    providerPaymentId: null,
+    status: "processing",
+    rawResponse: {
+      schedule: scheduleResponse,
+      apply: billingResponse,
+    },
+  } satisfies RecurringProviderBillingDispatchResult;
+}
+
+/**
  * 支付宝查约。
  */
 async function queryAlipayRecurringContract(
@@ -239,6 +334,44 @@ async function cancelAlipayRecurringContract(contract: RecurringProviderContract
       `支付宝代扣解约失败: ${result?.sub_msg ?? result?.msg ?? "empty response"}`
     );
   }
+}
+
+/**
+ * 支付宝连续扣费发单。
+ *
+ * 支付宝周期代扣由协议执行计划驱动，这里只负责推进下一次执行时间。
+ */
+async function dispatchAlipayRecurringBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+}) {
+  if (!params.contract.providerContractId) {
+    throw new Error("缺少支付宝渠道协议号，无法发起扣款");
+  }
+
+  const payload = await callAlipayApi(
+    "alipay.user.agreement.executionplan.modify",
+    {
+      agreement_no: params.contract.providerContractId,
+      deduct_time: formatAlipayTimestamp(params.billing.periodEnd),
+    }
+  );
+  const result = payload.alipay_user_agreement_executionplan_modify_response as
+    | Record<string, string>
+    | undefined;
+
+  if (!result || result.code !== "10000") {
+    throw new Error(
+      `支付宝执行计划修改失败: ${result?.sub_msg ?? result?.msg ?? "empty response"}`
+    );
+  }
+
+  return {
+    providerOrderId: params.billing.outTradeNo,
+    providerPaymentId: null,
+    status: "scheduled",
+    rawResponse: payload,
+  } satisfies RecurringProviderBillingDispatchResult;
 }
 
 /**
@@ -437,7 +570,7 @@ function requiredEnv(name: string) {
 }
 
 function readString(
-  source: Record<string, unknown> | undefined,
+  source: Record<string, unknown> | null | undefined,
   key?: string
 ): string | null {
   if (!source) {

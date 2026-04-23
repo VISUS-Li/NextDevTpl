@@ -181,6 +181,30 @@
 - `pnpm exec tsc --noEmit --pretty false`
 - `pnpm test:run src/test/payment/subscription-provider-phase8.test.ts --reporter=dot`
 
+### 阶段 9 已完成
+
+- 已把连续扣费账单生成从“只写本地账单”推进到“本地账单 + 渠道发单”：
+  - `src/features/payment/subscription-recurring.ts`
+  - `src/features/payment/recurring-provider-service.ts`
+- 已新增连续扣费定时任务入口：
+  - `src/app/api/jobs/payment/subscription-recurring/route.ts`
+- 当前手工 `/bill` 与定时任务已共用 `triggerSubscriptionBilling()`
+- 已补上同一账期幂等判断，避免重复生成和重复发单
+- 发单成功后会回写：
+  - `providerOrderId`
+  - `providerPaymentId`
+  - `metadata.providerDispatch`
+- 发单失败时会把账单标记为 `failed` 并记录失败原因
+- 已补齐阶段 9 测试，覆盖：
+  - 手工触发账单时回写渠道发单结果
+  - 定时任务扫描到期协议并生成账单
+
+### 阶段 9 验证
+
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/subscription-recurring-phase9.test.ts --reporter=dot`
+- `pnpm test:run src/test/payment/subscription-wechat-phase6.test.ts src/test/payment/subscription-alipay-phase7.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -1554,6 +1578,11 @@ Schema 在：
 - `/bill` 不再只写本地账单
 - 定时任务和手工补扣共用同一条发单逻辑
 - 同一账期不会重复生成和重复发单
+
+当前进度：
+
+- 已完成
+- 剩余未补的是“查单补偿、失败停约、后台排障视图”，放到阶段 10 继续处理
 
 #### 阶段 10：补查约、失败补偿和后台排障
 

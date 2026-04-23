@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 
 import {
+  getBaseUrl,
   getPlanPriceById,
   SUBSCRIPTION_MONTHLY_CREDITS,
 } from "@/config/payment";
@@ -23,6 +24,7 @@ import { settleCommissionForSalesOrder } from "@/features/distribution/commissio
 import {
   cancelRecurringProviderContract,
   createRecurringProviderSigningUrl,
+  dispatchRecurringProviderBilling,
 } from "@/features/payment/recurring-provider-service";
 import { PlanInterval } from "@/features/payment/types";
 
@@ -285,6 +287,25 @@ export async function triggerSubscriptionBilling(
 
   const periodStart =
     latestBilling?.periodEnd ?? contract.nextBillingAt ?? new Date();
+  const [existingCurrentBilling] = await db
+    .select()
+    .from(subscriptionBilling)
+    .where(
+      and(
+        eq(subscriptionBilling.contractId, contract.id),
+        eq(subscriptionBilling.periodStart, periodStart)
+      )
+    )
+    .orderBy(desc(subscriptionBilling.createdAt))
+    .limit(1);
+
+  if (
+    existingCurrentBilling &&
+    ["scheduled", "processing", "paid"].includes(existingCurrentBilling.status)
+  ) {
+    return existingCurrentBilling;
+  }
+
   const periodEnd = addIntervalDate(
     periodStart,
     contract.billingInterval as PlanInterval
@@ -327,7 +348,81 @@ export async function triggerSubscriptionBilling(
     throw new Error("创建连续扣费账单失败");
   }
 
-  return created;
+  const baseUrl = readStringMetadata(contract.metadata, "baseUrl") || getBaseUrl();
+
+  try {
+    const dispatch = await dispatchRecurringProviderBilling({
+      contract,
+      billing: created,
+      baseUrl,
+    });
+    const [updated] = await db
+      .update(subscriptionBilling)
+      .set({
+        providerOrderId: dispatch.providerOrderId,
+        providerPaymentId: dispatch.providerPaymentId,
+        status: dispatch.status,
+        metadata: {
+          providerContractId: contract.providerContractId,
+          providerDispatch: dispatch.rawResponse,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionBilling.id, created.id))
+      .returning();
+
+    if (!updated) {
+      throw new Error("回写连续扣费发单结果失败");
+    }
+    return updated;
+  } catch (error) {
+    await db
+      .update(subscriptionBilling)
+      .set({
+        status: "failed",
+        failedAt: new Date(),
+        failureReason: error instanceof Error ? error.message : "dispatch failed",
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionBilling.id, created.id));
+    throw error;
+  }
+}
+
+/**
+ * 处理到期连续扣费账单。
+ */
+export async function processDueSubscriptionBillings(params?: {
+  limit?: number;
+  now?: Date;
+}) {
+  const now = params?.now ?? new Date();
+  const limit = params?.limit ?? 20;
+  const contracts = await db
+    .select({ id: subscriptionContract.id })
+    .from(subscriptionContract)
+    .where(
+      and(
+        eq(subscriptionContract.status, "active"),
+        lte(subscriptionContract.nextBillingAt, now)
+      )
+    )
+    .orderBy(asc(subscriptionContract.nextBillingAt))
+    .limit(limit);
+
+  const results = [];
+  for (const contract of contracts) {
+    const billing = await triggerSubscriptionBilling({
+      contractId: contract.id,
+    });
+    results.push({
+      contractId: contract.id,
+      billingId: billing.id,
+      status: billing.status,
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -676,4 +771,15 @@ function toContractSummary(
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   };
+}
+
+/**
+ * 读取签约元数据中的字符串字段。
+ */
+function readStringMetadata(
+  value: Record<string, unknown> | null | undefined,
+  key: string
+) {
+  const field = value?.[key];
+  return typeof field === "string" && field ? field : null;
 }
