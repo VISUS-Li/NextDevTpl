@@ -41,6 +41,9 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("人工退款");
   const [refundLoading, setRefundLoading] = useState(false);
+  const [syncContractLoading, setSyncContractLoading] = useState(false);
+  const [syncBillingLoading, setSyncBillingLoading] = useState(false);
+  const [retryBillingLoading, setRetryBillingLoading] = useState(false);
   const [filters, setFilters] = useState({
     query: data.list.filters.query,
     provider: data.list.filters.provider,
@@ -127,6 +130,84 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
     }
 
     toast.success("退款已提交");
+    router.refresh();
+  };
+
+  /**
+   * 管理员同步协议状态。
+   */
+  const syncRecurringContract = async () => {
+    if (!detail?.recurringContract) {
+      return;
+    }
+    setSyncContractLoading(true);
+    const response = await fetch(
+      `/api/platform/payments/admin/subscriptions/contracts/${detail.recurringContract.id}/sync`,
+      {
+        method: "POST",
+      }
+    );
+    const payload = await response.json();
+    setSyncContractLoading(false);
+
+    if (!response.ok || !payload.success) {
+      toast.error(payload.message ?? "同步协议失败");
+      return;
+    }
+
+    toast.success("协议状态已同步");
+    router.refresh();
+  };
+
+  /**
+   * 管理员同步账单状态。
+   */
+  const syncRecurringBilling = async () => {
+    if (!detail?.recurringBilling) {
+      return;
+    }
+    setSyncBillingLoading(true);
+    const response = await fetch(
+      `/api/platform/payments/admin/subscriptions/billings/${detail.recurringBilling.id}/sync`,
+      {
+        method: "POST",
+      }
+    );
+    const payload = await response.json();
+    setSyncBillingLoading(false);
+
+    if (!response.ok || !payload.success) {
+      toast.error(payload.message ?? "同步账单失败");
+      return;
+    }
+
+    toast.success("账单状态已同步");
+    router.refresh();
+  };
+
+  /**
+   * 管理员手工补扣失败账单。
+   */
+  const retryRecurringBilling = async () => {
+    if (!detail?.recurringBilling) {
+      return;
+    }
+    setRetryBillingLoading(true);
+    const response = await fetch(
+      `/api/platform/payments/admin/subscriptions/billings/${detail.recurringBilling.id}/retry`,
+      {
+        method: "POST",
+      }
+    );
+    const payload = await response.json();
+    setRetryBillingLoading(false);
+
+    if (!response.ok || !payload.success) {
+      toast.error(payload.message ?? "手工补扣失败");
+      return;
+    }
+
+    toast.success("补扣已发起");
     router.refresh();
   };
 
@@ -435,6 +516,72 @@ export function AdminPaymentView({ data }: AdminPaymentViewProps) {
                     )}
                   </div>
                 </div>
+                {detail.recurringContract ? (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium">连续扣费协议</div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={syncRecurringContract}
+                        loading={syncContractLoading}
+                        loadingText="同步中..."
+                      >
+                        同步协议
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 text-xs text-muted-foreground">
+                      <div>协议号：{detail.recurringContract.id}</div>
+                      <div>渠道协议号：{detail.recurringContract.providerContractId || "-"}</div>
+                      <div>状态：{detail.recurringContract.status}</div>
+                      <div>下次扣费：{detail.recurringContract.nextBillingAt ? formatDateTime(detail.recurringContract.nextBillingAt) : "-"}</div>
+                    </div>
+                    <pre className="overflow-x-auto rounded-md bg-muted p-3 text-[11px] leading-5">
+                      {JSON.stringify(detail.recurringContract.metadata ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
+                {detail.recurringBilling ? (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="font-medium">连续扣费账单</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={syncRecurringBilling}
+                          loading={syncBillingLoading}
+                          loadingText="同步中..."
+                        >
+                          同步账单
+                        </Button>
+                        {detail.recurringBilling.status === "failed" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={retryRecurringBilling}
+                            loading={retryBillingLoading}
+                            loadingText="补扣中..."
+                          >
+                            手工补扣
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="grid gap-2 text-xs text-muted-foreground">
+                      <div>账单号：{detail.recurringBilling.id}</div>
+                      <div>商户单号：{detail.recurringBilling.outTradeNo}</div>
+                      <div>渠道流水：{detail.recurringBilling.providerPaymentId || "-"}</div>
+                      <div>状态：{detail.recurringBilling.status}</div>
+                      <div>失败原因：{detail.recurringBilling.failureReason || "-"}</div>
+                    </div>
+                    <pre className="overflow-x-auto rounded-md bg-muted p-3 text-[11px] leading-5">
+                      {JSON.stringify(detail.recurringBilling.metadata ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
                 {detail.order.orderType === "credit_purchase" &&
                 detail.items[0] ? (
                   <div className="space-y-3 rounded-md border p-3">

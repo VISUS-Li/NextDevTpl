@@ -25,6 +25,8 @@ import {
   cancelRecurringProviderContract,
   createRecurringProviderSigningUrl,
   dispatchRecurringProviderBilling,
+  queryRecurringProviderBilling,
+  queryRecurringProviderContract,
 } from "@/features/payment/recurring-provider-service";
 import { PlanInterval } from "@/features/payment/types";
 
@@ -426,6 +428,233 @@ export async function processDueSubscriptionBillings(params?: {
 }
 
 /**
+ * 同步渠道侧签约状态到本地。
+ */
+export async function syncSubscriptionContractStatus(contractId: string) {
+  const [contract] = await db
+    .select()
+    .from(subscriptionContract)
+    .where(eq(subscriptionContract.id, contractId))
+    .limit(1);
+
+  if (!contract) {
+    throw new Error("连续扣费签约不存在");
+  }
+
+  const providerState = await queryRecurringProviderContract(contract);
+  const [updated] = await db
+    .update(subscriptionContract)
+    .set({
+      providerContractId: providerState.providerContractId,
+      status: providerState.status,
+      nextBillingAt: providerState.nextBillingAt ?? contract.nextBillingAt,
+      metadata: mergeMetadata(contract.metadata, {
+        providerQuery: providerState.rawResponse,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionContract.id, contract.id))
+    .returning();
+
+  if (!updated) {
+    throw new Error("更新连续扣费签约失败");
+  }
+
+  return toContractSummary(updated);
+}
+
+/**
+ * 同步渠道侧账单状态到本地。
+ */
+export async function syncSubscriptionBillingStatus(billingId: string) {
+  const [billing] = await db
+    .select()
+    .from(subscriptionBilling)
+    .where(eq(subscriptionBilling.id, billingId))
+    .limit(1);
+
+  if (!billing) {
+    throw new Error("连续扣费账单不存在");
+  }
+
+  const [contract] = await db
+    .select()
+    .from(subscriptionContract)
+    .where(eq(subscriptionContract.id, billing.contractId))
+    .limit(1);
+  if (!contract) {
+    throw new Error("连续扣费签约不存在");
+  }
+
+  const providerState = await queryRecurringProviderBilling({
+    contract,
+    billing,
+  });
+
+  if (providerState.status === "paid") {
+    const result = await settleSubscriptionBillingPaid({
+      outTradeNo: billing.outTradeNo,
+      providerPaymentId: providerState.providerPaymentId,
+      paidAt: providerState.paidAt ?? new Date(),
+      eventType: `${billing.provider}.subscription.billing.sync_paid`,
+      eventIdempotencyKey: `${billing.provider}:subscription.billing.sync:${billing.outTradeNo}:paid`,
+      rawResponse: providerState.rawResponse,
+    });
+    return result.billing;
+  }
+
+  if (providerState.status === "failed") {
+    return markSubscriptionBillingFailed({
+      billingId: billing.id,
+      providerPaymentId: providerState.providerPaymentId,
+      failureReason: providerState.failureReason ?? "provider failed",
+      rawResponse: providerState.rawResponse,
+    });
+  }
+
+  const [updated] = await db
+    .update(subscriptionBilling)
+    .set({
+      providerPaymentId: providerState.providerPaymentId,
+      metadata: mergeMetadata(billing.metadata, {
+        providerQuery: providerState.rawResponse,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionBilling.id, billing.id))
+    .returning();
+
+  if (!updated) {
+    throw new Error("更新连续扣费账单失败");
+  }
+
+  return updated;
+}
+
+/**
+ * 回写连续扣费失败结果。
+ */
+export async function markSubscriptionBillingFailed(params: {
+  billingId?: string;
+  outTradeNo?: string;
+  providerPaymentId?: string | null;
+  failureReason: string;
+  rawResponse?: Record<string, unknown> | null;
+}) {
+  const [billing] = params.billingId
+    ? await db
+        .select()
+        .from(subscriptionBilling)
+        .where(eq(subscriptionBilling.id, params.billingId))
+        .limit(1)
+    : await db
+        .select()
+        .from(subscriptionBilling)
+        .where(eq(subscriptionBilling.outTradeNo, params.outTradeNo ?? ""))
+        .limit(1);
+
+  if (!billing) {
+    throw new Error("连续扣费账单不存在");
+  }
+  if (billing.status === "paid") {
+    return billing;
+  }
+
+  const [updated] = await db
+    .update(subscriptionBilling)
+    .set({
+      providerPaymentId: params.providerPaymentId ?? billing.providerPaymentId,
+      status: "failed",
+      failedAt: new Date(),
+      failureReason: params.failureReason,
+      metadata: mergeMetadata(billing.metadata, {
+        providerFailure: params.rawResponse ?? null,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionBilling.id, billing.id))
+    .returning();
+
+  if (!updated) {
+    throw new Error("回写连续扣费失败状态失败");
+  }
+
+  await pauseContractAfterContinuousFailures(updated.contractId);
+  return updated;
+}
+
+/**
+ * 管理员手工补扣失败账单。
+ */
+export async function retrySubscriptionBilling(billingId: string) {
+  const [billing] = await db
+    .select()
+    .from(subscriptionBilling)
+    .where(eq(subscriptionBilling.id, billingId))
+    .limit(1);
+
+  if (!billing) {
+    throw new Error("连续扣费账单不存在");
+  }
+  if (billing.status !== "failed") {
+    throw new Error("当前账单不是失败状态，不能手工补扣");
+  }
+
+  const [contract] = await db
+    .select()
+    .from(subscriptionContract)
+    .where(eq(subscriptionContract.id, billing.contractId))
+    .limit(1);
+  if (!contract) {
+    throw new Error("连续扣费签约不存在");
+  }
+  if (!["active", "paused"].includes(contract.status)) {
+    throw new Error("当前签约状态不允许手工补扣");
+  }
+
+  const baseUrl = readStringMetadata(contract.metadata, "baseUrl") || getBaseUrl();
+  const dispatch = await dispatchRecurringProviderBilling({
+    contract,
+    billing,
+    baseUrl,
+  });
+  const nextStatus =
+    contract.status === "paused" && dispatch.status !== "scheduled"
+      ? "active"
+      : contract.status;
+
+  const [updatedBilling] = await db
+    .update(subscriptionBilling)
+    .set({
+      providerOrderId: dispatch.providerOrderId,
+      providerPaymentId: dispatch.providerPaymentId,
+      status: dispatch.status,
+      failedAt: null,
+      failureReason: null,
+      metadata: mergeMetadata(billing.metadata, {
+        providerRetryDispatch: dispatch.rawResponse,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionBilling.id, billing.id))
+    .returning();
+
+  if (!updatedBilling) {
+    throw new Error("回写手工补扣结果失败");
+  }
+
+  await db
+    .update(subscriptionContract)
+    .set({
+      status: nextStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionContract.id, contract.id));
+
+  return updatedBilling;
+}
+
+/**
  * 处理连续扣费成功回调。
  */
 export async function settleSubscriptionBillingPaid(
@@ -506,6 +735,33 @@ export async function settleSubscriptionBillingPaid(
     }),
     billing: paidBilling,
   };
+}
+
+async function pauseContractAfterContinuousFailures(contractId: string) {
+  const recentBillings = await db
+    .select({
+      id: subscriptionBilling.id,
+      status: subscriptionBilling.status,
+    })
+    .from(subscriptionBilling)
+    .where(eq(subscriptionBilling.contractId, contractId))
+    .orderBy(desc(subscriptionBilling.billingSequence))
+    .limit(3);
+
+  if (
+    recentBillings.length < 3 ||
+    recentBillings.some((item) => item.status !== "failed")
+  ) {
+    return;
+  }
+
+  await db
+    .update(subscriptionContract)
+    .set({
+      status: "paused",
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionContract.id, contractId));
 }
 
 async function assertNoActiveAutoRenewContract(userId: string) {
@@ -782,4 +1038,17 @@ function readStringMetadata(
 ) {
   const field = value?.[key];
   return typeof field === "string" && field ? field : null;
+}
+
+/**
+ * 合并 JSON 元数据，避免覆盖已有字段。
+ */
+function mergeMetadata(
+  current: Record<string, unknown> | null | undefined,
+  extra: Record<string, unknown>
+) {
+  return {
+    ...(current ?? {}),
+    ...extra,
+  };
 }

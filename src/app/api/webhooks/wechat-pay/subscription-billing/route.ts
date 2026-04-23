@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { parseWechatRecurringBillingNotification } from "@/features/payment/recurring-provider-notify";
-import { settleSubscriptionBillingPaid } from "@/features/payment/subscription-recurring";
+import {
+  markSubscriptionBillingFailed,
+  settleSubscriptionBillingPaid,
+} from "@/features/payment/subscription-recurring";
 import { withApiLogging } from "@/lib/api-logger";
 import { logError } from "@/lib/logger";
 
@@ -13,10 +16,13 @@ export const POST = withApiLogging(async (request: Request) => {
     const payload = await parseWechatRecurringBillingNotification(request);
 
     if (payload.status !== "paid") {
-      return NextResponse.json(
-        { success: false, error: "账单状态未成功" },
-        { status: 400 }
-      );
+      const result = await markSubscriptionBillingFailed({
+        outTradeNo: payload.outTradeNo,
+        providerPaymentId: payload.providerPaymentId,
+        failureReason: payload.failureReason ?? "wechat billing failed",
+        rawResponse: payload.rawResponse,
+      });
+      return NextResponse.json({ success: true, result });
     }
 
     const result = await settleSubscriptionBillingPaid({

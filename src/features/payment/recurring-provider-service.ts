@@ -22,13 +22,28 @@ export type RecurringProviderContractQueryResult = {
 
 type RecurringProviderBilling = Pick<
   SubscriptionBilling,
-  "id" | "outTradeNo" | "amount" | "currency" | "periodEnd"
+  | "id"
+  | "provider"
+  | "outTradeNo"
+  | "amount"
+  | "currency"
+  | "periodEnd"
+  | "providerPaymentId"
+  | "status"
 >;
 
 export type RecurringProviderBillingDispatchResult = {
   providerOrderId: string | null;
   providerPaymentId: string | null;
   status: "processing" | "scheduled";
+  rawResponse: Record<string, unknown> | null;
+};
+
+export type RecurringProviderBillingQueryResult = {
+  providerPaymentId: string | null;
+  status: "processing" | "paid" | "failed";
+  paidAt: Date | null;
+  failureReason: string | null;
   rawResponse: Record<string, unknown> | null;
 };
 
@@ -117,6 +132,42 @@ export async function dispatchRecurringProviderBilling(params: {
   }
 
   return await dispatchWechatRecurringBilling(params);
+}
+
+/**
+ * 查询渠道侧连续扣费账单状态。
+ */
+export async function queryRecurringProviderBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+}) {
+  if (process.env.PAYMENT_MOCK_MODE === "true") {
+    return {
+      providerPaymentId: params.billing.providerPaymentId ?? null,
+      status:
+        params.billing.status === "paid"
+          ? "paid"
+          : params.billing.status === "failed"
+            ? "failed"
+            : "processing",
+      paidAt: null,
+      failureReason:
+        params.billing.status === "failed"
+          ? "mock billing failed"
+          : null,
+      rawResponse: {
+        mock: true,
+        provider: params.contract.provider,
+        status: params.billing.status,
+      },
+    } satisfies RecurringProviderBillingQueryResult;
+  }
+
+  if (params.contract.provider === "alipay") {
+    return queryAlipayRecurringBilling(params);
+  }
+
+  return queryWechatRecurringBilling(params);
 }
 
 /**
@@ -375,6 +426,74 @@ async function dispatchAlipayRecurringBilling(params: {
 }
 
 /**
+ * 微信连续扣费查单。
+ */
+async function queryWechatRecurringBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+}) {
+  const payload = await callWechatPayV3({
+    method: "GET",
+    path:
+      `/v3/pay/transactions/out-trade-no/${encodeURIComponent(
+        params.billing.outTradeNo
+      )}?mchid=${encodeURIComponent(requiredEnv("WECHAT_PAY_MCH_ID"))}`,
+  });
+  const tradeState = readString(payload, "trade_state") ?? "USERPAYING";
+
+  return {
+    providerPaymentId:
+      readString(payload, "transaction_id") ??
+      params.billing.providerPaymentId ??
+      null,
+    status: mapWechatBillingStatus(tradeState),
+    paidAt: readDate(payload, "success_time"),
+    failureReason:
+      tradeState === "SUCCESS" || tradeState === "USERPAYING"
+        ? null
+        : tradeState,
+    rawResponse: payload,
+  } satisfies RecurringProviderBillingQueryResult;
+}
+
+/**
+ * 支付宝连续扣费查单。
+ */
+async function queryAlipayRecurringBilling(params: {
+  contract: RecurringProviderContract;
+  billing: RecurringProviderBilling;
+}) {
+  const payload = await callAlipayApi("alipay.trade.query", {
+    out_trade_no: params.billing.outTradeNo,
+    trade_no: params.billing.providerPaymentId ?? undefined,
+  });
+  const result = payload.alipay_trade_query_response as
+    | Record<string, string>
+    | undefined;
+
+  if (!result || result.code !== "10000") {
+    throw new Error(
+      `支付宝查单失败: ${result?.sub_msg ?? result?.msg ?? "empty response"}`
+    );
+  }
+
+  const tradeStatus = result.trade_status ?? "";
+  return {
+    providerPaymentId:
+      result.trade_no ?? params.billing.providerPaymentId ?? null,
+    status: mapAlipayBillingStatus(tradeStatus),
+    paidAt: result.send_pay_date ? new Date(result.send_pay_date) : null,
+    failureReason:
+      tradeStatus === "TRADE_SUCCESS" ||
+      tradeStatus === "TRADE_FINISHED" ||
+      tradeStatus === "WAIT_BUYER_PAY"
+        ? null
+        : tradeStatus || null,
+    rawResponse: payload,
+  } satisfies RecurringProviderBillingQueryResult;
+}
+
+/**
  * 调支付宝开放平台接口。
  */
 async function callAlipayApi(
@@ -510,6 +629,30 @@ function mapAlipayContractStatus(status: string | undefined) {
   }
 }
 
+function mapWechatBillingStatus(status: string) {
+  switch (status) {
+    case "SUCCESS":
+      return "paid";
+    case "USERPAYING":
+    case "NOTPAY":
+      return "processing";
+    default:
+      return "failed";
+  }
+}
+
+function mapAlipayBillingStatus(status: string) {
+  switch (status) {
+    case "TRADE_SUCCESS":
+    case "TRADE_FINISHED":
+      return "paid";
+    case "WAIT_BUYER_PAY":
+      return "processing";
+    default:
+      return "failed";
+  }
+}
+
 function readWechatEstimatedDate(payload: Record<string, unknown>) {
   const deductSchedule =
     payload.deduct_schedule as Record<string, unknown> | undefined;
@@ -525,6 +668,11 @@ function readAlipayNextBillingAt(payload: Record<string, string>) {
     payload.next_deduct_time ||
     payload.valid_time ||
     "";
+  return value ? new Date(value) : null;
+}
+
+function readDate(source: Record<string, unknown>, key: string) {
+  const value = readString(source, key);
   return value ? new Date(value) : null;
 }
 

@@ -8,6 +8,8 @@ import {
   salesOrder,
   salesOrderItem,
   subscription,
+  subscriptionBilling,
+  subscriptionContract,
   user,
 } from "@/db/schema";
 
@@ -66,6 +68,8 @@ export type AdminPaymentDetail = {
   paymentIntent: typeof paymentIntent.$inferSelect | null;
   afterSalesEvents: Array<typeof salesAfterSalesEvent.$inferSelect>;
   subscription: typeof subscription.$inferSelect | null;
+  recurringContract: typeof subscriptionContract.$inferSelect | null;
+  recurringBilling: typeof subscriptionBilling.$inferSelect | null;
 };
 
 /**
@@ -184,8 +188,17 @@ export async function getAdminPaymentDetail(orderId: string) {
     orderRow.metadata,
     "paymentIntentId"
   );
+  const recurringContractId = readStringMetadata(orderRow.metadata, "contractId");
+  const recurringBillingId = readStringMetadata(orderRow.metadata, "billingId");
   const providerSubscriptionId = orderRow.providerSubscriptionId;
-  const [items, afterSalesEvents, currentIntent, currentSubscription] =
+  const [
+    items,
+    afterSalesEvents,
+    currentIntent,
+    currentSubscription,
+    currentRecurringContract,
+    currentRecurringBilling,
+  ] =
     await Promise.all([
       db
         .select()
@@ -210,6 +223,22 @@ export async function getAdminPaymentDetail(orderId: string) {
             .select()
             .from(subscription)
             .where(eq(subscription.subscriptionId, providerSubscriptionId))
+            .limit(1)
+            .then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+      recurringContractId
+        ? db
+            .select()
+            .from(subscriptionContract)
+            .where(eq(subscriptionContract.id, recurringContractId))
+            .limit(1)
+            .then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+      recurringBillingId
+        ? db
+            .select()
+            .from(subscriptionBilling)
+            .where(eq(subscriptionBilling.id, recurringBillingId))
             .limit(1)
             .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
@@ -239,6 +268,8 @@ export async function getAdminPaymentDetail(orderId: string) {
     paymentIntent: currentIntent,
     afterSalesEvents,
     subscription: currentSubscription,
+    recurringContract: currentRecurringContract,
+    recurringBilling: currentRecurringBilling,
   } satisfies AdminPaymentDetail;
 }
 

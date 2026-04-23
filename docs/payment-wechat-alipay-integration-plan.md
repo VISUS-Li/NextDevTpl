@@ -205,6 +205,30 @@
 - `pnpm test:run src/test/payment/subscription-recurring-phase9.test.ts --reporter=dot`
 - `pnpm test:run src/test/payment/subscription-wechat-phase6.test.ts src/test/payment/subscription-alipay-phase7.test.ts --reporter=dot`
 
+### 阶段 10 已完成
+
+- 已补齐连续扣费查约、查单、失败补偿和管理员排障入口：
+  - `src/features/payment/recurring-provider-service.ts`
+  - `src/features/payment/subscription-recurring.ts`
+  - `src/features/payment/admin.ts`
+- 已新增管理员同步与手工补扣接口：
+  - `src/app/api/platform/payments/admin/subscriptions/contracts/[contractId]/sync/route.ts`
+  - `src/app/api/platform/payments/admin/subscriptions/billings/[billingId]/sync/route.ts`
+  - `src/app/api/platform/payments/admin/subscriptions/billings/[billingId]/retry/route.ts`
+- 已把微信、支付宝连续扣费失败回调接入本地失败状态回写，不再直接返回报错
+- 已补上“最近 3 期连续失败则暂停协议”的规则
+- 已把支付中心详情页补齐订阅协议、周期账单、失败原因和渠道原始响应查看入口
+- 已补齐阶段 10 测试，覆盖：
+  - 连续失败 3 次后暂停协议
+  - 管理员查看协议和账单排障详情
+  - 管理员同步协议、同步账单、手工补扣失败账单
+
+### 阶段 10 验证
+
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/subscription-admin-phase10.test.ts --reporter=dot`
+- `pnpm test:run src/test/payment/admin-payment-phase4.test.ts src/test/payment/subscription-wechat-phase6.test.ts src/test/payment/subscription-alipay-phase7.test.ts src/test/payment/subscription-recurring-phase9.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -1604,6 +1628,11 @@ Schema 在：
 - 回调丢失时可主动查单补记账
 - 协议异常时可主动查约判断当前状态
 - 扣款失败后平台状态不会继续显示正常续费中
+
+当前进度：
+
+- 已完成
+- 剩余的是订阅变更、退款策略和最终联调收口，放到阶段 11 继续处理
 
 #### 阶段 11：补订阅变更与售后策略
 
