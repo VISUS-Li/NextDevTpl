@@ -188,6 +188,11 @@ export const dashboardNav: NavGroup[] = [
         icon: Coins,
       },
       {
+        title: "自动续费",
+        href: "/dashboard/subscription/auto-renew",
+        icon: CreditCard,
+      },
+      {
         title: "Distribution",
         titleKey: "nav.distribution",
         href: "/dashboard/distribution",

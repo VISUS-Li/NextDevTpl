@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRequestBaseUrl } from "@/config/payment";
-import { createSubscriptionContractIntent } from "@/features/payment/subscription-recurring";
+import {
+  createSubscriptionContractIntent,
+  listUserSubscriptionContracts,
+} from "@/features/payment/subscription-recurring";
 import { PlanInterval } from "@/features/payment/types";
 import { auth } from "@/lib/auth";
 
@@ -39,4 +42,20 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ success: true, ...result });
+}
+
+/**
+ * 列出当前用户的连续扣费签约。
+ */
+export async function GET(request: Request) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session?.user) {
+    return NextResponse.json(
+      { success: false, error: "未登录" },
+      { status: 401 }
+    );
+  }
+
+  const contracts = await listUserSubscriptionContracts(session.user.id);
+  return NextResponse.json({ success: true, contracts });
 }

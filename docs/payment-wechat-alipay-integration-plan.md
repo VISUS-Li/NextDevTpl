@@ -130,6 +130,38 @@
 - `pnpm exec tsc --noEmit --pretty false`
 - `pnpm test:run src/test/payment/subscription-wechat-phase6.test.ts --reporter=dot`
 
+### 阶段 7 已完成
+
+- 已新增支付宝代扣订阅能力：
+  - `POST /api/webhooks/alipay/subscription-contract`
+  - `POST /api/webhooks/alipay/subscription-billing`
+- 已新增用户侧自动续费管理页：
+  - `/dashboard/subscription/auto-renew`
+- 已支持当前用户在站内完成：
+  - 创建微信连续扣费或支付宝代扣签约
+  - 查看已有签约
+  - 生成首期账单
+  - 支付宝签约激活与账单回调入账
+  - 主动解约
+- 已把支付宝代扣继续复用现有 `subscription_contract + subscription_billing + sales_order` 模型，没有额外再长一套业务表
+- 当前阶段在真实环境下：
+  - 支付宝签约页使用 `alipay.user.agreement.page.sign`
+  - 支付宝解约使用 `alipay.user.agreement.unsign`
+  - 微信签约和账单仍沿用阶段 6 的站内协议模型
+- 已补齐阶段 7 接口测试，覆盖：
+  - 支付宝创建签约
+  - 支付宝签约回调激活
+  - 首期账单生成
+  - 支付宝账单回调入账
+  - 查询签约详情
+  - 用户主动解约
+
+### 阶段 7 验证
+
+- `pnpm exec biome check src/features/payment/subscription-recurring.ts src/app/api/platform/payment/subscription/contracts/[contractId]/route.ts src/app/[locale]/(dashboard)/dashboard/subscription/auto-renew/page.tsx src/features/payment/components/auto-renew-contracts-view.tsx src/app/api/platform/payment/subscription/contracts/route.ts src/app/api/webhooks/alipay/subscription-contract/route.ts src/app/api/webhooks/alipay/subscription-billing/route.ts src/test/payment/subscription-alipay-phase7.test.ts src/config/nav.ts`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm test:run src/test/payment/subscription-alipay-phase7.test.ts --reporter=dot`
+
 ## 使用前配置
 
 ### 1. 开发或联调用模拟模式
@@ -184,12 +216,14 @@ ALIPAY_PUBLIC_KEY=
 - 管理员可在 `/admin/payments` 查看支付列表和单笔详情
 - 管理员可在 `/admin/payments` 对积分包订单发起退款
 - 已可通过连续扣费接口完成微信签约、账单生成与回调入账
+- 用户可在 `/dashboard/subscription/auto-renew` 管理微信连续扣费与支付宝代扣签约、首期账单和解约
 
 ### 5. 当前未纳入本轮范围
 
-- 支付宝代扣订阅
+- 微信连续扣费渠道侧真实扣款执行
+- 更复杂的订阅变更，比如升级、降级、下周期切换计划
 
-这些不影响当前“积分包购买”直接使用。
+这些不影响当前“积分包购买 + 自动续费签约管理”直接使用。
 
 ## 一、`go-pay/gopay` 的核心逻辑
 

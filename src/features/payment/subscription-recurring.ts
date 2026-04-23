@@ -45,6 +45,11 @@ type ActivateRecurringContractParams = {
   nextBillingAt?: Date;
 };
 
+type CancelRecurringContractParams = {
+  contractId: string;
+  userId: string;
+};
+
 type TriggerRecurringBillingParams = {
   contractId: string;
 };
@@ -156,6 +161,70 @@ export async function getUserSubscriptionContract(
     )
     .limit(1);
   return current ? toContractSummary(current) : null;
+}
+
+/**
+ * 列出用户自己的连续扣费签约。
+ */
+export async function listUserSubscriptionContracts(userId: string) {
+  const rows = await db
+    .select()
+    .from(subscriptionContract)
+    .where(eq(subscriptionContract.userId, userId))
+    .orderBy(desc(subscriptionContract.createdAt));
+
+  return rows.map((item) => toContractSummary(item));
+}
+
+/**
+ * 取消当前用户自己的连续扣费签约。
+ */
+export async function cancelUserSubscriptionContract(
+  params: CancelRecurringContractParams
+) {
+  const [contract] = await db
+    .select()
+    .from(subscriptionContract)
+    .where(
+      and(
+        eq(subscriptionContract.id, params.contractId),
+        eq(subscriptionContract.userId, params.userId)
+      )
+    )
+    .limit(1);
+
+  if (!contract) {
+    throw new Error("连续扣费签约不存在");
+  }
+  if (!["pending_sign", "active", "paused"].includes(contract.status)) {
+    throw new Error("当前签约状态不允许解约");
+  }
+
+  await cancelRecurringProviderContract(contract);
+  const [updated] = await db
+    .update(subscriptionContract)
+    .set({
+      status: "terminated",
+      terminatedAt: new Date(),
+      nextBillingAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptionContract.id, contract.id))
+    .returning();
+
+  if (!updated) {
+    throw new Error("更新连续扣费签约失败");
+  }
+
+  await db
+    .update(subscription)
+    .set({
+      cancelAtPeriodEnd: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscription.userId, contract.userId));
+
+  return toContractSummary(updated);
 }
 
 /**
@@ -340,6 +409,25 @@ export async function settleSubscriptionBillingPaid(
   };
 }
 
+/**
+ * 统一执行渠道侧解约。
+ */
+async function cancelRecurringProviderContract(contract: SubscriptionContract) {
+  if (process.env.PAYMENT_MOCK_MODE === "true") {
+    return;
+  }
+  if (!contract.providerContractId) {
+    throw new Error("缺少渠道协议号，无法解约");
+  }
+
+  if (contract.provider === "alipay") {
+    await cancelAlipayRecurringContract(contract);
+    return;
+  }
+
+  throw new Error("当前版本仅支持支付宝代扣解约接口");
+}
+
 function createWechatContractSigningUrl(
   contract: SubscriptionContract,
   baseUrl: string
@@ -406,6 +494,53 @@ function createAlipayContractSigningUrl(
   }
   query.set("sign", sign);
   return `${gateway}?${query.toString()}`;
+}
+
+async function cancelAlipayRecurringContract(contract: SubscriptionContract) {
+  const gateway = (
+    process.env.ALIPAY_GATEWAY_URL?.trim() ||
+    "https://openapi.alipay.com/gateway.do"
+  ).replace(/\/+$/, "");
+  const appId = requiredEnv("ALIPAY_APP_ID");
+  const privateKey = normalizePem(requiredEnv("ALIPAY_PRIVATE_KEY"));
+  const requestParams = {
+    app_id: appId,
+    method: "alipay.user.agreement.unsign",
+    format: "JSON",
+    charset: "utf-8",
+    sign_type: "RSA2",
+    timestamp: formatAlipayTimestamp(new Date()),
+    version: "1.0",
+    biz_content: JSON.stringify({
+      personal_product_code: "CYCLE_PAY_AUTH_P",
+      agreement_no: contract.providerContractId,
+      remark: "tripai user cancel",
+    }),
+  };
+  const form = new URLSearchParams();
+  for (const [key, value] of Object.entries(requestParams)) {
+    form.set(key, value);
+  }
+  form.set("sign", signAlipayRequest(requestParams, privateKey));
+
+  const response = await fetch(gateway, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+    },
+    body: form.toString(),
+  });
+  const text = await response.text();
+  const payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  const result = payload.alipay_user_agreement_unsign_response as
+    | Record<string, string>
+    | undefined;
+
+  if (!response.ok || result?.code !== "10000") {
+    throw new Error(
+      `支付宝代扣解约失败: ${result?.sub_msg ?? result?.msg ?? response.statusText}`
+    );
+  }
 }
 
 async function assertNoActiveAutoRenewContract(userId: string) {
